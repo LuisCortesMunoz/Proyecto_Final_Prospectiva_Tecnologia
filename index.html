@@ -3,213 +3,107 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Agente de Voz para Automatización | Proyecto Final</title>
+  <title>LadderVoice — Asistente de Voz para PLCs</title>
   <link rel="stylesheet" href="assets/css/style.css" />
-  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet"/>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
 </head>
 <body>
 
-  <!-- HERO -->
-  <header class="hero">
-    <nav class="navbar">
-      <div class="logo">
-        <span class="logo-icon"><i class="fa-solid fa-microphone-lines"></i></span>
-        <span class="logo-text">VoiceAuto<span class="accent">Lab</span></span>
-      </div>
-      <ul class="nav-links">
-        <li><a href="#about">Acerca de</a></li>
-        <li><a href="#steps">Documentación</a></li>
-        <li><a href="#components">Componentes</a></li>
-        <li><a href="#team">Equipo</a></li>
-        <li><a href="https://github.com" target="_blank" class="btn-nav"><i class="fab fa-github"></i> GitHub</a></li>
-      </ul>
-    </nav>
+<div class="voice-page">
 
-    <div class="hero-content">
-      <div class="hero-badge">
-        <span class="pulse-dot"></span> Proyecto Final en Desarrollo
-      </div>
-      <h1 class="hero-title">
-        Agente de Voz para<br/>
-        <span class="gradient-text">Control de Automatización</span>
-      </h1>
-      <p class="hero-desc">
-        Este repositorio documenta los pasos para el <strong>Proyecto Final</strong>, el cual trata de generar un agente capaz de, mediante comandos de voz, activar y desactivar diferentes elementos de automatización — ya sea encender una luz, mover una banda, controlar un UR3, y más.
-      </p>
-      <div class="hero-actions">
-        <a href="#steps" class="btn-primary"><i class="fa-solid fa-book-open"></i> Ver Documentación</a>
-        <a href="https://github.com" target="_blank" class="btn-outline"><i class="fab fa-github"></i> Repositorio</a>
+  <!-- NAVBAR -->
+  <header class="obsidiana-nav">
+    <div class="onav-logo-wrap">
+      <button class="onav-logo-btn" id="onav-logo-btn">
+        <span>Ladder<span class="onav-logo-accent">Voice</span></span>
+        <svg class="onav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+      <div class="onav-dropdown" id="onav-dropdown" hidden>
+        <a href="index.html" class="onav-dropdown-item active">
+          <span class="onav-dropdown-item-title">Asistente de Voz</span>
+          <span class="onav-dropdown-item-sub">Control por voz para PLCs</span>
+        </a>
+        <a href="about.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Sobre el Proyecto</span>
+          <span class="onav-dropdown-item-sub">Arquitectura y documentación</span>
+        </a>
+        <a href="ladder.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Editor Ladder</span>
+          <span class="onav-dropdown-item-sub">Herramienta de programación PLC</span>
+        </a>
+        <a href="https://github.com/sebas30073007" target="_blank" rel="noopener noreferrer" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Repositorio</span>
+          <span class="onav-dropdown-item-sub">Ver código en GitHub</span>
+        </a>
       </div>
     </div>
 
-    <div class="hero-visual">
-      <div class="orb orb-1"></div>
-      <div class="orb orb-2"></div>
-      <div class="waveform">
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-        <div class="bar"></div><div class="bar"></div><div class="bar"></div>
-      </div>
+    <div class="onav-spacer"></div>
+
+    <button id="theme-toggle" class="theme-toggle-btn" title="Cambiar tema">
+      <i class="fa-solid fa-moon"></i>
+    </button>
+    <div class="onav-online">
+      <span class="onav-dot"></span>
+      <span class="onav-online-text">En línea</span>
     </div>
   </header>
 
-  <!-- ABOUT -->
-  <section id="about" class="about-section">
-    <div class="container">
-      <div class="section-label">¿De qué trata?</div>
-      <h2 class="section-title">Sistema de Control por Voz<br/>para Ambientes Industriales</h2>
-      <div class="about-grid">
-        <div class="about-card">
-          <div class="about-icon"><i class="fa-solid fa-microphone"></i></div>
-          <h3>Reconocimiento de Voz</h3>
-          <p>Captura y procesa comandos de voz en tiempo real usando modelos de lenguaje natural para interpretar instrucciones.</p>
-        </div>
-        <div class="about-card featured">
-          <div class="about-icon"><i class="fa-solid fa-robot"></i></div>
-          <h3>Agente Inteligente</h3>
-          <p>Un agente central toma decisiones y enruta los comandos a los elementos de automatización correctos sin intervención manual.</p>
-        </div>
-        <div class="about-card">
-          <div class="about-icon"><i class="fa-solid fa-gears"></i></div>
-          <h3>Control Multidispositivo</h3>
-          <p>Interfaces hacia PLCs, robots UR3, bandas transportadoras, actuadores de luz y más dispositivos industriales.</p>
-        </div>
+  <!-- VOICE INTERFACE -->
+  <main class="voice-main">
+
+    <div class="voice-center">
+      <p class="voice-hint" id="voiceHint">Toca el micrófono y dicta una instrucción</p>
+
+      <button class="mic-orb" id="micBtn" title="Iniciar grabación de voz" aria-label="Activar micrófono">
+        <i class="fa-solid fa-microphone" id="micIcon"></i>
+      </button>
+
+      <div class="voice-waveform" id="voiceWaveform" aria-hidden="true">
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+        <div class="vbar"></div>
+      </div>
+
+      <div class="voice-status" id="voiceStatus" role="status" aria-live="polite">
+        <span class="vpill-dot"></span>
+        <span id="statusText">Listo</span>
       </div>
     </div>
-  </section>
 
-  <!-- COMPONENTS -->
-  <section id="components" class="components-section">
-    <div class="container">
-      <div class="section-label">Componentes del Sistema</div>
-      <h2 class="section-title">Elementos Controlables</h2>
-      <div class="comp-grid">
-        <div class="comp-item">
-          <i class="fa-solid fa-lightbulb"></i>
-          <span>Luces / Actuadores</span>
-        </div>
-        <div class="comp-item">
-          <i class="fa-solid fa-tape"></i>
-          <span>Banda Transportadora</span>
-        </div>
-        <div class="comp-item">
-          <i class="fa-solid fa-robot"></i>
-          <span>Robot UR3</span>
-        </div>
-        <div class="comp-item">
-          <i class="fa-solid fa-microchip"></i>
-          <span>PLC Industrial</span>
-        </div>
-        <div class="comp-item">
-          <i class="fa-solid fa-fan"></i>
-          <span>Motores / Servos</span>
-        </div>
-        <div class="comp-item">
-          <i class="fa-solid fa-tower-broadcast"></i>
-          <span>Sensores IoT</span>
-        </div>
-      </div>
+    <div class="voice-conversation" id="conversation" aria-live="polite" aria-label="Historial de conversación">
+      <!-- Los mensajes de voz e IA aparecerán aquí -->
     </div>
-  </section>
 
-  <!-- STEPS / DOCUMENTATION -->
-  <section id="steps" class="steps-section">
-    <div class="container">
-      <div class="section-label">Documentación</div>
-      <h2 class="section-title">Pasos del Proyecto</h2>
-      <div class="timeline">
-
-        <div class="step">
-          <div class="step-number">01</div>
-          <div class="step-body">
-            <h3>Definición del Proyecto</h3>
-            <p>Establecimiento de requerimientos, alcance, y recursos disponibles. Identificación de los elementos de automatización a controlar.</p>
-            <div class="step-tags"><span>Planeación</span><span>Requerimientos</span></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <div class="step-number">02</div>
-          <div class="step-body">
-            <h3>Diseño de la Arquitectura</h3>
-            <p>Diagrama del sistema: cómo fluye la voz desde el micrófono hasta los dispositivos. Elección de tecnologías (NLP, protocolo de comunicación, hardware).</p>
-            <div class="step-tags"><span>Arquitectura</span><span>Diseño</span></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <div class="step-number">03</div>
-          <div class="step-body">
-            <h3>Implementación del Motor de Voz</h3>
-            <p>Integración del sistema de reconocimiento de voz (ASR) y procesamiento de lenguaje natural para extraer intenciones de los comandos.</p>
-            <div class="step-tags"><span>NLP</span><span>ASR</span><span>Python</span></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <div class="step-number">04</div>
-          <div class="step-body">
-            <h3>Desarrollo del Agente</h3>
-            <p>Construcción del agente que interpreta las intenciones y las convierte en señales de control para cada dispositivo registrado.</p>
-            <div class="step-tags"><span>Agente</span><span>LLM</span><span>Control</span></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <div class="step-number">05</div>
-          <div class="step-body">
-            <h3>Integración con Dispositivos</h3>
-            <p>Conexión del agente con los elementos reales: robot UR3, PLC, bandas y actuadores. Pruebas de comunicación y latencia.</p>
-            <div class="step-tags"><span>UR3</span><span>PLC</span><span>IoT</span></div>
-          </div>
-        </div>
-
-        <div class="step">
-          <div class="step-number">06</div>
-          <div class="step-body">
-            <h3>Pruebas y Resultados</h3>
-            <p>Evaluación del sistema completo: precisión de comandos, tiempo de respuesta, robustez ante ruido, y análisis de resultados finales.</p>
-            <div class="step-tags"><span>Testing</span><span>Métricas</span><span>Resultados</span></div>
-          </div>
-        </div>
-
-      </div>
-    </div>
-  </section>
-
-  <!-- TEAM -->
-  <section id="team" class="team-section">
-    <div class="container">
-      <div class="section-label">Equipo</div>
-      <h2 class="section-title">Desarrolladores</h2>
-      <div class="team-grid">
-        <div class="team-card">
-          <div class="team-avatar"><i class="fa-solid fa-user-tie"></i></div>
-          <h4>Nombre del Alumno</h4>
-          <p>Desarrollador Principal</p>
-        </div>
-        <div class="team-card">
-          <div class="team-avatar"><i class="fa-solid fa-chalkboard-teacher"></i></div>
-          <h4>Nombre del Asesor</h4>
-          <p>Asesor de Proyecto</p>
-        </div>
-      </div>
-    </div>
-  </section>
+  </main>
 
   <!-- FOOTER -->
   <footer class="footer">
     <div class="container footer-inner">
       <div class="footer-logo">
-        <i class="fa-solid fa-microphone-lines"></i> VoiceAutoLab
+        <i class="fa-solid fa-microphone-lines"></i> LadderVoice
       </div>
-      <p>Proyecto Final &mdash; Control por Voz de Elementos de Automatización</p>
-      <a href="https://github.com" target="_blank" class="footer-gh"><i class="fab fa-github"></i> Ver en GitHub</a>
+      <p>Proyecto Final &mdash; Prospectiva de la Tecnología</p>
+      <a href="https://github.com/sebas30073007" target="_blank" class="footer-gh">
+        <i class="fab fa-github"></i> Ver en GitHub
+      </a>
     </div>
   </footer>
 
-  <script src="assets/js/main.js"></script>
+</div><!-- /voice-page -->
+
+<script src="assets/js/main.js"></script>
 </body>
 </html>
