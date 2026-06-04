@@ -1,6 +1,5 @@
 /**
  * schema.js — Modelo de datos para programas ladder PLC
- * Define el formato JSON canónico que usan el renderer, el codec y el agente IA.
  */
 
 export const ELEMENT_TYPES = {
@@ -20,7 +19,14 @@ export const ELEMENT_TYPES = {
   block_add:        { label: 'Aritmético',   category: 'block'   },
 };
 
-/** Devuelve el programa de ejemplo (3 rungs) */
+// Tipos que solo van en la zona derecha (salida del rung)
+export const OUTPUT_TYPES = new Set([
+  'coil', 'coil_s', 'coil_r',
+  'block_ton', 'block_tof', 'block_ctu', 'block_ctd',
+]);
+
+export function isOutputType(t) { return OUTPUT_TYPES.has(t); }
+
 export function defaultProgram() {
   return {
     metadata: {
@@ -53,20 +59,24 @@ export function defaultProgram() {
       },
       {
         id: 2, enabled: true,
-        comment: 'Timer on-delay — arranque válvula A',
-        network: [{ row: 0, elements: [
-          { id: 'r2e1', type: 'contact_no', address: 'I0.2', pos: { col: 0 } },
-          { id: 'r2e2', type: 'block_ton',  address: 'T0',   pos: { col: 1 }, params: { preset_ms: 5000 } },
-          { id: 'r2e3', type: 'coil',       address: 'Q0.1', pos: { col: 2 }, coil_type: 'output' },
-        ]}],
+        comment: 'Paralelo — I0.2 en paralelo con I0.1',
+        network: [
+          { row: 0, elements: [
+            { id: 'r2e1', type: 'contact_no', address: 'I0.0', pos: { col: 0 } },
+            { id: 'r2e2', type: 'contact_no', address: 'I0.1', pos: { col: 1 } },
+            { id: 'r2e3', type: 'coil',       address: 'Q0.1', pos: { col: 2 }, coil_type: 'output' },
+          ]},
+          { row: 1, span: { from: 1, to: 1 }, elements: [
+            { id: 'r2e4', type: 'contact_nc', address: 'I0.2', pos: { col: 1 } },
+          ]},
+        ],
       },
       {
         id: 3, enabled: true,
-        comment: 'Alarma por temperatura alta — set latch',
+        comment: 'Timer on-delay',
         network: [{ row: 0, elements: [
-          { id: 'r3e1', type: 'contact_no', address: 'M0.0', pos: { col: 0 } },
-          { id: 'r3e2', type: 'block_cmp',  address: 'MW10', pos: { col: 1 }, params: { op: 'GE', value: 100 } },
-          { id: 'r3e3', type: 'coil',       address: 'Q0.2', pos: { col: 2 }, coil_type: 'set' },
+          { id: 'r3e1', type: 'contact_no', address: 'I0.2', pos: { col: 0 } },
+          { id: 'r3e2', type: 'block_ton',  address: 'T0',   pos: { col: 1 }, params: { preset_ms: 5000 } },
         ]}],
       },
     ],
@@ -78,18 +88,16 @@ export function defaultProgram() {
   };
 }
 
-/** Crea un rung vacío con el siguiente ID disponible */
 export function newRung(existingRungs) {
   const maxId = existingRungs.reduce((m, r) => Math.max(m, r.id), 0);
   return {
     id: maxId + 1,
     enabled: true,
-    comment: `Rung ${maxId + 1}`,
+    comment: '',
     network: [{ row: 0, elements: [] }],
   };
 }
 
-/** Crea un nuevo elemento de tipo dado, con ID único */
 export function newElement(type, col) {
   const id = 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
   const el = { id, type, address: '', pos: { col } };
@@ -102,22 +110,21 @@ export function newElement(type, col) {
   return el;
 }
 
-/** Valida el programa: retorna array de errores (strings) */
 export function validateProgram(prog) {
   const errors = [];
   const st = prog.symbol_table || {};
-
   for (const rung of prog.rungs) {
-    const els = rung.network?.[0]?.elements ?? [];
+    const allEls = (rung.network ?? []).flatMap(row => row.elements ?? []);
     const seen = new Set();
-    for (const el of els) {
+    for (const el of allEls) {
       if (seen.has(el.id)) errors.push(`Rung ${rung.id}: ID duplicado "${el.id}"`);
       seen.add(el.id);
       if (el.address && !st[el.address]) {
         errors.push(`Rung ${rung.id}: dirección "${el.address}" no está en symbol_table`);
       }
     }
-    const coils = els.filter(e => e.type.startsWith('coil'));
+    const mainEls = rung.network?.[0]?.elements ?? [];
+    const coils = mainEls.filter(e => e.type.startsWith('coil'));
     for (const coil of coils) {
       const entry = st[coil.address];
       if (entry && entry.modbus.fn === 'read_coil') {

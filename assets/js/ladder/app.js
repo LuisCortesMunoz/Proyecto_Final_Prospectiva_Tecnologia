@@ -6,31 +6,26 @@
  * Lineas modificadas marcadas con: // ← NUEVO
  */
 
-import { defaultProgram, newRung, newElement, validateProgram } from './schema.js';
-import { exportToURL, importFromURL, pushToURL }                from './codec.js';
-import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable } from './renderer.js';
+import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES } from './schema.js';
+import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
+import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
 
-// ── Helpers ──────────────────────────────────────────────
-function ts() {
-  return new Date().toLocaleTimeString('es-MX', { hour12: false });
-}
+function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 
-// ── Store ────────────────────────────────────────────────
+// ── Store ────────────────────────────────────────────────────────
 const store = (() => {
-  let _prog   = importFromURL() ?? defaultProgram();
-  let _sel    = { rungId: null, elementId: null };
-  let _armed  = null;
-  let _log    = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v1.0' }];
+  let _prog  = importFromURL() ?? defaultProgram();
+  let _sel   = { rungId: null, elementId: null };
+  let _armed = null;
+  let _log   = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v2.0' }];
   const _subs = [];
-
   function notify() { _subs.forEach(fn => fn()); }
 
   return {
     subscribe(fn) { _subs.push(fn); },
 
     getProgram() { return _prog; },
-
     setProgram(p) { _prog = p; notify(); },
 
     updateMeta(patch) {
@@ -44,6 +39,33 @@ const store = (() => {
       const r = newRung(p.rungs);
       p.rungs.push(r);
       _sel = { rungId: r.id, elementId: null };
+      _prog = p; notify();
+    },
+
+    // Inserta un rung vacío después del rung con id dado
+    addRungAfter(afterId) {
+      const p   = deepClone(_prog);
+      const idx = p.rungs.findIndex(r => r.id === afterId);
+      const r   = newRung(p.rungs);
+      if (idx >= 0) p.rungs.splice(idx + 1, 0, r);
+      else p.rungs.push(r);
+      _sel = { rungId: r.id, elementId: null };
+      _prog = p; notify();
+    },
+
+    // Duplica un rung (clona con nuevos IDs)
+    duplicateRung(id) {
+      const p   = deepClone(_prog);
+      const idx = p.rungs.findIndex(r => r.id === id);
+      if (idx < 0) return;
+      const clone = deepClone(p.rungs[idx]);
+      const maxId = p.rungs.reduce((m, r) => Math.max(m, r.id), 0);
+      clone.id = maxId + 1;
+      // Regenerar IDs de elementos
+      const regen = (el) => ({ ...el, id: 'e' + Date.now().toString(36) + Math.random().toString(36).slice(2,5) });
+      clone.network = clone.network.map(row => ({ ...row, elements: row.elements.map(regen) }));
+      p.rungs.splice(idx + 1, 0, clone);
+      _sel = { rungId: clone.id, elementId: null };
       _prog = p; notify();
     },
 
@@ -65,25 +87,41 @@ const store = (() => {
     },
 
     setRungComment(id, comment) {
-      const p   = deepClone(_prog);
-      const r   = p.rungs.find(r => r.id === id);
+      const p = deepClone(_prog);
+      const r = p.rungs.find(r => r.id === id);
       if (r) r.comment = comment;
       _prog = p; notify();
     },
 
+    toggleRungEnabled(id) {
+      const p = deepClone(_prog);
+      const r = p.rungs.find(r => r.id === id);
+      if (r) r.enabled = !r.enabled;
+      _prog = p; notify();
+    },
+
+    // ── Elementos ────────────────────────────────────────────
     addElement(rungId, type, atCol = null) {
       const p  = deepClone(_prog);
       const r  = p.rungs.find(r => r.id === rungId);
       if (!r) return;
       const els = r.network[0].elements;
+      const isOut = isOutputType(type);
       let col;
-      if (atCol !== null) {
-        col = atCol;
+      if (isOut) {
+        // Siempre al final (zona derecha)
+        col = els.length > 0 ? els.reduce((m, e) => Math.max(m, e.pos.col), -1) + 1 : 0;
+      } else if (atCol !== null) {
+        // Insertar antes de cualquier output que esté en esa col o después
+        const outAt = els.findIndex(e => isOutputType(e.type) && e.pos.col >= atCol);
+        col = outAt >= 0 ? Math.min(atCol, els[outAt].pos.col) : atCol;
       } else {
-        const coilAt = els.findIndex(e => e.type.startsWith('coil'));
-        col = coilAt >= 0 ? coilAt : els.length;
+        // Default: antes de la primera bobina/output
+        const outAt = els.findIndex(e => isOutputType(e.type));
+        col = outAt >= 0 ? outAt : els.length;
       }
-      els.filter(e => e.pos.col >= col).forEach(e => e.pos.col++);
+      // Desplazar elementos existentes con col >= nueva col (solo no-output si insertamos contact)
+      els.filter(e => e.pos.col >= col && !(isOut && isOutputType(e.type))).forEach(e => e.pos.col++);
       const el = newElement(type, col);
       els.push(el);
       _sel   = { rungId, elementId: el.id };
@@ -91,13 +129,30 @@ const store = (() => {
       _prog  = p; notify();
     },
 
-    addParallelRow(rungId, type) {
+    // Agrega un elemento en paralelo con el elemento en atCol de la fila 0
+    addParallelElement(rungId, type, atCol) {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
-      const safeType = type.startsWith('coil') ? 'contact_no' : type;
-      const el = newElement(safeType, 0);
-      r.network.push({ row: r.network.length, elements: [el] });
+      // Los paralelos solo aceptan contactos (no bobinas ni outputs)
+      const safeType = isOutputType(type) ? 'contact_no' : type;
+      const el = newElement(safeType, atCol);
+      // Buscar si ya hay una rama que cubre exactamente esa columna
+      const existing = r.network.slice(1).find(row => {
+        const sp = row.span ?? { from: atCol, to: atCol };
+        return sp.from <= atCol && sp.to >= atCol;
+      });
+      if (existing) {
+        existing.elements.push(el);
+        if (existing.span) {
+          existing.span.from = Math.min(existing.span.from, atCol);
+          existing.span.to   = Math.max(existing.span.to,   atCol);
+        }
+      } else {
+        r.network.push({ row: r.network.length, span: { from: atCol, to: atCol }, elements: [el] });
+      }
+      // Renumerar filas
+      r.network.forEach((row, i) => row.row = i);
       _sel   = { rungId, elementId: el.id };
       _armed = null;
       _prog  = p; notify();
@@ -111,12 +166,13 @@ const store = (() => {
         const idx = row.elements.findIndex(e => e.id === elId);
         if (idx < 0) continue;
         row.elements.splice(idx, 1);
-        const sorted = row.elements.slice().sort((a, b) => a.pos.col - b.pos.col);
-        sorted.forEach((e, i) => e.pos.col = i);
-        r.network = r.network.filter((row, i) => i === 0 || row.elements.length > 0);
-        r.network.forEach((row, i) => row.row = i);
+        const sorted = row.elements.slice().sort((a,b) => a.pos.col - b.pos.col);
+        sorted.forEach((e,i) => e.pos.col = i);
         break;
       }
+      // Limpiar ramas vacías (no la fila 0)
+      r.network = r.network.filter((row, i) => i === 0 || row.elements.length > 0);
+      r.network.forEach((row,i) => row.row = i);
       _sel  = { rungId, elementId: null };
       _prog = p; notify();
     },
@@ -125,33 +181,30 @@ const store = (() => {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
-      let found = false;
       for (const row of r.network) {
         const el = row.elements.find(e => e.id === elId);
         if (!el) continue;
         Object.assign(el, patch);
-        found = true;
         break;
       }
-      if (!found) return;
       if (patch.address && !p.symbol_table[patch.address]) {
-        p.symbol_table[patch.address] = {
-          symbol: patch.address, type: 'BOOL',
-          modbus: { fn: 'internal', address: null }, comment: '',
-        };
+        p.symbol_table[patch.address] = { symbol: patch.address, type: 'BOOL', modbus: { fn: 'internal', address: null }, comment: '' };
       }
       _prog = p; notify();
     },
 
+    // ── Selección ─────────────────────────────────────────────
     getSelection()          { return _sel; },
     selectRung(id)          { _sel = { rungId: id, elementId: null }; notify(); },
     selectElement(rid, eid) { _sel = { rungId: rid, elementId: eid }; notify(); },
     clearSelection()        { _sel = { rungId: null, elementId: null }; notify(); },
 
-    getArmed()  { return _armed; },
-    arm(type)   { _armed = type; notify(); },
-    disarm()    { _armed = null; notify(); },
+    // ── Sidebar armed ─────────────────────────────────────────
+    getArmed() { return _armed; },
+    arm(type)  { _armed = type; notify(); },
+    disarm()   { _armed = null; notify(); },
 
+    // ── Log ───────────────────────────────────────────────────
     getLog() { return _log; },
     log(type, msg) {
       _log.push({ ts: ts(), type, msg });
@@ -161,24 +214,78 @@ const store = (() => {
   };
 })();
 
-// ── Toast ────────────────────────────────────────────────
+// ── Toast ──────────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
-  const container = document.getElementById('toast-container');
-  if (!container) return;
+  const c = document.getElementById('toast-container');
+  if (!c) return;
   const el = document.createElement('div');
   el.className = `toast ${type}`;
   el.textContent = msg;
-  container.appendChild(el);
+  c.appendChild(el);
   setTimeout(() => el.remove(), 3000);
 }
 
-// ── Render pipeline ──────────────────────────────────────
+// ── Clipboard interno ─────────────────────────────────────────
+let _clipboard = null;
+
+function copyElement() {
+  const sel  = store.getSelection();
+  if (!sel.elementId) return;
+  const rung = store.getProgram().rungs.find(r => r.id === sel.rungId);
+  for (const row of rung?.network ?? []) {
+    const el = row.elements.find(e => e.id === sel.elementId);
+    if (el) { _clipboard = { kind: 'element', data: deepClone(el) }; showToast('Elemento copiado', 'success'); return; }
+  }
+}
+
+function cutElement() {
+  copyElement();
+  const sel = store.getSelection();
+  if (sel.elementId) store.deleteElement(sel.rungId, sel.elementId);
+}
+
+function copyRung() {
+  const sel  = store.getSelection();
+  if (!sel.rungId) return;
+  const rung = store.getProgram().rungs.find(r => r.id === sel.rungId);
+  if (rung) { _clipboard = { kind: 'rung', data: deepClone(rung) }; showToast('Rung copiado', 'success'); }
+}
+
+function pasteFromClipboard() {
+  if (!_clipboard) { showToast('Portapapeles vacío', 'info'); return; }
+  const sel = store.getSelection();
+  if (_clipboard.kind === 'element') {
+    if (!sel.rungId) { showToast('Selecciona un rung primero', 'info'); return; }
+    const src = _clipboard.data;
+    store.addElement(sel.rungId, src.type, null);
+    // Actualizar dirección del elemento recién pegado
+    const prog  = store.getProgram();
+    const rung  = prog.rungs.find(r => r.id === sel.rungId);
+    const newEl = rung?.network[0].elements.reduce((a,b) => b.pos.col > a.pos.col ? b : a, { pos: { col: -1 } });
+    if (newEl?.id) store.updateElement(sel.rungId, newEl.id, { address: src.address });
+    showToast('Elemento pegado', 'success');
+  } else if (_clipboard.kind === 'rung') {
+    const afterId = sel.rungId ?? store.getProgram().rungs.at(-1)?.id;
+    if (afterId) store.duplicateRung(_clipboard.data.id !== undefined ? _clipboard.data.id : afterId);
+    showToast('Rung pegado', 'success');
+  }
+}
+
+// ── Zoom ──────────────────────────────────────────────────────
+let _zoom = 1.0;
+function adjustZoom(delta) {
+  _zoom = Math.max(0.4, Math.min(2.5, _zoom + delta));
+  const ra = document.getElementById('rungArea');
+  if (ra) { ra.style.transform = `scale(${_zoom})`; ra.style.transformOrigin = 'top left'; }
+  showToast(`Zoom: ${Math.round(_zoom * 100)}%`, 'info');
+}
+
+// ── Render ─────────────────────────────────────────────────────
 function renderTerminal() {
   const panel = document.getElementById('tab-terminal');
   if (!panel) return;
-  const log = store.getLog();
   panel.innerHTML = `<div class="terminal">${
-    log.map(l => `<div class="t-line ${l.type}">
+    store.getLog().map(l => `<div class="t-line ${l.type}">
       <span class="t-ts">${l.ts}</span>
       <span class="t-tag">[${l.type.toUpperCase()}]</span>
       <span class="t-msg">${esc(l.msg)}</span>
@@ -188,26 +295,48 @@ function renderTerminal() {
 }
 
 function renderActiveTab(prog) {
-  const activeTab = document.querySelector('.bb-tab.active')?.id?.replace('tab-btn-', '');
-  if (!activeTab || activeTab === 'terminal') return;
-  const panel = document.getElementById(`tab-${activeTab}`);
+  const name  = document.querySelector('.bb-tab.active')?.id?.replace('tab-btn-', '');
+  if (!name || name === 'terminal') return;
+  const panel = document.getElementById(`tab-${name}`);
   if (!panel) return;
-  if (activeTab === 'io')    panel.innerHTML = renderIOTable(prog);
-  if (activeTab === 'watch') panel.innerHTML = renderWatchTable(prog);
-  if (activeTab === 'xref')  panel.innerHTML = renderXRefTable(prog);
+  if (name === 'io')    panel.innerHTML = renderIOTable(prog);
+  if (name === 'watch') panel.innerHTML = renderWatchTable(prog);
+  if (name === 'xref')  panel.innerHTML = renderXRefTable(prog);
 }
 
+function updateSidebarArmed() {
+  const armed = store.getArmed();
+  document.querySelectorAll('.comp-item').forEach(el => el.classList.toggle('active', el.dataset.type === armed));
+}
+
+function updateEtLabel(prog) {
+  const el = document.querySelector('.et-label');
+  if (el) el.textContent = `${prog.metadata.name} — ${prog.rungs.length} rung${prog.rungs.length !== 1 ? 's' : ''}`;
+}
+
+function render() {
+  const prog = store.getProgram();
+  const sel  = store.getSelection();
+  const ra   = document.getElementById('rungArea');
+  if (ra) renderAllRungs(ra, prog, sel);
+  renderTerminal();
+  renderActiveTab(prog);
+  updateSidebarArmed();
+  updateEtLabel(prog);
+}
+
+store.subscribe(render);
+
+// ── Properties popup ──────────────────────────────────────────
 function positionPopup(popup, x, y) {
   popup.style.visibility = 'hidden';
-  popup.style.display    = 'flex';
+  popup.classList.add('visible');
   const pw = popup.offsetWidth  || 224;
   const ph = popup.offsetHeight || 260;
-  popup.style.display    = '';
+  popup.classList.remove('visible');
   popup.style.visibility = '';
-  const vw = window.innerWidth;
-  const vh = window.innerHeight;
-  const left = x + pw + 8 > vw ? x - pw - 4 : x + 4;
-  const top  = y + ph + 8 > vh ? y - ph - 4 : y + 4;
+  const left = x + pw + 8 > window.innerWidth  ? x - pw - 4 : x + 4;
+  const top  = y + ph + 8 > window.innerHeight ? y - ph - 4 : y + 4;
   popup.style.left = Math.max(4, left) + 'px';
   popup.style.top  = Math.max(4, top)  + 'px';
 }
@@ -232,34 +361,52 @@ function fillPropPopup(prog, sel) {
   const comment = document.getElementById('propComment');
   const state   = document.getElementById('propState');
   const rungCmt = document.getElementById('propRungComment');
+  const timerPr = document.getElementById('propTimerPreset');
+  const timerWr = document.getElementById('propTimerWrap');
 
-  if (!sel.rungId) {
-    if (title) title.textContent = 'Propiedades';
-    return;
-  }
+  if (!sel.rungId) { if (title) title.textContent = 'Propiedades'; return; }
   const rung = prog.rungs.find(r => r.id === sel.rungId);
   if (!rung) return;
-
   if (rungCmt) rungCmt.value = rung.comment || '';
 
   if (!sel.elementId) {
-    if (title) title.textContent = `Rung ${rung.id}`;
-    if (addr)  addr.value  = '';
-    if (sym)   sym.value   = '';
+    if (title)  title.textContent = `Rung ${rung.id}`;
+    if (addr)   addr.value  = '';
+    if (sym)    sym.value   = '';
     if (comment) comment.value = '';
+    if (timerWr) timerWr.style.display = 'none';
     if (state) { state.textContent = rung.enabled ? 'HABILITADO' : 'DESHABILITADO'; state.className = 'pp-state-val ' + (rung.enabled ? 'on' : 'off'); }
     return;
   }
 
-  const el    = rung.network[0].elements.find(e => e.id === sel.elementId);
+  // Buscar el elemento en TODAS las filas (no solo row 0)
+  let el = null;
+  for (const row of rung.network) {
+    el = row.elements.find(e => e.id === sel.elementId);
+    if (el) break;
+  }
   if (!el) return;
   const entry = prog.symbol_table?.[el.address];
 
-  if (title)   title.textContent = `${el.address || '?'} — ${el.type}`;
+  if (title)   title.textContent = `${el.address || '—'} · ${el.type}`;
   if (addr)    addr.value    = el.address || '';
-  if (sym)     sym.value     = entry?.symbol  || '';
+  if (sym)     sym.value     = entry?.symbol || '';
   if (typeSel) typeSel.value = el.type;
   if (comment) comment.value = entry?.comment || '';
+
+  // Timer preset
+  if (timerWr) {
+    if (el.params?.preset_ms !== undefined) {
+      timerWr.style.display = '';
+      if (timerPr) timerPr.value = el.params.preset_ms;
+    } else if (el.params?.preset !== undefined) {
+      timerWr.style.display = '';
+      if (timerPr) timerPr.value = el.params.preset;
+    } else {
+      timerWr.style.display = 'none';
+    }
+  }
+
   if (state) {
     const en = prog.execution_state?.rung_states?.[String(rung.id)];
     state.textContent = en ? 'TRUE' : 'FALSE';
@@ -267,177 +414,277 @@ function fillPropPopup(prog, sel) {
   }
 }
 
-function onContextMenu(e) {
-  const elDiv  = e.target.closest('.ladder-el');
-  const rungEl = e.target.closest('[data-rung-id]');
-  if (!elDiv && !rungEl) return;
-  e.preventDefault();
-  if (elDiv) {
-    store.selectElement(Number(elDiv.dataset.rungId), elDiv.dataset.elId);
+// ── Context menu ──────────────────────────────────────────────
+let _ctxTarget = null;
+
+function showCtxMenu(x, y, mode) {
+  const menu = document.getElementById('ctxMenu');
+  if (!menu) return;
+
+  let html = '';
+  if (mode === 'element') {
+    const prog = store.getProgram();
+    const rung = prog.rungs.find(r => r.id === _ctxTarget.rungId);
+    let el = null;
+    for (const row of rung?.network ?? []) {
+      el = row.elements.find(e => e.id === _ctxTarget.elId);
+      if (el) break;
+    }
+    const isContact = el?.type?.startsWith('contact_');
+    const isMain    = _ctxTarget.row === 0;
+    html = `
+      <div class="ctx-header"><i class="ti ti-adjustments"></i> ${esc(el?.type ?? '?')} · ${esc(el?.address ?? '?')}</div>
+      <div class="ctx-item" data-action="edit-props"><i class="ti ti-pencil"></i> Editar propiedades</div>
+      ${isMain && isContact ? `<div class="ctx-item" data-action="add-parallel"><i class="ti ti-git-branch"></i> Poner en paralelo aquí</div>` : ''}
+      ${isContact ? `<div class="ctx-item" data-action="toggle-nc"><i class="ti ti-switch-horizontal"></i> ${el.type === 'contact_no' ? 'Cambiar a NC (cerrado)' : 'Cambiar a NO (abierto)'}</div>` : ''}
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-action="copy-el"><i class="ti ti-copy"></i> Copiar</div>
+      <div class="ctx-item" data-action="cut-el"><i class="ti ti-cut"></i> Cortar</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-danger" data-action="delete-el"><i class="ti ti-trash"></i> Eliminar elemento</div>`;
   } else {
-    store.selectRung(Number(rungEl.dataset.rungId));
+    const rung = store.getProgram().rungs.find(r => r.id === _ctxTarget.rungId);
+    html = `
+      <div class="ctx-header"><i class="ti ti-brackets"></i> Rung ${_ctxTarget.rungId}</div>
+      <div class="ctx-item" data-action="insert-el"><i class="ti ti-cursor-text"></i> Insertar elemento</div>
+      <div class="ctx-item" data-action="rung-comment"><i class="ti ti-message"></i> Editar comentario</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-action="add-rung-below"><i class="ti ti-row-insert-bottom"></i> Agregar rung abajo</div>
+      <div class="ctx-item" data-action="dup-rung"><i class="ti ti-copy"></i> Duplicar rung</div>
+      <div class="ctx-item" data-action="paste-here"><i class="ti ti-clipboard"></i> Pegar</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-action="move-up"><i class="ti ti-arrow-up"></i> Subir rung</div>
+      <div class="ctx-item" data-action="move-down"><i class="ti ti-arrow-down"></i> Bajar rung</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item" data-action="toggle-enable"><i class="ti ti-player-${rung?.enabled ? 'pause' : 'play'}"></i> ${rung?.enabled ? 'Deshabilitar' : 'Habilitar'} rung</div>
+      <div class="ctx-sep"></div>
+      <div class="ctx-item ctx-danger" data-action="delete-rung"><i class="ti ti-trash"></i> Eliminar rung</div>`;
   }
-  showPropPopup(e.clientX, e.clientY);
+
+  menu.innerHTML = html;
+  menu.style.display = 'block';
+  const mw = menu.offsetWidth  || 200;
+  const mh = menu.offsetHeight || 200;
+  const left = x + mw + 8 > window.innerWidth  ? x - mw - 4 : x + 4;
+  const top  = y + mh + 8 > window.innerHeight ? y - mh - 4 : y + 4;
+  menu.style.left = Math.max(4, left) + 'px';
+  menu.style.top  = Math.max(4, top)  + 'px';
+  menu.classList.add('visible');
 }
 
-function onDocumentMouseDown(e) {
-  const popup = document.getElementById('propPopup');
-  if (popup && !popup.contains(e.target)) hidePropPopup();
+function hideCtxMenu() {
+  const m = document.getElementById('ctxMenu');
+  m?.classList.remove('visible');
+  _ctxTarget = null;
 }
 
-function toggleBottomBar() {
-  document.getElementById('bottombar')?.classList.toggle('collapsed');
+function onCtxMenuClick(e) {
+  const item = e.target.closest('[data-action]');
+  if (!item || !_ctxTarget) return;
+  const action  = item.dataset.action;
+  const { rungId, elId, col } = _ctxTarget;
+  hideCtxMenu();
+
+  switch (action) {
+    case 'edit-props': {
+      if (elId) store.selectElement(rungId, elId);
+      else      store.selectRung(rungId);
+      // Abrir popup en el centro del riel del rung
+      const rungDiv = document.getElementById(`rung-${rungId}`);
+      if (rungDiv) {
+        const r = rungDiv.getBoundingClientRect();
+        showPropPopup(r.left + r.width * 0.5, r.top + r.height * 0.5);
+      }
+      break;
+    }
+    case 'add-parallel': {
+      const armed = store.getArmed() || 'contact_no';
+      store.addParallelElement(rungId, armed, col);
+      showToast('Rama paralela agregada', 'success');
+      store.log('info', `Paralelo en rung ${rungId} col ${col}`);
+      break;
+    }
+    case 'toggle-nc': {
+      const prog = store.getProgram();
+      const rung = prog.rungs.find(r => r.id === rungId);
+      for (const row of rung?.network ?? []) {
+        const el = row.elements.find(e => e.id === elId);
+        if (el) {
+          const t = el.type === 'contact_no' ? 'contact_nc' : 'contact_no';
+          store.updateElement(rungId, elId, { type: t });
+          break;
+        }
+      }
+      break;
+    }
+    case 'copy-el':  copyElement();           break;
+    case 'cut-el':   cutElement();            break;
+    case 'delete-el':
+      store.deleteElement(rungId, elId);
+      store.log('info', `Elemento ${elId} eliminado del rung ${rungId}`);
+      break;
+    case 'insert-el': {
+      const armed = store.getArmed();
+      if (armed) { store.addElement(rungId, armed); showToast(`${armed} insertado`, 'success'); }
+      else showToast('Selecciona un componente del sidebar primero', 'info');
+      break;
+    }
+    case 'rung-comment': {
+      const rung = store.getProgram().rungs.find(r => r.id === rungId);
+      const nc   = prompt('Comentario del rung:', rung?.comment ?? '');
+      if (nc !== null) store.setRungComment(rungId, nc);
+      break;
+    }
+    case 'add-rung-below':
+      store.addRungAfter(rungId);
+      store.log('info', `Rung insertado después del rung ${rungId}`);
+      break;
+    case 'dup-rung':
+      store.duplicateRung(rungId);
+      showToast('Rung duplicado', 'success');
+      break;
+    case 'paste-here':
+      store.selectRung(rungId);
+      pasteFromClipboard();
+      break;
+    case 'move-up':   store.moveRung(rungId, -1); break;
+    case 'move-down': store.moveRung(rungId,  1); break;
+    case 'toggle-enable': store.toggleRungEnabled(rungId); break;
+    case 'delete-rung': {
+      const rung  = store.getProgram().rungs.find(r => r.id === rungId);
+      const count = rung?.network.reduce((s,row) => s + row.elements.length, 0) ?? 0;
+      const ok    = count === 0 || confirm(`¿Eliminar rung ${rungId}? Contiene ${count} elemento(s).`);
+      if (ok) { store.deleteRung(rungId); store.log('warn', `Rung ${rungId} eliminado`); }
+      break;
+    }
+  }
 }
-window.toggleBottomBar = toggleBottomBar;
 
-function updatePropertyPanel() {}
-
-function updateSidebarArmed() {
-  const armed = store.getArmed();
-  document.querySelectorAll('.comp-item').forEach(el => {
-    el.classList.toggle('active', el.dataset.type === armed);
-  });
-}
-
-function updateEtLabel(prog) {
-  const el = document.querySelector('.et-label');
-  if (el) el.textContent = `${prog.metadata.name} — ${prog.rungs.length} rung${prog.rungs.length !== 1 ? 's' : ''}`;
-}
-
-function render() {
-  const prog = store.getProgram();
-  const sel  = store.getSelection();
-
-  const rungArea = document.getElementById('rungArea');
-  if (rungArea) renderAllRungs(rungArea, prog, sel);
-
-  renderTerminal();
-  renderActiveTab(prog);
-  updatePropertyPanel(prog, sel);
-  updateSidebarArmed();
-  updateEtLabel(prog);
-}
-
-store.subscribe(render);
-
+// ── Event: rung area click ────────────────────────────────────
 function onRungAreaClick(e) {
-  const elDiv  = e.target.closest('.ladder-el');
+  if (e.target.closest('#ctxMenu')) return;
+  const elHit = e.target.closest('.ladder-el');
   const rungEl = e.target.closest('[data-rung-id]');
   const addBtn = e.target.closest('#btn-add-rung');
 
   if (addBtn) {
-    const armed = store.getArmed();
-    if (armed && store.getSelection().rungId) {
-      store.addElement(store.getSelection().rungId, armed);
-    } else {
-      store.addRung();
-      store.log('info', `Rung ${store.getProgram().rungs.slice(-1)[0]?.id} agregado`);
-    }
+    store.addRung();
+    store.log('info', `Rung ${store.getProgram().rungs.at(-1)?.id} agregado`);
     return;
   }
-
-  if (elDiv) {
-    const rungId = Number(elDiv.dataset.rungId);
-    const elId   = elDiv.dataset.elId;
+  if (elHit) {
+    const rungId = Number(elHit.dataset.rungId);
+    const elId   = elHit.dataset.elId;
     const armed  = store.getArmed();
-    if (armed) {
-      store.addElement(rungId, armed);
-    } else {
-      store.selectElement(rungId, elId);
-    }
+    if (armed) { store.addElement(rungId, armed); return; }
+    store.selectElement(rungId, elId);
     return;
   }
-
   if (rungEl) {
     const rid   = Number(rungEl.dataset.rungId);
     const armed = store.getArmed();
-    if (armed) {
-      store.addElement(rid, armed);
-    } else {
-      store.selectRung(rid);
-    }
+    if (armed) { store.addElement(rid, armed); return; }
+    store.selectRung(rid);
   }
 }
 
+// ── Event: rung area double-click → abre propiedades ─────────
+function onRungAreaDblClick(e) {
+  const elHit = e.target.closest('.ladder-el');
+  if (!elHit) return;
+  const rungId = Number(elHit.dataset.rungId);
+  const elId   = elHit.dataset.elId;
+  store.selectElement(rungId, elId);
+  showPropPopup(e.clientX, e.clientY);
+}
+
+// ── Event: context menu (clic derecho) ────────────────────────
+function onContextMenu(e) {
+  const elHit  = e.target.closest('.ladder-el');
+  const rungEl = e.target.closest('[data-rung-id]');
+  if (!elHit && !rungEl) return;
+  e.preventDefault();
+
+  if (elHit) {
+    const rungId = Number(elHit.dataset.rungId);
+    const elId   = elHit.dataset.elId;
+    const col    = Number(elHit.dataset.col ?? 0);
+    const row    = Number(elHit.dataset.row ?? 0);
+    store.selectElement(rungId, elId);
+    _ctxTarget = { type: 'element', rungId, elId, col, row };
+    showCtxMenu(e.clientX, e.clientY, 'element');
+  } else {
+    const rungId = Number(rungEl.dataset.rungId);
+    store.selectRung(rungId);
+    _ctxTarget = { type: 'rung', rungId };
+    showCtxMenu(e.clientX, e.clientY, 'rung');
+  }
+}
+
+function onDocumentMouseDown(e) {
+  const popup = document.getElementById('propPopup');
+  const menu  = document.getElementById('ctxMenu');
+  if (popup && !popup.contains(e.target)) hidePropPopup();
+  if (menu  && !menu.contains(e.target))  hideCtxMenu();
+}
+
+// ── Sidebar click: armar componente ──────────────────────────
 function onSidebarClick(e) {
   const item = e.target.closest('.comp-item');
-  if (!item) return;
+  if (!item?.dataset.type) return;
   const type = item.dataset.type;
-  if (!type) return;
-  const currently = store.getArmed();
-  if (currently === type) {
-    store.disarm();
+  if (store.getArmed() === type) { store.disarm(); return; }
+  store.arm(type);
+  const sel = store.getSelection();
+  if (sel.rungId) {
+    store.addElement(sel.rungId, type);
+    showToast(`${type} agregado al rung ${sel.rungId}`, 'success');
   } else {
-    store.arm(type);
-    const sel = store.getSelection();
-    if (sel.rungId) {
-      store.addElement(sel.rungId, type);
-      showToast(`${type} agregado al rung ${sel.rungId}`, 'success');
-    } else {
-      showToast('Selecciona un rung para insertar el componente', 'info');
-    }
+    showToast('Selecciona un rung para insertar el componente', 'info');
   }
 }
 
+// ── Drag-and-drop ─────────────────────────────────────────────
 function calcInsertCol(rungId, clientX) {
   const prog = store.getProgram();
   const rung = prog.rungs.find(r => r.id === rungId);
   if (!rung) return 0;
-  const sorted = rung.network[0].elements.slice().sort((a, b) => a.pos.col - b.pos.col);
+  const sorted = rung.network[0].elements.slice().sort((a,b) => a.pos.col - b.pos.col);
   for (const el of sorted) {
-    const dom = document.querySelector(`[data-el-id="${el.id}"]`);
+    const dom = document.querySelector(`[data-el-id="${CSS.escape(el.id)}"]`);
     if (!dom) continue;
     const rect = dom.getBoundingClientRect();
     if (clientX < rect.left + rect.width / 2) return el.pos.col;
   }
-  return sorted.length > 0 ? sorted[sorted.length - 1].pos.col + 1 : 0;
+  return sorted.length > 0 ? sorted.at(-1).pos.col + 1 : 0;
 }
 
-function showDropIndicator(canvas, clientX) {
-  removeDropIndicator(canvas);
-  const ladderEls = [...canvas.querySelectorAll('.ladder-el')];
-  if (!ladderEls.length) return;
-  const canvasRect = canvas.getBoundingClientRect();
-  let insertX = null;
-  for (const el of ladderEls) {
-    const rect = el.getBoundingClientRect();
-    if (clientX < rect.left + rect.width / 2) {
-      insertX = rect.left - canvasRect.left - 3;
-      break;
-    }
-  }
-  if (insertX === null) {
-    const last = ladderEls[ladderEls.length - 1];
-    insertX = last.getBoundingClientRect().right - canvasRect.left + 3;
-  }
-  const ghost = document.createElement('div');
-  ghost.className = 'drop-ghost';
-  ghost.style.cssText = `position:absolute;left:${Math.max(0, insertX)}px;top:4px;bottom:4px;width:3px;background:var(--accent);border-radius:2px;box-shadow:0 0 8px var(--accent-bright);pointer-events:none;z-index:10;`;
-  canvas.style.position = 'relative';
-  canvas.appendChild(ghost);
+function showDropIndicatorSVG(svgEl, insertX) {
+  removeDropIndicator(svgEl);
+  if (!svgEl) return;
+  const h = Number(svgEl.getAttribute('height')) || GR.ROW_H;
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.classList.add('drop-ghost');
+  r.setAttribute('x', Math.max(0, insertX - 1));
+  r.setAttribute('y', '2');
+  r.setAttribute('width', '3');
+  r.setAttribute('height', h - 4);
+  r.setAttribute('fill', '#4d9ef7');
+  r.setAttribute('rx', '1');
+  r.setAttribute('pointer-events', 'none');
+  r.style.cssText = 'box-shadow:0 0 6px #4d9ef7;';
+  svgEl.appendChild(r);
 }
 
 function removeDropIndicator(el) {
   el?.querySelectorAll('.drop-ghost').forEach(e => e.remove());
 }
 
-function removeParallelIndicator(rungEl) {
-  rungEl?.querySelectorAll('.parallel-ghost').forEach(e => e.remove());
-}
-
-function clearDragIndicators(rungEl) {
-  rungEl.classList.remove('drag-over');
-  removeDropIndicator(rungEl);
-  removeParallelIndicator(rungEl);
-}
-
-function showParallelIndicator(rungEl) {
-  removeParallelIndicator(rungEl);
-  const network = rungEl.querySelector('.rung-network');
-  if (!network) return;
-  const ghost = document.createElement('div');
-  ghost.className = 'parallel-ghost';
-  network.appendChild(ghost);
+function clearAllDragIndicators() {
+  document.querySelectorAll('.rung.drag-over').forEach(r => {
+    r.classList.remove('drag-over');
+    removeDropIndicator(r.querySelector('.rung-svg'));
+  });
 }
 
 function onSidebarDragStart(e) {
@@ -458,21 +705,20 @@ function onRungAreaDragOver(e) {
 
   const rungId = Number(rungEl.dataset.rungId);
   if (_lastDragRungId !== rungId) {
-    document.querySelectorAll('.rung.drag-over').forEach(clearDragIndicators);
+    clearAllDragIndicators();
     _lastDragRungId = rungId;
   }
   rungEl.classList.add('drag-over');
 
-  const rect = rungEl.getBoundingClientRect();
-  const relY = (e.clientY - rect.top) / rect.height;
-
-  if (relY > 0.68) {
-    removeDropIndicator(rungEl);
-    showParallelIndicator(rungEl);
-  } else {
-    removeParallelIndicator(rungEl);
-    const mainCanvas = rungEl.querySelector('.rung-canvas:not(.branch-row)');
-    if (mainCanvas) showDropIndicator(mainCanvas, e.clientX);
+  // Calcular columna de inserción y mostrar indicador en SVG
+  const type  = store.getArmed();
+  const col   = isOutputType(type) ? 9999 : calcInsertCol(rungId, e.clientX);
+  const svgEl = rungEl.querySelector('.rung-svg');
+  if (svgEl) {
+    const numCols = Number(svgEl.dataset.numCols) || 1;
+    const realCol = Math.min(col, numCols);
+    const insertX = GR.RAIL + realCol * GR.COL_W;
+    showDropIndicatorSVG(svgEl, insertX);
   }
 }
 
@@ -480,51 +726,55 @@ function onRungAreaDragLeave(e) {
   const rungEl = e.target.closest('[data-rung-id]');
   if (!rungEl) return;
   if (e.relatedTarget && rungEl.contains(e.relatedTarget)) return;
-  clearDragIndicators(rungEl);
+  rungEl.classList.remove('drag-over');
+  removeDropIndicator(rungEl.querySelector('.rung-svg'));
   _lastDragRungId = null;
 }
 
 function onRungAreaDrop(e) {
   e.preventDefault();
-  document.querySelectorAll('.rung.drag-over').forEach(clearDragIndicators);
+  clearAllDragIndicators();
   _lastDragRungId = null;
 
   const rungEl = e.target.closest('[data-rung-id]');
   if (!rungEl) return;
-  const type = e.dataTransfer.getData('text/plain');
+  const type   = e.dataTransfer.getData('text/plain');
   if (!type) return;
-
   const rungId = Number(rungEl.dataset.rungId);
-  const rect   = rungEl.getBoundingClientRect();
-  const relY   = (e.clientY - rect.top) / rect.height;
 
-  if (relY > 0.68) {
-    store.addParallelRow(rungId, type);
-    showToast('Rama paralela agregada', 'success');
-  } else {
-    const col = calcInsertCol(rungId, e.clientX);
-    store.addElement(rungId, type, col);
-    showToast(`${type} agregado al rung ${rungId}`, 'success');
+  // Detectar si se soltó sobre un elemento específico (para paralelo)
+  const elHit = e.target.closest('.ladder-el');
+  if (elHit && !isOutputType(type)) {
+    const col = Number(elHit.dataset.col ?? 0);
+    const row = Number(elHit.dataset.row ?? 0);
+    if (row === 0) {
+      // Soltar sobre elemento en fila 0: agregar en paralelo a esa columna
+      store.addParallelElement(rungId, type, col);
+      showToast('Rama paralela agregada', 'success');
+      return;
+    }
   }
+
+  const col = calcInsertCol(rungId, e.clientX);
+  store.addElement(rungId, type, col);
+  showToast(`${type} agregado al rung ${rungId}`, 'success');
 }
 
+// ── Búsqueda en sidebar ───────────────────────────────────────
 function onSidebarSearch(e) {
   const q     = e.target.value.toLowerCase().trim();
   const items = document.querySelectorAll('.comp-item[data-type]');
   const sects = document.querySelectorAll('.sb-section');
-
   items.forEach(item => {
     if (!q) { item.style.display = ''; return; }
     const label = item.querySelector('strong')?.textContent.toLowerCase() ?? '';
     const sub   = item.querySelector('span')?.textContent.toLowerCase() ?? '';
-    const type  = (item.dataset.type ?? '').toLowerCase().replace(/_/g, ' ');
+    const type  = (item.dataset.type ?? '').toLowerCase().replace(/_/g,' ');
     item.style.display = (label.includes(q) || sub.includes(q) || type.includes(q)) ? '' : 'none';
   });
-
   sects.forEach(sec => {
     if (!q) { sec.style.display = ''; return; }
-    let next = sec.nextElementSibling;
-    let any  = false;
+    let next = sec.nextElementSibling, any = false;
     while (next && !next.classList.contains('sb-section')) {
       if (next.style.display !== 'none') { any = true; break; }
       next = next.nextElementSibling;
@@ -533,64 +783,203 @@ function onSidebarSearch(e) {
   });
 }
 
+// ── Toolbar ───────────────────────────────────────────────────
 function onToolbarClick(e) {
   const btn = e.target.closest('.et-btn');
   if (!btn) return;
-  const text = btn.textContent.trim();
   const sel  = store.getSelection();
+  const icon = btn.querySelector('i');
+  const iconClass = icon?.className ?? '';
+  const txt  = btn.textContent.trim();
 
-  if (text.includes('Eliminar')) {
+  if (txt.includes('Insertar')) {
+    const armed = store.getArmed();
+    if (armed && sel.rungId) { store.addElement(sel.rungId, armed); showToast(`${armed} insertado`, 'success'); }
+    else showToast('Selecciona rung + componente para insertar', 'info');
+    return;
+  }
+  if (txt.includes('Eliminar')) {
     if (sel.elementId) {
       store.deleteElement(sel.rungId, sel.elementId);
       store.log('info', `Elemento eliminado del rung ${sel.rungId}`);
     } else if (sel.rungId) {
-      const rung = store.getProgram().rungs.find(r => r.id === sel.rungId);
-      const count = rung?.network.reduce((s, row) => s + row.elements.length, 0) ?? 0;
-      const ok = count === 0
-        || confirm(`¿Eliminar rung ${sel.rungId}? Contiene ${count} elemento${count !== 1 ? 's' : ''}.`);
-      if (ok) {
-        store.deleteRung(sel.rungId);
-        store.log('warn', `Rung ${sel.rungId} eliminado`);
-      }
+      const rung  = store.getProgram().rungs.find(r => r.id === sel.rungId);
+      const count = rung?.network.reduce((s,row) => s + row.elements.length, 0) ?? 0;
+      const ok    = count === 0 || confirm(`¿Eliminar rung ${sel.rungId}? (${count} elemento(s))`);
+      if (ok) { store.deleteRung(sel.rungId); store.log('warn', `Rung ${sel.rungId} eliminado`); }
     }
+    return;
   }
-  if (text.includes('Subir')  && sel.rungId) store.moveRung(sel.rungId, -1);
-  if (text.includes('Bajar')  && sel.rungId) store.moveRung(sel.rungId,  1);
-  if (text.includes('Insertar') && sel.rungId) {
-    const armed = store.getArmed();
-    if (armed) store.addElement(sel.rungId, armed);
-    else showToast('Selecciona un componente del sidebar primero', 'info');
+  if (txt.includes('Subir')  && sel.rungId) { store.moveRung(sel.rungId, -1); return; }
+  if (txt.includes('Bajar')  && sel.rungId) { store.moveRung(sel.rungId,  1); return; }
+  if (txt.includes('Copiar')) {
+    if (sel.elementId) copyElement();
+    else if (sel.rungId) copyRung();
+    return;
+  }
+  if (txt.includes('Pegar')) { pasteFromClipboard(); return; }
+  if (iconClass.includes('ti-zoom-in'))  { adjustZoom(0.2);  return; }
+  if (iconClass.includes('ti-zoom-out')) { adjustZoom(-0.2); return; }
+}
+
+// ── Nav top menu: Compilar / Cargar / Stop ────────────────────
+function onNavBtnClick(e) {
+  const btn = e.target.closest('.tnav-btn, .tnav-menu-btn');
+  if (!btn) return;
+  const txt = btn.textContent.trim();
+
+  // Menús desplegables de la barra
+  if (btn.dataset.menu) {
+    const menuId = btn.dataset.menu;
+    const menu   = document.getElementById(menuId);
+    if (!menu) return;
+    // Cerrar otros
+    document.querySelectorAll('.tnav-dropmenu').forEach(m => { if (m.id !== menuId) m.hidden = true; });
+    menu.hidden = !menu.hidden;
+    return;
+  }
+
+  if (txt.includes('Compilar')) {
+    const errs = validateProgram(store.getProgram());
+    if (errs.length === 0) {
+      store.log('ok',   'Compilación exitosa — 0 errores, 0 advertencias');
+      store.log('info', `${store.getProgram().rungs.length} rungs · ${Object.keys(store.getProgram().symbol_table).length} variables`);
+      showToast('Compilación exitosa', 'success');
+    } else {
+      errs.forEach(err => store.log('err', err));
+      showToast(`${errs.length} error(es)`, 'error');
+    }
+    const t = document.getElementById('tab-btn-terminal');
+    if (t) showTab('terminal', t);
+  }
+  if (txt.includes('Cargar')) {
+    const { ip, port } = store.getProgram().metadata.plc_target;
+    store.log('info', `Intentando conectar a ${ip}:${port} (stub)`);
+    store.log('warn', 'Backend Modbus no disponible');
+    showToast('Carga stub: sin backend Modbus', 'info');
+    const t = document.getElementById('tab-btn-terminal');
+    if (t) showTab('terminal', t);
+  }
+  if (txt.includes('Stop')) {
+    store.log('warn', 'Stop enviado (stub)');
+    showToast('Stop (stub)', 'info');
   }
 }
 
+// ── Acciones del menú desplegable de la nav ───────────────────
+function onNavDropMenuClick(e) {
+  const item = e.target.closest('[data-nav-action]');
+  if (!item) return;
+  document.querySelectorAll('.tnav-dropmenu').forEach(m => m.hidden = true);
+  const action = item.dataset.navAction;
+  switch (action) {
+    case 'new':
+      if (confirm('¿Crear nuevo programa? Se perderán los cambios no guardados.')) {
+        store.setProgram(defaultProgram());
+        history.replaceState(null, '', window.location.pathname);
+        showToast('Nuevo programa creado', 'success');
+      }
+      break;
+    case 'open-url': {
+      const url = prompt('Pega la URL del programa:');
+      if (url) {
+        const p = importFromURL();
+        if (p) { store.setProgram(p); showToast('Programa cargado', 'success'); }
+        else showToast('URL inválida', 'error');
+      }
+      break;
+    }
+    case 'save-url': copyLink(); break;
+    case 'export-json': {
+      const blob = new Blob([JSON.stringify(store.getProgram(), null, 2)], { type: 'application/json' });
+      const a    = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: store.getProgram().metadata.name + '.json' });
+      a.click(); URL.revokeObjectURL(a.href);
+      showToast('JSON exportado', 'success');
+      break;
+    }
+    case 'import-json': {
+      const inp = document.createElement('input');
+      inp.type = 'file'; inp.accept = '.json';
+      inp.onchange = () => {
+        const fr = new FileReader();
+        fr.onload = () => { try { store.setProgram(JSON.parse(fr.result)); showToast('JSON importado', 'success'); } catch { showToast('JSON inválido', 'error'); } };
+        fr.readAsText(inp.files[0]);
+      };
+      inp.click();
+      break;
+    }
+    case 'undo': showToast('Deshacer aún no disponible', 'info'); break;
+    case 'copy-sel': { if (store.getSelection().elementId) copyElement(); else if (store.getSelection().rungId) copyRung(); break; }
+    case 'paste-sel': pasteFromClipboard(); break;
+    case 'delete-sel': {
+      const sel = store.getSelection();
+      if (sel.elementId) store.deleteElement(sel.rungId, sel.elementId);
+      else if (sel.rungId) store.deleteRung(sel.rungId);
+      break;
+    }
+    case 'plc-addr': {
+      const meta = store.getProgram().metadata;
+      const ip   = prompt('IP del PLC:', meta.plc_target.ip);
+      if (ip !== null) store.updateMeta({ plc_target: { ...meta.plc_target, ip } });
+      break;
+    }
+    case 'scan-time': {
+      const meta = store.getProgram().metadata;
+      const st   = prompt('Scan time (ms):', meta.scan_time_ms);
+      if (st !== null && !isNaN(st)) store.updateMeta({ scan_time_ms: Number(st) });
+      break;
+    }
+    case 'proj-name': {
+      const meta = store.getProgram().metadata;
+      const name = prompt('Nombre del proyecto:', meta.name);
+      if (name !== null) store.updateMeta({ name });
+      break;
+    }
+  }
+}
+
+// ── Property panel inputs ────────────────────────────────────
 function onPropInput(e) {
   const sel = store.getSelection();
   if (!sel.rungId) return;
-  const id = e.target.id;
+  const id  = e.target.id;
 
   if (id === 'propAddr' && sel.elementId) {
     store.updateElement(sel.rungId, sel.elementId, { address: e.target.value });
   }
+  if (id === 'propType' && sel.elementId) {
+    store.updateElement(sel.rungId, sel.elementId, { type: e.target.value });
+  }
+  if (id === 'propTimerPreset' && sel.elementId) {
+    const prog = store.getProgram();
+    const rung = prog.rungs.find(r => r.id === sel.rungId);
+    let el = null;
+    for (const row of rung?.network ?? []) { el = row.elements.find(e => e.id === sel.elementId); if (el) break; }
+    if (el?.params) {
+      const val = Number(e.target.value);
+      const patch = el.params.preset_ms !== undefined ? { params: { ...el.params, preset_ms: val } } : { params: { ...el.params, preset: val } };
+      store.updateElement(sel.rungId, sel.elementId, patch);
+    }
+  }
   if (id === 'propSym' && sel.elementId) {
     const prog = store.getProgram();
-    const el   = prog.rungs.find(r => r.id === sel.rungId)
-                           ?.network[0].elements.find(e => e.id === sel.elementId);
+    const rung = prog.rungs.find(r => r.id === sel.rungId);
+    let el = null;
+    for (const row of rung?.network ?? []) { el = row.elements.find(e => e.id === sel.elementId); if (el) break; }
     if (el?.address) {
-      const p = JSON.parse(JSON.stringify(prog));
+      const p = deepClone(prog);
       if (!p.symbol_table[el.address]) p.symbol_table[el.address] = { symbol: '', type: 'BOOL', modbus: { fn: 'internal', address: null }, comment: '' };
       p.symbol_table[el.address].symbol = e.target.value;
       store.setProgram(p);
     }
   }
-  if (id === 'propType' && sel.elementId) {
-    store.updateElement(sel.rungId, sel.elementId, { type: e.target.value });
-  }
   if (id === 'propComment' && sel.elementId) {
     const prog = store.getProgram();
-    const el   = prog.rungs.find(r => r.id === sel.rungId)
-                           ?.network[0].elements.find(e => e.id === sel.elementId);
+    const rung = prog.rungs.find(r => r.id === sel.rungId);
+    let el = null;
+    for (const row of rung?.network ?? []) { el = row.elements.find(e => e.id === sel.elementId); if (el) break; }
     if (el?.address && prog.symbol_table[el.address]) {
-      const p = JSON.parse(JSON.stringify(prog));
+      const p = deepClone(prog);
       p.symbol_table[el.address].comment = e.target.value;
       store.setProgram(p);
     }
@@ -600,6 +989,7 @@ function onPropInput(e) {
   }
 }
 
+// ── Tab switcher ─────────────────────────────────────────────
 function showTab(name, el) {
   document.querySelectorAll('.bb-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
@@ -615,70 +1005,31 @@ function showTab(name, el) {
 }
 window.showTab = showTab;
 
-function onNavBtnClick(e) {
-  const btn = e.target.closest('.tnav-btn');
-  if (!btn) return;
-  const txt = btn.textContent.trim();
+// ── Compile / Upload stubs ────────────────────────────────────
+function toggleBottomBar() { document.getElementById('bottombar')?.classList.toggle('collapsed'); }
+window.toggleBottomBar = toggleBottomBar;
 
-  if (txt.includes('Compilar')) {
-    const errs = validateProgram(store.getProgram());
-    if (errs.length === 0) {
-      store.log('ok',   'Compilación exitosa — 0 errores, 0 advertencias');
-      store.log('info', `${store.getProgram().rungs.length} rungs · ${Object.keys(store.getProgram().symbol_table).length} variables`);
-      showToast('Compilación exitosa', 'success');
-    } else {
-      errs.forEach(err => store.log('err', err));
-      showToast(`${errs.length} error(es) de compilación`, 'error');
-    }
-    const termTab = document.getElementById('tab-btn-terminal');
-    if (termTab) showTab('terminal', termTab);
-  }
-
-  if (txt.includes('Cargar')) {
-    const prog = store.getProgram();
-    const ip   = prog.metadata.plc_target.ip;
-    const port = prog.metadata.plc_target.port;
-    store.log('info', `Intentando conectar a ${ip}:${port} (stub — sin backend)`);
-    store.log('warn', 'Módulo Modbus no disponible aún — integrar backend Python');
-    showToast('Carga stub: backend Modbus no conectado', 'info');
-    const termTab = document.getElementById('tab-btn-terminal');
-    if (termTab) showTab('terminal', termTab);
-  }
-
-  if (txt.includes('Stop')) {
-    store.log('warn', 'Stop — programa en PLC detenido (stub)');
-    showToast('Stop enviado (stub)', 'info');
-  }
-}
-
+// ── Copy link ─────────────────────────────────────────────────
 function copyLink() {
   const url = exportToURL(store.getProgram());
   pushToURL(store.getProgram());
-  navigator.clipboard.writeText(url).then(() => {
-    showToast('¡Link copiado al portapapeles!', 'success');
-    store.log('info', 'Programa codificado en URL y copiado.');
-  }).catch(() => {
-    prompt('Copia este link:', url);
-  });
+  navigator.clipboard.writeText(url).then(() => showToast('¡Link copiado!', 'success')).catch(() => prompt('Copia este link:', url));
 }
 window.copyLink = copyLink;
 
+// ── Keyboard ─────────────────────────────────────────────────
 function onKeyDown(e) {
-  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  if (['INPUT','SELECT','TEXTAREA'].includes(e.target.tagName)) return;
   const sel = store.getSelection();
-
   if ((e.key === 'Delete' || e.key === 'Backspace') && sel.elementId) {
-    e.preventDefault();
-    store.deleteElement(sel.rungId, sel.elementId);
+    e.preventDefault(); store.deleteElement(sel.rungId, sel.elementId);
   }
-  if (e.key === 'Escape') {
-    store.clearSelection();
-    store.disarm();
-  }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
-    e.preventDefault();
-    showToast('Undo aún no disponible', 'info');
-  }
+  if (e.key === 'Escape') { store.clearSelection(); store.disarm(); hidePropPopup(); hideCtxMenu(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); showToast('Undo no disponible aún', 'info'); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); if (sel.elementId) copyElement(); else if (sel.rungId) copyRung(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); pasteFromClipboard(); }
+  if ((e.ctrlKey || e.metaKey) && e.key === '+') { e.preventDefault(); adjustZoom(0.2); }
+  if ((e.ctrlKey || e.metaKey) && e.key === '-') { e.preventDefault(); adjustZoom(-0.2); }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -775,42 +1126,57 @@ function initImportIA() {
     reader.readAsText(file, 'UTF-8');
   });
 }
-// ═══════════════════════════════════════════════════════════
 
-// ── Init ─────────────────────────────────────────────────
+// ── Init ─────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  document.querySelectorAll('.comp-item[data-type]').forEach(el => {
-    el.setAttribute('draggable', 'true');
-  });
+  // Sidebar draggable
+  document.querySelectorAll('.comp-item[data-type]').forEach(el => el.setAttribute('draggable', 'true'));
 
+  // Búsqueda sidebar
   document.querySelector('.sb-search input')?.addEventListener('input', onSidebarSearch);
 
-  document.getElementById('rungArea')?.addEventListener('click',       onRungAreaClick);
-  document.querySelector('.sidebar')?.addEventListener('click',        onSidebarClick);
+  // Eventos de click
+  document.getElementById('rungArea')?.addEventListener('click',     onRungAreaClick);
+  document.getElementById('rungArea')?.addEventListener('dblclick',  onRungAreaDblClick);
+  document.querySelector('.sidebar')?.addEventListener('click',      onSidebarClick);
   document.querySelector('.editor-toolbar')?.addEventListener('click', onToolbarClick);
-  document.querySelector('.top-nav')?.addEventListener('click',        onNavBtnClick);
-  document.getElementById('propScroll')?.addEventListener('input',     onPropInput);
+  document.querySelector('.top-nav')?.addEventListener('click',      onNavBtnClick);
+  document.getElementById('propScroll')?.addEventListener('input',   onPropInput);
   document.addEventListener('keydown', onKeyDown);
 
+  // Clic derecho (context menu) — solo en el rung area
   document.getElementById('rungArea')?.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('mousedown', onDocumentMouseDown);
   document.getElementById('pp-close-btn')?.addEventListener('click', hidePropPopup);
 
+  // Context menu acciones
+  document.getElementById('ctxMenu')?.addEventListener('click', onCtxMenuClick);
+
+  // Nav drop menus
+  document.querySelector('.top-nav')?.addEventListener('click', onNavDropMenuClick);
+  document.addEventListener('click', e => {
+    if (!e.target.closest('[data-menu]') && !e.target.closest('.tnav-dropmenu')) {
+      document.querySelectorAll('.tnav-dropmenu').forEach(m => m.hidden = true);
+    }
+  });
+
+  // Bottom bar collapse
   document.getElementById('bb-collapse-btn')?.addEventListener('click', toggleBottomBar);
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePropPopup(); });
+  // Escape cierra popups
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { hidePropPopup(); hideCtxMenu(); } });
 
+  // Drag-and-drop
   document.querySelector('.sidebar')?.addEventListener('dragstart', onSidebarDragStart);
   const ra = document.getElementById('rungArea');
   ra?.addEventListener('dragover',  onRungAreaDragOver);
   ra?.addEventListener('dragleave', onRungAreaDragLeave);
   ra?.addEventListener('drop',      onRungAreaDrop);
 
-  store.subscribe(() => {
-    try { pushToURL(store.getProgram()); } catch {}
-  });
+  // Autosave silencioso en URL
+  store.subscribe(() => { try { pushToURL(store.getProgram()); } catch {} });
 
-  // ← NUEVO: inicializar el importador de .js
+  // Render inicial
   initImportIA();
 
   render();

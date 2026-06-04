@@ -423,15 +423,45 @@
     .tab-panel { display: none; }
     .tab-panel.active { display: block; }
 
+    /* ══ SVG CANVAS ══════════════════════════════════════ */
+    .rung-svg-wrap { flex: 1; overflow-x: auto; padding-bottom: 2px; }
+    .rung-svg-wrap::-webkit-scrollbar { height: 4px; }
+    .rung-svg-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+    .rung-svg { display: block; }
+    .rung-svg .ladder-el { cursor: pointer; }
+    .rung-svg .ladder-el:hover { fill: rgba(46,125,225,0.10) !important; }
+
     /* ══ DRAG-AND-DROP ════════════════════════════════════ */
     .comp-item[draggable="true"] { cursor: grab; }
     .comp-item[draggable="true"]:active { cursor: grabbing; }
-    .rung.drag-over {
-      border-color: var(--accent) !important;
-      background: rgba(46,125,225,0.06);
-      box-shadow: 0 0 0 2px var(--accent-dim), inset 0 0 12px rgba(46,125,225,0.05);
+    .rung.drag-over { border-color: var(--accent) !important; background: rgba(46,125,225,0.05); }
+
+    /* ══ CONTEXT MENU ════════════════════════════════════ */
+    .ctx-menu {
+      position: fixed; z-index: 700; min-width: 210px;
+      background: var(--bg-elevated); border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg); padding: 4px; display: none;
+      box-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 0 0 1px rgba(46,125,225,0.1);
     }
-    .rung.drag-over .power-rail { background: var(--accent); box-shadow: 0 0 8px var(--accent-glow); }
+    .ctx-menu.visible { display: block; }
+    .ctx-header { padding: 5px 10px 3px; font-size: 9px; font-weight: 600; font-family: var(--font-mono); color: var(--text-tertiary); letter-spacing: 0.8px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
+    .ctx-header i { font-size: 11px; color: var(--accent); }
+    .ctx-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: background var(--transition), color var(--transition); }
+    .ctx-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .ctx-item i { font-size: 13px; width: 16px; text-align: center; }
+    .ctx-item.ctx-danger:hover { background: var(--danger-dim); color: var(--danger); }
+    .ctx-sep { height: 1px; background: var(--border); margin: 3px 6px; }
+
+    /* ══ NAV DROPDOWNS ═══════════════════════════════════ */
+    .tnav-menu-wrap { position: relative; display: flex; align-items: center; }
+    .tnav-menu-btn { display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--radius-md); border: none; background: transparent; cursor: pointer; font-family: var(--font-ui); font-size: 12px; color: var(--text-secondary); white-space: nowrap; transition: background var(--transition), color var(--transition); }
+    .tnav-menu-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .tnav-menu-btn i { font-size: 14px; }
+    .tnav-dropmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 200px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; box-shadow: 0 10px 36px rgba(0,0,0,0.5); z-index: 300; }
+    .tnd-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: background var(--transition), color var(--transition); }
+    .tnd-item:hover { background: rgba(46,125,225,0.1); color: var(--text-primary); }
+    .tnd-item i { font-size: 13px; width: 16px; text-align: center; }
+    .tnd-sep { height: 1px; background: var(--border); margin: 3px 6px; }
 
     /* ══ TOAST ════════════════════════════════════════════ */
     #toast-container { position: fixed; bottom: 1rem; right: 1rem; z-index: 1000; display: flex; flex-direction: column; gap: 0.5rem; pointer-events: none; }
@@ -479,9 +509,37 @@
     <div class="tnav-sep"></div>
 
     <div class="tnav-group">
-      <button class="tnav-btn"><i class="ti ti-file"></i> Archivo</button>
-      <button class="tnav-btn"><i class="ti ti-edit"></i> Editar</button>
-      <button class="tnav-btn"><i class="ti ti-folder"></i> Proyecto</button>
+      <!-- Archivo -->
+      <div class="tnav-menu-wrap">
+        <button class="tnav-menu-btn" data-menu="tnd-archivo"><i class="ti ti-file"></i> Archivo</button>
+        <div class="tnav-dropmenu" id="tnd-archivo" hidden>
+          <div class="tnd-item" data-nav-action="new"><i class="ti ti-file-plus"></i> Nuevo programa</div>
+          <div class="tnd-sep"></div>
+          <div class="tnd-item" data-nav-action="save-url"><i class="ti ti-link"></i> Guardar como URL</div>
+          <div class="tnd-item" data-nav-action="export-json"><i class="ti ti-download"></i> Exportar JSON</div>
+          <div class="tnd-item" data-nav-action="import-json"><i class="ti ti-upload"></i> Importar JSON</div>
+        </div>
+      </div>
+      <!-- Editar -->
+      <div class="tnav-menu-wrap">
+        <button class="tnav-menu-btn" data-menu="tnd-editar"><i class="ti ti-edit"></i> Editar</button>
+        <div class="tnav-dropmenu" id="tnd-editar" hidden>
+          <div class="tnd-item" data-nav-action="undo"><i class="ti ti-arrow-back-up"></i> Deshacer</div>
+          <div class="tnd-sep"></div>
+          <div class="tnd-item" data-nav-action="copy-sel"><i class="ti ti-copy"></i> Copiar selección</div>
+          <div class="tnd-item" data-nav-action="paste-sel"><i class="ti ti-clipboard"></i> Pegar</div>
+          <div class="tnd-item" data-nav-action="delete-sel"><i class="ti ti-trash"></i> Eliminar selección</div>
+        </div>
+      </div>
+      <!-- Proyecto -->
+      <div class="tnav-menu-wrap">
+        <button class="tnav-menu-btn" data-menu="tnd-proyecto"><i class="ti ti-folder"></i> Proyecto</button>
+        <div class="tnav-dropmenu" id="tnd-proyecto" hidden>
+          <div class="tnd-item" data-nav-action="proj-name"><i class="ti ti-pencil"></i> Nombre del proyecto...</div>
+          <div class="tnd-item" data-nav-action="plc-addr"><i class="ti ti-cpu"></i> Dirección PLC...</div>
+          <div class="tnd-item" data-nav-action="scan-time"><i class="ti ti-clock"></i> Scan time...</div>
+        </div>
+      </div>
     </div>
 
     <div class="tnav-sep"></div>
@@ -527,7 +585,7 @@
       </div>
       <div class="sb-scroll">
 
-        <div class="sb-section">Contactos</div>
+        <div class="sb-section">← Izquierda (condiciones)</div>
 
         <div class="comp-item" data-type="contact_no" title="Contacto normalmente abierto">
           <div class="comp-icon">
@@ -580,7 +638,7 @@
           <div class="comp-label"><strong>Flanco −</strong><span>bajada</span></div>
         </div>
 
-        <div class="sb-section">Bobinas</div>
+        <div class="sb-section">→ Derecha (salidas)</div>
 
         <div class="comp-item" data-type="coil">
           <div class="comp-icon">
@@ -617,7 +675,7 @@
           <div class="comp-label"><strong>Bobina R</strong><span>reset</span></div>
         </div>
 
-        <div class="sb-section">Timers / Contadores</div>
+        <div class="sb-section">→ Timers / Contadores</div>
 
         <div class="comp-item" data-type="block_ton">
           <div class="comp-icon">
@@ -659,7 +717,7 @@
           <div class="comp-label"><strong>Contador −</strong><span>down (CTD)</span></div>
         </div>
 
-        <div class="sb-section">Bloques</div>
+        <div class="sb-section">← Bloques (condiciones)</div>
 
         <div class="comp-item" data-type="block_cmp">
           <div class="comp-icon">
@@ -716,7 +774,10 @@
 
   </div><!-- /main -->
 
-  <!-- ══ PROPERTIES POPUP ══════════════════════════════ -->
+  <!-- ══ CONTEXT MENU (clic derecho) ══════════════════════ -->
+  <div class="ctx-menu" id="ctxMenu" role="menu"></div>
+
+  <!-- ══ PROPERTIES POPUP (doble-clic sobre elementos) ════ -->
   <div class="prop-popup" id="propPopup" role="dialog" aria-label="Propiedades del elemento">
     <div class="pp-header">
       <div class="pp-header-left"><i class="ti ti-adjustments"></i> <span id="propTitle">Propiedades</span></div>
@@ -758,6 +819,10 @@
       <div class="pp-field">
         <label>Comentario</label>
         <input type="text" id="propComment" placeholder="Descripción del elemento">
+      </div>
+      <div class="pp-field" id="propTimerWrap" style="display:none">
+        <label>Preset (ms / cuentas)</label>
+        <input type="number" id="propTimerPreset" placeholder="1000" min="0">
       </div>
       <div class="pp-sep"></div>
       <div class="pp-state">

@@ -1,23 +1,30 @@
 /**
- * renderer.js — Convierte el programa JSON en HTML/DOM
- * v3 — Rama paralela correctamente alineada con la fila 0
- *
- * FIXES:
- *  1. Fila 0: wire flex va entre el ultimo contacto y la bobina
- *  2. Fila 1 (rama paralela): wire flex va ANTES del elemento,
- *     para que el contacto de memoria quede alineado con el primer
- *     contacto de la fila 0 (debajo de %I1)
- *  3. branch-rail izquierdo: margin-left = ancho del power-rail (5px)
- *     para que el conector vertical salga del riel izquierdo real
- *  4. branch-rail derecho: margin-right calculado para terminar
- *     justo antes de la bobina en la fila 0
- *  5. Etiquetas en formato PLC (%I1, %Q10) en vez de (I0.1, Q0.10)
+ * renderer.js — SVG-based ladder rung renderer
+ * Cada rung se renderiza como un SVG para alineación exacta de nodos y paralelos.
  */
 
-const BLOCK_LABELS = {
-  block_ton:'TON', block_tof:'TOF', block_ctu:'CTU',
-  block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD',
+import { isOutputType } from './schema.js';
+
+// Constantes de la grilla
+export const GR = {
+  COL_W: 80,   // px por columna (incluye wires a ambos lados)
+  ROW_H: 52,   // px por fila (main + cada rama paralela)
+  RAIL:   6,   // ancho del riel de poder
+  EL_W:  40,   // ancho SVG de contacto/bobina
+  BLK_W: 54,   // ancho SVG de bloque (TON, CMP, etc.)
+  EL_H:  24,   // alto SVG de elemento
+  LPAD:  13,   // espacio sobre el elemento para label dirección
+  BPAD:  10,   // espacio bajo el elemento para label símbolo
+  JR:     3,   // radio de nodo de unión (T-junction)
 };
+
+function isBlock(t) { return t.startsWith('block_'); }
+function elW(t) { return isBlock(t) ? GR.BLK_W : GR.EL_W; }
+function midY(rowIdx) { return rowIdx * GR.ROW_H + GR.LPAD + GR.EL_H / 2; }
+function colCX(col)   { return GR.RAIL + col * GR.COL_W + GR.COL_W / 2; }  // centro X de columna
+function jX(col)      { return GR.RAIL + col * GR.COL_W; }                  // borde izq de columna
+function svgW(n)      { return GR.RAIL + n * GR.COL_W + GR.RAIL; }
+function svgH(n)      { return n * GR.ROW_H; }
 
 // I0.1 → %I1  |  Q0.10 → %Q10  |  M0.1 → %M1  |  MW1 → %R1
 function fmtAddr(address) {
@@ -31,255 +38,195 @@ function fmtAddr(address) {
   return address;
 }
 
-function elementSVG(type, energized) {
-  const c  = energized ? '#4d9ef7' : '#3d6fa8';
-  const sw = energized ? 1.8 : 1.6;
+// Posición izquierda del elemento (dentro del SVG)
+function elLX(col, type) { return colCX(col) - elW(type) / 2; }
+function elRX(col, type) { return colCX(col) + elW(type) / 2; }
 
+const BLK = { block_ton:'TON', block_tof:'TOF', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
+
+function elInner(type, en) {
+  const c  = en ? '#4d9ef7' : '#3d6fa8';
+  const sw = en ? 1.8 : 1.6;
   switch (type) {
-    case 'contact_no':
-      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
-      </svg>`;
-
-    case 'contact_nc':
-      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="13" y1="22" x2="27" y2="6"  stroke="${c}" stroke-width="1.4"/>
-      </svg>`;
-
-    case 'contact_pos_edge':
-      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <text x="20" y="19" text-anchor="middle" font-size="9" font-weight="700"
-              fill="${c}" font-family="monospace">P</text>
-      </svg>`;
-
-    case 'contact_neg_edge':
-      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <text x="20" y="19" text-anchor="middle" font-size="9" font-weight="700"
-              fill="${c}" font-family="monospace">N</text>
-      </svg>`;
-
-    // Bobina: solo el circulo, sin wires propios (los pone el canvas)
-    case 'coil':
-    case 'coil_s':
-    case 'coil_r': {
-      const lbl = type==='coil_s' ? 'S' : type==='coil_r' ? 'R' : '';
-      return `<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-        <circle cx="14" cy="14" r="10" fill="none"
-                stroke="${c}" stroke-width="${sw}"/>
-        ${lbl ? `<text x="14" y="19" text-anchor="middle" font-size="10"
-                       font-weight="700" fill="${c}"
-                       font-family="monospace">${lbl}</text>` : ''}
-      </svg>`;
-    }
-
+    case 'contact_no': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="12" y1="4" x2="12" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="4" x2="28" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
+    case 'contact_nc': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="12" y1="4" x2="12" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="4" x2="28" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="14" y1="20" x2="26" y2="4" stroke="${c}" stroke-width="1.3"/>`;
+    case 'contact_pos_edge': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="12" y1="4" x2="12" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="4" x2="28" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <text x="20" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">P</text>`;
+    case 'contact_neg_edge': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="12" y1="4" x2="12" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="4" x2="28" y2="20" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <text x="20" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">N</text>`;
+    case 'coil': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <circle cx="20" cy="12" r="8" fill="none" stroke="${c}" stroke-width="${sw}"/>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
+    case 'coil_s': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <circle cx="20" cy="12" r="8" fill="none" stroke="${c}" stroke-width="${sw}"/>
+      <text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="${c}" font-family="monospace">S</text>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
+    case 'coil_r': return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${c}" stroke-width="${sw}"/>
+      <circle cx="20" cy="12" r="8" fill="none" stroke="${c}" stroke-width="${sw}"/>
+      <text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="${c}" font-family="monospace">R</text>
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
     default:
-      if (BLOCK_LABELS[type]) {
-        return `<svg width="54" height="28" viewBox="0 0 54 28" aria-hidden="true">
-          <rect x="1" y="3" width="52" height="22" rx="3"
-                fill="none" stroke="${c}" stroke-width="1.4"/>
-          <text x="27" y="19" text-anchor="middle" font-size="9"
-                font-weight="600" fill="${c}"
-                font-family="monospace">${BLOCK_LABELS[type]}</text>
-        </svg>`;
-      }
-      return `<svg width="40" height="28" viewBox="0 0 40 28">
-        <text x="20" y="19" text-anchor="middle" font-size="9" fill="${c}">?</text>
-      </svg>`;
+      if (BLK[type]) return `
+        <rect x="0" y="0" width="54" height="24" rx="3" fill="none" stroke="${c}" stroke-width="1.4"/>
+        <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">${BLK[type]}</text>`;
+      return `<text x="20" y="16" text-anchor="middle" font-size="9" fill="${c}">?</text>`;
   }
 }
 
-function sym(address, symbolTable) {
-  const s = symbolTable?.[address]?.symbol;
-  return (s && s !== address) ? s : '';
+function esc(s) {
+  if (s == null) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+function symLabel(addr, st) {
+  const s = st?.[addr]?.symbol;
+  return (s && s !== addr) ? esc(s) : '';
 }
 
 /**
- * renderNetworkRow — genera el HTML de una fila del rung
- *
- * FILA 0 (serie principal):
- *   [riel] [16px] [el] [16px] [el] ... [flex] [bobina] [8px] [riel]
- *   Si no hay bobina: ultimo wire es flex hacia el riel derecho.
- *
- * FILA 1+ (rama paralela):
- *   La rama paralela debe alinearse con los primeros elementos de la fila 0.
- *   Usamos inline-style en los branch-rails para controlar el punto de conexion:
- *
- *   [branch-rail izq] [flex] [el] [16px] [el] ... [flex] [branch-rail der]
- *
- *   El wire flex inicial hace que el elemento de memoria quede alineado
- *   bajo el primer contacto de la fila 0.
- *   El branch-rail derecho tiene un margin-right calculado para terminar
- *   justo antes del riel de la bobina.
+ * Renderiza un rung completo como div con SVG embebido.
+ * El SVG tiene posicionamiento exacto de elementos, wires y ramas paralelas.
  */
-function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, symbolTable, rung) {
-  const isBranch = rowIdx > 0;
-  const elements = row.elements ?? [];
-  const sorted   = [...elements].sort((a,b) => a.pos.col - b.pos.col);
-  const ac       = energized ? ' active' : '';
-
-  // Para la rama paralela necesitamos saber cuantos contactos
-  // hay en la fila 0 ANTES de la bobina, para calcular el ancho
-  // del wire flex inicial y alinear correctamente.
-  let coilWidthRight = 0; // ancho reservado para la bobina en el lado derecho
-  if (isBranch && rung) {
-    const fila0 = (rung.network ?? []).find(r => r.row === 0);
-    if (fila0) {
-      const sorted0 = [...(fila0.elements ?? [])].sort((a,b) => a.pos.col - b.pos.col);
-      const lastEl0 = sorted0[sorted0.length - 1];
-      if (lastEl0?.type?.startsWith('coil')) {
-        // Bobina(28) + wire-salida(8) + power-rail-der(5) = 41px
-        coilWidthRight = 41;
-      }
-    }
-  }
-
-  let canvas = '';
-
-  if (isBranch) {
-    // ── Rama paralela ─────────────────────────────────────────
-    // branch-rail izquierdo: se conecta al riel izquierdo real
-    canvas += `<div class="branch-rail"></div>`;
-
-    if (sorted.length === 0) {
-      canvas += `<div class="wire${ac} flex"></div>`;
-    } else {
-      // Wire flex inicial: empuja el elemento de memoria hacia la derecha
-      // para que quede bajo el primer contacto de la fila 0
-      canvas += `<div class="wire${ac} flex"></div>`;
-
-      sorted.forEach((el, i) => {
-        const isLast = i === sorted.length - 1;
-        const selEl  = selRung && selection?.elementId === el.id;
-        const label  = fmtAddr(el.address);
-
-        canvas += `<div class="ladder-el${selEl ? ' selected-el' : ''}"
-          data-rung-id="${rungId}" data-el-id="${el.id}"
-          title="${el.type} · ${el.address}">
-          <span class="el-addr">${label}</span>
-          ${elementSVG(el.type, energized)}
-          <span class="el-sym">${sym(el.address, symbolTable)}</span>
-        </div>`;
-
-        if (!isLast) {
-          canvas += `<div class="wire${ac}" style="width:16px"></div>`;
-        } else {
-          // Wire flex derecho: rellena hasta el branch-rail derecho
-          canvas += `<div class="wire${ac} flex"></div>`;
-        }
-      });
-    }
-
-    // branch-rail derecho: margen para no solaparse con la bobina
-    // margin-right = coilWidthRight para que termine antes de la bobina
-    const mrStyle = coilWidthRight > 0
-      ? ` style="margin-right:${coilWidthRight}px"`
-      : '';
-    canvas += `<div class="branch-rail"${mrStyle}></div>`;
-
-    return `<div class="rung-canvas branch-row" data-row="${rowIdx}">${canvas}</div>`;
-  }
-
-  // ── Fila 0: serie principal ──────────────────────────────────
-  canvas += `<div class="power-rail"></div>`;
-
-  if (sorted.length === 0) {
-    canvas += `<div class="wire${ac} flex"></div>`;
-  } else {
-    const lastEl     = sorted[sorted.length - 1];
-    const lastIsCoil = lastEl?.type?.startsWith('coil') ?? false;
-
-    sorted.forEach((el, i) => {
-      const isFirst = i === 0;
-      const isLast  = i === sorted.length - 1;
-      const selEl   = selRung && selection?.elementId === el.id;
-      const label   = fmtAddr(el.address);
-      const isCoil  = el.type.startsWith('coil');
-
-      // Wire de entrada al elemento
-      if (isFirst) {
-        canvas += `<div class="wire${ac}" style="width:16px"></div>`;
-      }
-
-      canvas += `<div class="ladder-el${selEl ? ' selected-el' : ''}"
-        data-rung-id="${rungId}" data-el-id="${el.id}"
-        title="${el.type} · ${el.address}">
-        <span class="el-addr">${label}</span>
-        ${elementSVG(el.type, energized)}
-        <span class="el-sym">${sym(el.address, symbolTable)}</span>
-      </div>`;
-
-      // Wire de salida del elemento
-      if (!isLast) {
-        // Entre elementos: si el siguiente es bobina → flex (espacio grande)
-        const nextEl     = sorted[i + 1];
-        const nextIsCoil = nextEl?.type?.startsWith('coil') ?? false;
-        canvas += nextIsCoil
-          ? `<div class="wire${ac} flex"></div>`
-          : `<div class="wire${ac}" style="width:16px"></div>`;
-      } else {
-        // Despues del ultimo
-        canvas += isCoil
-          ? `<div class="wire${ac}" style="width:8px"></div>`   // bobina → wire corto al riel
-          : `<div class="wire${ac} flex"></div>`;               // contacto → flex al riel
-      }
-    });
-  }
-
-  canvas += `<div class="power-rail"></div>`;
-  return `<div class="rung-canvas" data-row="${rowIdx}">${canvas}</div>`;
-}
-
-/** Renderiza un rung completo */
 export function renderRung(rung, program, selection) {
-  const energized = !!program.execution_state?.rung_states?.[String(rung.id)];
-  const selRung   = selection?.rungId === rung.id;
-  const rows      = rung.network ?? [{ row: 0, elements: [] }];
+  const en      = !!program.execution_state?.rung_states?.[String(rung.id)];
+  const selRung = selection?.rungId === rung.id;
+  const rows    = rung.network ?? [{ row: 0, elements: [] }];
 
-  const networkHTML = rows.map((row, idx) =>
-    renderNetworkRow(row, idx, rung.id, energized, selRung, selection,
-                     program.symbol_table, rung)   // <- pasamos rung completo
-  ).join('');
+  const wC = en ? '#4d9ef7' : '#243a5e';   // wire color
+  const rC = en ? '#4d9ef7' : '#2a4e80';   // rail color
+  const jC = en ? '#5db8ff' : '#3a6a9a';   // junction node fill
+  const addrC = en ? 'rgba(77,158,247,0.88)' : 'rgba(77,158,247,0.55)';
+  const symC  = en ? 'rgba(77,158,247,0.7)'  : 'rgba(63,92,122,0.6)';
 
-  const cls = ['rung', selRung && 'selected', energized && 'energized']
-    .filter(Boolean).join(' ');
+  // Columnas basadas en la fila principal (row 0)
+  const mainEls = [...(rows[0]?.elements ?? [])].sort((a,b) => a.pos.col - b.pos.col);
+  const numCols = mainEls.length > 0 ? mainEls[mainEls.length-1].pos.col + 1 : 1;
+  const numRows = rows.length;
 
-  return `<div class="${cls}" id="rung-${rung.id}"
-    role="listitem" tabindex="0" data-rung-id="${rung.id}"
-    aria-label="Rung ${rung.id}: ${rung.comment}">
+  const W = svgW(numCols);
+  const H = svgH(numRows);
+  const m0 = midY(0);  // wire Y de la fila principal
+
+  let bg='', rails='', wires='', elsvg='', juncs='', hits='';
+
+  // Zona de salida (última columna) — tint sutil
+  if (mainEls.length > 0 && isOutputType(mainEls[mainEls.length-1].type)) {
+    const lc = mainEls[mainEls.length-1].pos.col;
+    bg += `<rect x="${jX(lc)}" y="0" width="${GR.COL_W + GR.RAIL}" height="${H}" fill="rgba(46,100,170,0.07)" rx="2"/>`;
+  }
+
+  // Rieles de poder
+  rails += `<rect x="0" y="3" width="${GR.RAIL}" height="${H-6}" fill="${rC}" rx="2"/>`;
+  rails += `<rect x="${W-GR.RAIL}" y="3" width="${GR.RAIL}" height="${H-6}" fill="${rC}" rx="2"/>`;
+
+  rows.forEach((row, ri) => {
+    const sorted = [...(row.elements ?? [])].sort((a,b) => a.pos.col - b.pos.col);
+    const ry = midY(ri);
+    const isBr = ri > 0;
+    const span = row.span ?? (
+      sorted.length
+        ? { from: sorted[0].pos.col, to: sorted[sorted.length-1].pos.col }
+        : { from: 0, to: numCols - 1 }
+    );
+
+    if (isBr) {
+      // ── Conectores verticales ───────────────────────────
+      const lx = jX(span.from);
+      const rx = jX(span.to + 1);
+      wires += `<line x1="${lx}" y1="${m0}" x2="${lx}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      wires += `<line x1="${rx}" y1="${m0}" x2="${rx}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      // Nodos T-junction en la fila principal
+      juncs += `<circle cx="${lx}" cy="${m0}" r="${GR.JR}" fill="${jC}"/>`;
+      juncs += `<circle cx="${rx}" cy="${m0}" r="${GR.JR}" fill="${jC}"/>`;
+      // Wires horizontales de la rama
+      if (sorted.length === 0) {
+        wires += `<line x1="${lx}" y1="${ry}" x2="${rx}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      } else {
+        wires += `<line x1="${lx}" y1="${ry}" x2="${elLX(sorted[0].pos.col, sorted[0].type)}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+        for (let i=0; i<sorted.length-1; i++) {
+          wires += `<line x1="${elRX(sorted[i].pos.col, sorted[i].type)}" y1="${ry}" x2="${elLX(sorted[i+1].pos.col, sorted[i+1].type)}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+        }
+        wires += `<line x1="${elRX(sorted[sorted.length-1].pos.col, sorted[sorted.length-1].type)}" y1="${ry}" x2="${rx}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      }
+    } else {
+      // ── Fila principal: wire continuo ─────────────────────
+      if (sorted.length === 0) {
+        wires += `<line x1="${GR.RAIL}" y1="${ry}" x2="${W-GR.RAIL}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      } else {
+        wires += `<line x1="${GR.RAIL}" y1="${ry}" x2="${elLX(sorted[0].pos.col, sorted[0].type)}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+        for (let i=0; i<sorted.length-1; i++) {
+          wires += `<line x1="${elRX(sorted[i].pos.col, sorted[i].type)}" y1="${ry}" x2="${elLX(sorted[i+1].pos.col, sorted[i+1].type)}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+        }
+        wires += `<line x1="${elRX(sorted[sorted.length-1].pos.col, sorted[sorted.length-1].type)}" y1="${ry}" x2="${W-GR.RAIL}" y2="${ry}" stroke="${wC}" stroke-width="2"/>`;
+      }
+    }
+
+    // ── Elementos de esta fila ─────────────────────────────
+    sorted.forEach(el => {
+      const ew  = elW(el.type);
+      const ex  = colCX(el.pos.col) - ew / 2;
+      const ey  = ry - GR.EL_H / 2;
+      const sel = selRung && selection?.elementId === el.id;
+
+      if (sel) {
+        elsvg += `<rect x="${ex-4}" y="${ey-2}" width="${ew+8}" height="${GR.EL_H+4}" rx="3" fill="rgba(46,125,225,0.18)" stroke="rgba(46,125,225,0.5)" stroke-width="1"/>`;
+      }
+      elsvg += `<g transform="translate(${ex},${ey})">${elInner(el.type, en)}</g>`;
+
+      // Etiqueta dirección (encima)
+      elsvg += `<text x="${colCX(el.pos.col)}" y="${ey-3}" text-anchor="middle" font-size="10" font-weight="600" fill="${addrC}" font-family="DM Mono,monospace">${esc(el.address)}</text>`;
+      // Etiqueta símbolo (debajo)
+      const sym = symLabel(el.address, program.symbol_table);
+      if (sym) elsvg += `<text x="${colCX(el.pos.col)}" y="${ey+GR.EL_H+9}" text-anchor="middle" font-size="8" fill="${symC}" font-family="DM Mono,monospace">${sym}</text>`;
+
+      // Área de hit (transparente, captura click/dblclick/contextmenu)
+      hits += `<rect class="ladder-el" x="${ex-8}" y="${ey-GR.LPAD+2}" width="${ew+16}" height="${GR.EL_H+GR.LPAD+GR.BPAD-4}" fill="transparent" rx="3"
+        data-rung-id="${rung.id}" data-el-id="${esc(el.id)}" data-col="${el.pos.col}" data-row="${ri}" style="cursor:pointer"/>`;
+    });
+  });
+
+  const cls = ['rung', selRung && 'selected', en && 'energized'].filter(Boolean).join(' ');
+  return `<div class="${cls}" id="rung-${rung.id}" role="listitem" tabindex="0" data-rung-id="${rung.id}" aria-label="Rung ${rung.id}: ${esc(rung.comment)}">
     <div class="rung-num">${rung.id}</div>
     <div class="rung-inner">
       <div class="rung-comment" data-rung-id="${rung.id}">${esc(rung.comment)}</div>
-      <div class="rung-network">${networkHTML}</div>
+      <div class="rung-svg-wrap" data-rung-id="${rung.id}">
+        <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="rung-svg" data-rung-id="${rung.id}" data-num-cols="${numCols}">
+          ${bg}${rails}${wires}${elsvg}${juncs}${hits}
+        </svg>
+      </div>
     </div>
   </div>`;
 }
 
-/** Vuelca todos los rungs */
 export function renderAllRungs(container, program, selection) {
   const rungs = program.rungs ?? [];
-  const html  = rungs.map(r => renderRung(r, program, selection)).join('');
-  container.innerHTML = html + `<div class="rung-add" id="btn-add-rung"
-    role="button" tabindex="0" aria-label="Agregar nuevo rung">
-    <i class="ti ti-plus"></i> Agregar rung
-  </div>`;
+  container.innerHTML = rungs.map(r => renderRung(r, program, selection)).join('') +
+    `<div class="rung-add" id="btn-add-rung" role="button" tabindex="0" aria-label="Agregar nuevo rung">
+      <i class="ti ti-plus"></i> Agregar rung
+    </div>`;
 }
 
-/** Tabla Estado I/O */
 export function renderIOTable(program) {
   const rows = Object.entries(program.symbol_table).map(([addr, e]) => `
     <tr>
@@ -301,7 +248,6 @@ export function renderIOTable(program) {
   </table>`;
 }
 
-/** Watch table */
 export function renderWatchTable(program) {
   const rows = Object.entries(program.symbol_table).map(([addr, e]) => `
     <tr>
@@ -316,17 +262,16 @@ export function renderWatchTable(program) {
   </table>`;
 }
 
-/** Referencias cruzadas — recorre todas las filas */
 export function renderXRefTable(program) {
   const refs = [];
   for (const rung of program.rungs) {
     for (const row of rung.network ?? []) {
       for (const el of row.elements ?? []) {
         refs.push({
-          addr: fmtAddr(el.address),
+          addr: el.address,
           sym:  program.symbol_table?.[el.address]?.symbol ?? el.address,
           rung: rung.id,
-          fila: (row.row ?? 0) === 0 ? 'serie' : `paralela ${row.row}`,
+          row:  row.row,
           use:  el.type,
         });
       }
@@ -339,20 +284,11 @@ export function renderXRefTable(program) {
       <td class="mono">${esc(r.addr)}</td>
       <td>${esc(r.sym)}</td>
       <td class="mono">${r.rung}</td>
-      <td class="mono">${r.fila}</td>
+      <td class="mono">${r.row > 0 ? `rama ${r.row}` : 'principal'}</td>
       <td class="mono">${r.use}</td>
     </tr>`).join('');
   return `<table class="data-table">
-    <thead><tr>
-      <th>Dirección</th><th>Símbolo</th><th>Rung</th><th>Fila</th><th>Uso</th>
-    </tr></thead>
+    <thead><tr><th>Dirección</th><th>Símbolo</th><th>Rung</th><th>Fila</th><th>Uso</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>`;
-}
-
-function esc(s) {
-  if (s == null) return '';
-  return String(s)
-    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
