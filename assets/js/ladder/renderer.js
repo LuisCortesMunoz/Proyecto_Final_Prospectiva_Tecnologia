@@ -2,15 +2,11 @@
  * renderer.js — Convierte el programa JSON en HTML/DOM
  * Todas las funciones son puras: reciben datos, retornan HTML strings.
  *
- * FIXES v2:
- *  1. Wire layout: el flex va DESPUES del último elemento (no antes)
- *     para que la bobina quede pegada al riel derecho, igual que Cscape.
- *  2. Bobina: el SVG ya NO dibuja sus propios wires de entrada/salida
- *     (los wires del canvas la conectan). Evita la línea doble.
- *  3. Rama paralela: altura aumentada a 52px para alinearse con fila 0.
- *  4. Etiqueta de dirección: se muestra encima del elemento con la
- *     notacion original del PLC (%I1, %Q10) extraida del symbol_table
- *     o formateada desde la dirección normalizada.
+ * FIX v2 — renderNetworkRow reescrita:
+ *   - Wire flex va entre el ultimo contacto y la bobina (no antes de la bobina)
+ *   - Bobina SVG sin wires propios para evitar doble linea
+ *   - Etiquetas en formato PLC (%I1, %Q10) en vez de formato interno (I0.1)
+ *   - renderXRefTable recorre todas las filas (no solo fila 0)
  */
 
 const BLOCK_LABELS = {
@@ -18,103 +14,91 @@ const BLOCK_LABELS = {
   block_ctd: 'CTD', block_cmp: 'CMP', block_mov: 'MOV', block_add: 'ADD',
 };
 
-// ── Convierte dirección interna (I0.1) a notacion PLC (%I1) para mostrar ──
+// Convierte direccion interna a notacion PLC para mostrar en pantalla
+// I0.1 → %I1  |  Q0.10 → %Q10  |  M0.1 → %M1  |  MW1 → %R1
 function fmtAddr(address) {
   if (!address) return '';
   const s = String(address).toUpperCase();
-  // I0.N → %I<N>
-  let m = s.match(/^I0\.(\d+)$/);
-  if (m) return `%I${m[1]}`;
-  // Q0.N → %Q<N>
-  m = s.match(/^Q0\.(\d+)$/);
-  if (m) return `%Q${m[1]}`;
-  // M0.N → %M<N>
-  m = s.match(/^M0\.(\d+)$/);
-  if (m) return `%M${m[1]}`;
-  // MWN → %RN
-  m = s.match(/^MW(\d+)$/);
-  if (m) return `%R${m[1]}`;
+  let m;
+  m = s.match(/^I0\.(\d+)$/);  if (m) return `%I${m[1]}`;
+  m = s.match(/^Q0\.(\d+)$/);  if (m) return `%Q${m[1]}`;
+  m = s.match(/^M0\.(\d+)$/);  if (m) return `%M${m[1]}`;
+  m = s.match(/^MW(\d+)$/);    if (m) return `%R${m[1]}`;
   return address;
 }
 
-/** SVG por tipo de elemento */
+/** SVG por tipo de elemento Ladder */
 function elementSVG(type, energized) {
   const c  = energized ? '#4d9ef7' : '#3d6fa8';
   const sw = energized ? 1.8 : 1.6;
 
   switch (type) {
 
-    // ── Contacto NO: dos barras verticales ──────────────
     case 'contact_no':
-      return `<svg width="36" height="28" viewBox="0 0 36 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="10" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="10" y1="5"  x2="10" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="5"  x2="26" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="14" x2="36" y2="14" stroke="${c}" stroke-width="${sw}"/>
+      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
+        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
       </svg>`;
 
-    // ── Contacto NC: barras + diagonal ──────────────────
     case 'contact_nc':
-      return `<svg width="36" height="28" viewBox="0 0 36 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="10" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="10" y1="5"  x2="10" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="5"  x2="26" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="14" x2="36" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="12" y1="22" x2="24" y2="6"  stroke="${c}" stroke-width="1.4"/>
+      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
+        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="13" y1="22" x2="27" y2="6"  stroke="${c}" stroke-width="1.4"/>
       </svg>`;
 
-    // ── Flanco positivo ──────────────────────────────────
     case 'contact_pos_edge':
-      return `<svg width="36" height="28" viewBox="0 0 36 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="10" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="10" y1="5"  x2="10" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="5"  x2="26" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="14" x2="36" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <text x="18" y="18" text-anchor="middle" font-size="9" font-weight="700"
+      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
+        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <text x="20" y="19" text-anchor="middle" font-size="9" font-weight="700"
               fill="${c}" font-family="monospace">P</text>
       </svg>`;
 
-    // ── Flanco negativo ──────────────────────────────────
     case 'contact_neg_edge':
-      return `<svg width="36" height="28" viewBox="0 0 36 28" aria-hidden="true">
-        <line x1="0"  y1="14" x2="10" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="10" y1="5"  x2="10" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="5"  x2="26" y2="23" stroke="${c}" stroke-width="${sw}"/>
-        <line x1="26" y1="14" x2="36" y2="14" stroke="${c}" stroke-width="${sw}"/>
-        <text x="18" y="18" text-anchor="middle" font-size="9" font-weight="700"
+      return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
+        <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="12" y1="5"  x2="12" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="5"  x2="28" y2="23" stroke="${c}" stroke-width="${sw}"/>
+        <line x1="28" y1="14" x2="40" y2="14" stroke="${c}" stroke-width="${sw}"/>
+        <text x="20" y="19" text-anchor="middle" font-size="9" font-weight="700"
               fill="${c}" font-family="monospace">N</text>
       </svg>`;
 
-    // ── Bobinas: solo circulo, SIN wires propios ─────────
-    // Los wires los pone el canvas, no el SVG.
-    // Antes tenia <line> de 0→12 y 28→40 que causaban doble linea.
+    // Bobina: SOLO el circulo, sin wires propios.
+    // Los wires de entrada y salida los pone el canvas para evitar doble linea.
     case 'coil':
     case 'coil_s':
     case 'coil_r': {
       const lbl = type === 'coil_s' ? 'S' : type === 'coil_r' ? 'R' : '';
       return `<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
-        <circle cx="14" cy="14" r="10" fill="none" stroke="${c}" stroke-width="${sw}"/>
+        <circle cx="14" cy="14" r="10" fill="none"
+                stroke="${c}" stroke-width="${sw}"/>
         ${lbl
-          ? `<text x="14" y="18" text-anchor="middle" font-size="10"
+          ? `<text x="14" y="19" text-anchor="middle" font-size="10"
                    font-weight="700" fill="${c}" font-family="monospace">${lbl}</text>`
           : ''}
       </svg>`;
     }
 
-    // ── Bloques de funcion: rectangulo con etiqueta ──────
     default:
       if (BLOCK_LABELS[type]) {
-        return `<svg width="52" height="28" viewBox="0 0 52 28" aria-hidden="true">
-          <rect x="1" y="3" width="50" height="22" rx="3"
+        return `<svg width="54" height="28" viewBox="0 0 54 28" aria-hidden="true">
+          <rect x="1" y="3" width="52" height="22" rx="3"
                 fill="none" stroke="${c}" stroke-width="1.4"/>
-          <text x="26" y="18" text-anchor="middle" font-size="9"
+          <text x="27" y="19" text-anchor="middle" font-size="9"
                 font-weight="600" fill="${c}"
                 font-family="monospace">${BLOCK_LABELS[type]}</text>
         </svg>`;
       }
-      return `<svg width="36" height="28" viewBox="0 0 36 28">
-        <text x="18" y="18" text-anchor="middle" font-size="9"
-              fill="${c}">?</text>
+      return `<svg width="40" height="28" viewBox="0 0 40 28">
+        <text x="20" y="19" text-anchor="middle" font-size="9" fill="${c}">?</text>
       </svg>`;
   }
 }
@@ -125,16 +109,22 @@ function sym(address, symbolTable) {
 }
 
 /**
- * Renderiza una fila del network (fila 0 = serie principal, filas 1+ = ramas paralelas)
+ * Renderiza una fila del network.
  *
- * Layout del canvas (izquierda → derecha):
- *   [riel] [wire] [el] [wire] [el] [wire] [el] [wire:flex] [riel]
+ * Layout correcto (izquierda → derecha):
  *
- * El wire FLEX va al final, entre el ultimo elemento y el riel derecho.
- * Esto hace que los contactos queden a la izquierda y la bobina
- * quede pegada al riel derecho, igual que en Cscape.
+ *   Fila con bobina al final:
+ *   [riel][wire16][XIC][wire16][XIO][wire16][XIO][wire:FLEX][bobina][wire8][riel]
  *
- * Excepcion: si la fila esta vacia, un solo wire flex llena el espacio.
+ *   Fila sin bobina (solo contactos):
+ *   [riel][wire16][XIC][wire16][XIC][wire16][riel]
+ *
+ *   Fila vacia:
+ *   [riel][wire:FLEX][riel]
+ *
+ * Regla: el wire FLEX siempre va entre el ultimo contacto y la bobina.
+ * Si no hay bobina, el ultimo wire es fijo de 16px.
+ * Esto mantiene los contactos a la izquierda y la bobina pegada al riel derecho.
  */
 function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, symbolTable) {
   const isBranch  = rowIdx > 0;
@@ -143,27 +133,30 @@ function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, sy
   const ac        = energized ? ' active' : '';
   const railClass = isBranch ? 'branch-rail' : 'power-rail';
 
-  // Detectar si el ultimo elemento es una bobina
-  // Las bobinas tienen SVG mas angosto (28px) — necesitan wire de salida
-  const lastEl   = sorted[sorted.length - 1];
-  const lastIsCoil = lastEl && lastEl.type.startsWith('coil');
+  // ¿El ultimo elemento es una bobina?
+  const lastEl     = sorted[sorted.length - 1];
+  const lastIsCoil = lastEl?.type?.startsWith('coil') ?? false;
 
   let canvas = `<div class="${railClass}"></div>`;
 
   if (sorted.length === 0) {
-    // Fila vacia: solo wire flex para mantener la altura
+    // Fila vacia: wire flex para mantener altura
     canvas += `<div class="wire${ac} flex"></div>`;
+
   } else {
     sorted.forEach((el, i) => {
-      const isLast = i === sorted.length - 1;
-      const selEl  = selRung && selection?.elementId === el.id;
-      const label  = fmtAddr(el.address);
+      const isFirst = i === 0;
+      const isLast  = i === sorted.length - 1;
+      const selEl   = selRung && selection?.elementId === el.id;
+      const label   = fmtAddr(el.address);
+      const isCoil  = el.type.startsWith('coil');
 
-      // Wire ANTES del elemento: fijo entre contactos, flex solo al final
-      if (!isLast) {
+      if (isFirst) {
+        // Wire inicial: fijo desde el riel izquierdo
         canvas += `<div class="wire${ac}" style="width:16px"></div>`;
       }
 
+      // Elemento
       canvas += `<div class="ladder-el${selEl ? ' selected-el' : ''}"
         data-rung-id="${rungId}" data-el-id="${el.id}"
         title="${el.type} · ${el.address}">
@@ -172,13 +165,24 @@ function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, sy
         <span class="el-sym">${sym(el.address, symbolTable)}</span>
       </div>`;
 
-      // Wire DESPUES del ultimo elemento:
-      // - flex si es contacto (empuja la bobina al final)
-      // - fijo si es bobina (la conecta al riel derecho)
-      if (isLast) {
-        canvas += lastIsCoil
-          ? `<div class="wire${ac}" style="width:8px"></div>`
-          : `<div class="wire${ac} flex"></div>`;
+      if (!isLast) {
+        // Entre elementos: si el siguiente es la bobina → wire flex
+        // si no → wire fijo de 16px
+        const nextEl      = sorted[i + 1];
+        const nextIsCoil  = nextEl?.type?.startsWith('coil') ?? false;
+        canvas += nextIsCoil
+          ? `<div class="wire${ac} flex"></div>`
+          : `<div class="wire${ac}" style="width:16px"></div>`;
+
+      } else {
+        // Despues del ultimo elemento
+        if (isCoil) {
+          // Bobina al final: wire corto al riel derecho
+          canvas += `<div class="wire${ac}" style="width:8px"></div>`;
+        } else {
+          // Ultimo elemento NO es bobina: wire flex al riel derecho
+          canvas += `<div class="wire${ac} flex"></div>`;
+        }
       }
     });
   }
@@ -258,7 +262,7 @@ export function renderWatchTable(program) {
   </table>`;
 }
 
-/** Referencias cruzadas */
+/** Referencias cruzadas — recorre TODAS las filas, no solo fila 0 */
 export function renderXRefTable(program) {
   const refs = [];
   for (const rung of program.rungs) {
@@ -268,7 +272,7 @@ export function renderXRefTable(program) {
           addr: fmtAddr(el.address),
           sym:  program.symbol_table?.[el.address]?.symbol ?? el.address,
           rung: rung.id,
-          fila: row.row ?? 0,
+          fila: (row.row ?? 0) === 0 ? 'serie' : `paralela ${row.row}`,
           use:  el.type,
         });
       }
@@ -281,7 +285,7 @@ export function renderXRefTable(program) {
       <td class="mono">${esc(r.addr)}</td>
       <td>${esc(r.sym)}</td>
       <td class="mono">${r.rung}</td>
-      <td class="mono">${r.fila > 0 ? `paralela ${r.fila}` : 'serie'}</td>
+      <td class="mono">${r.fila}</td>
       <td class="mono">${r.use}</td>
     </tr>`).join('');
   return `<table class="data-table">
