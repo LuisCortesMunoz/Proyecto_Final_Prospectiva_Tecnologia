@@ -1,20 +1,24 @@
 /**
  * renderer.js — Convierte el programa JSON en HTML/DOM
- * Todas las funciones son puras: reciben datos, retornan HTML strings.
+ * v3 — Rama paralela correctamente alineada con la fila 0
  *
- * FIX v2 — renderNetworkRow reescrita:
- *   - Wire flex va entre el ultimo contacto y la bobina (no antes de la bobina)
- *   - Bobina SVG sin wires propios para evitar doble linea
- *   - Etiquetas en formato PLC (%I1, %Q10) en vez de formato interno (I0.1)
- *   - renderXRefTable recorre todas las filas (no solo fila 0)
+ * FIXES:
+ *  1. Fila 0: wire flex va entre el ultimo contacto y la bobina
+ *  2. Fila 1 (rama paralela): wire flex va ANTES del elemento,
+ *     para que el contacto de memoria quede alineado con el primer
+ *     contacto de la fila 0 (debajo de %I1)
+ *  3. branch-rail izquierdo: margin-left = ancho del power-rail (5px)
+ *     para que el conector vertical salga del riel izquierdo real
+ *  4. branch-rail derecho: margin-right calculado para terminar
+ *     justo antes de la bobina en la fila 0
+ *  5. Etiquetas en formato PLC (%I1, %Q10) en vez de (I0.1, Q0.10)
  */
 
 const BLOCK_LABELS = {
-  block_ton: 'TON', block_tof: 'TOF', block_ctu: 'CTU',
-  block_ctd: 'CTD', block_cmp: 'CMP', block_mov: 'MOV', block_add: 'ADD',
+  block_ton:'TON', block_tof:'TOF', block_ctu:'CTU',
+  block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD',
 };
 
-// Convierte direccion interna a notacion PLC para mostrar en pantalla
 // I0.1 → %I1  |  Q0.10 → %Q10  |  M0.1 → %M1  |  MW1 → %R1
 function fmtAddr(address) {
   if (!address) return '';
@@ -27,13 +31,11 @@ function fmtAddr(address) {
   return address;
 }
 
-/** SVG por tipo de elemento Ladder */
 function elementSVG(type, energized) {
   const c  = energized ? '#4d9ef7' : '#3d6fa8';
   const sw = energized ? 1.8 : 1.6;
 
   switch (type) {
-
     case 'contact_no':
       return `<svg width="40" height="28" viewBox="0 0 40 28" aria-hidden="true">
         <line x1="0"  y1="14" x2="12" y2="14" stroke="${c}" stroke-width="${sw}"/>
@@ -71,19 +73,17 @@ function elementSVG(type, energized) {
               fill="${c}" font-family="monospace">N</text>
       </svg>`;
 
-    // Bobina: SOLO el circulo, sin wires propios.
-    // Los wires de entrada y salida los pone el canvas para evitar doble linea.
+    // Bobina: solo el circulo, sin wires propios (los pone el canvas)
     case 'coil':
     case 'coil_s':
     case 'coil_r': {
-      const lbl = type === 'coil_s' ? 'S' : type === 'coil_r' ? 'R' : '';
+      const lbl = type==='coil_s' ? 'S' : type==='coil_r' ? 'R' : '';
       return `<svg width="28" height="28" viewBox="0 0 28 28" aria-hidden="true">
         <circle cx="14" cy="14" r="10" fill="none"
                 stroke="${c}" stroke-width="${sw}"/>
-        ${lbl
-          ? `<text x="14" y="19" text-anchor="middle" font-size="10"
-                   font-weight="700" fill="${c}" font-family="monospace">${lbl}</text>`
-          : ''}
+        ${lbl ? `<text x="14" y="19" text-anchor="middle" font-size="10"
+                       font-weight="700" fill="${c}"
+                       font-family="monospace">${lbl}</text>` : ''}
       </svg>`;
     }
 
@@ -109,41 +109,100 @@ function sym(address, symbolTable) {
 }
 
 /**
- * Renderiza una fila del network.
+ * renderNetworkRow — genera el HTML de una fila del rung
  *
- * Layout correcto (izquierda → derecha):
+ * FILA 0 (serie principal):
+ *   [riel] [16px] [el] [16px] [el] ... [flex] [bobina] [8px] [riel]
+ *   Si no hay bobina: ultimo wire es flex hacia el riel derecho.
  *
- *   Fila con bobina al final:
- *   [riel][wire16][XIC][wire16][XIO][wire16][XIO][wire:FLEX][bobina][wire8][riel]
+ * FILA 1+ (rama paralela):
+ *   La rama paralela debe alinearse con los primeros elementos de la fila 0.
+ *   Usamos inline-style en los branch-rails para controlar el punto de conexion:
  *
- *   Fila sin bobina (solo contactos):
- *   [riel][wire16][XIC][wire16][XIC][wire16][riel]
+ *   [branch-rail izq] [flex] [el] [16px] [el] ... [flex] [branch-rail der]
  *
- *   Fila vacia:
- *   [riel][wire:FLEX][riel]
- *
- * Regla: el wire FLEX siempre va entre el ultimo contacto y la bobina.
- * Si no hay bobina, el ultimo wire es fijo de 16px.
- * Esto mantiene los contactos a la izquierda y la bobina pegada al riel derecho.
+ *   El wire flex inicial hace que el elemento de memoria quede alineado
+ *   bajo el primer contacto de la fila 0.
+ *   El branch-rail derecho tiene un margin-right calculado para terminar
+ *   justo antes del riel de la bobina.
  */
-function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, symbolTable) {
-  const isBranch  = rowIdx > 0;
-  const elements  = row.elements ?? [];
-  const sorted    = [...elements].sort((a, b) => a.pos.col - b.pos.col);
-  const ac        = energized ? ' active' : '';
-  const railClass = isBranch ? 'branch-rail' : 'power-rail';
+function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, symbolTable, rung) {
+  const isBranch = rowIdx > 0;
+  const elements = row.elements ?? [];
+  const sorted   = [...elements].sort((a,b) => a.pos.col - b.pos.col);
+  const ac       = energized ? ' active' : '';
 
-  // ¿El ultimo elemento es una bobina?
-  const lastEl     = sorted[sorted.length - 1];
-  const lastIsCoil = lastEl?.type?.startsWith('coil') ?? false;
+  // Para la rama paralela necesitamos saber cuantos contactos
+  // hay en la fila 0 ANTES de la bobina, para calcular el ancho
+  // del wire flex inicial y alinear correctamente.
+  let coilWidthRight = 0; // ancho reservado para la bobina en el lado derecho
+  if (isBranch && rung) {
+    const fila0 = (rung.network ?? []).find(r => r.row === 0);
+    if (fila0) {
+      const sorted0 = [...(fila0.elements ?? [])].sort((a,b) => a.pos.col - b.pos.col);
+      const lastEl0 = sorted0[sorted0.length - 1];
+      if (lastEl0?.type?.startsWith('coil')) {
+        // Bobina(28) + wire-salida(8) + power-rail-der(5) = 41px
+        coilWidthRight = 41;
+      }
+    }
+  }
 
-  let canvas = `<div class="${railClass}"></div>`;
+  let canvas = '';
+
+  if (isBranch) {
+    // ── Rama paralela ─────────────────────────────────────────
+    // branch-rail izquierdo: se conecta al riel izquierdo real
+    canvas += `<div class="branch-rail"></div>`;
+
+    if (sorted.length === 0) {
+      canvas += `<div class="wire${ac} flex"></div>`;
+    } else {
+      // Wire flex inicial: empuja el elemento de memoria hacia la derecha
+      // para que quede bajo el primer contacto de la fila 0
+      canvas += `<div class="wire${ac} flex"></div>`;
+
+      sorted.forEach((el, i) => {
+        const isLast = i === sorted.length - 1;
+        const selEl  = selRung && selection?.elementId === el.id;
+        const label  = fmtAddr(el.address);
+
+        canvas += `<div class="ladder-el${selEl ? ' selected-el' : ''}"
+          data-rung-id="${rungId}" data-el-id="${el.id}"
+          title="${el.type} · ${el.address}">
+          <span class="el-addr">${label}</span>
+          ${elementSVG(el.type, energized)}
+          <span class="el-sym">${sym(el.address, symbolTable)}</span>
+        </div>`;
+
+        if (!isLast) {
+          canvas += `<div class="wire${ac}" style="width:16px"></div>`;
+        } else {
+          // Wire flex derecho: rellena hasta el branch-rail derecho
+          canvas += `<div class="wire${ac} flex"></div>`;
+        }
+      });
+    }
+
+    // branch-rail derecho: margen para no solaparse con la bobina
+    // margin-right = coilWidthRight para que termine antes de la bobina
+    const mrStyle = coilWidthRight > 0
+      ? ` style="margin-right:${coilWidthRight}px"`
+      : '';
+    canvas += `<div class="branch-rail"${mrStyle}></div>`;
+
+    return `<div class="rung-canvas branch-row" data-row="${rowIdx}">${canvas}</div>`;
+  }
+
+  // ── Fila 0: serie principal ──────────────────────────────────
+  canvas += `<div class="power-rail"></div>`;
 
   if (sorted.length === 0) {
-    // Fila vacia: wire flex para mantener altura
     canvas += `<div class="wire${ac} flex"></div>`;
-
   } else {
+    const lastEl     = sorted[sorted.length - 1];
+    const lastIsCoil = lastEl?.type?.startsWith('coil') ?? false;
+
     sorted.forEach((el, i) => {
       const isFirst = i === 0;
       const isLast  = i === sorted.length - 1;
@@ -151,12 +210,11 @@ function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, sy
       const label   = fmtAddr(el.address);
       const isCoil  = el.type.startsWith('coil');
 
+      // Wire de entrada al elemento
       if (isFirst) {
-        // Wire inicial: fijo desde el riel izquierdo
         canvas += `<div class="wire${ac}" style="width:16px"></div>`;
       }
 
-      // Elemento
       canvas += `<div class="ladder-el${selEl ? ' selected-el' : ''}"
         data-rung-id="${rungId}" data-el-id="${el.id}"
         title="${el.type} · ${el.address}">
@@ -165,42 +223,36 @@ function renderNetworkRow(row, rowIdx, rungId, energized, selRung, selection, sy
         <span class="el-sym">${sym(el.address, symbolTable)}</span>
       </div>`;
 
+      // Wire de salida del elemento
       if (!isLast) {
-        // Entre elementos: si el siguiente es la bobina → wire flex
-        // si no → wire fijo de 16px
-        const nextEl      = sorted[i + 1];
-        const nextIsCoil  = nextEl?.type?.startsWith('coil') ?? false;
+        // Entre elementos: si el siguiente es bobina → flex (espacio grande)
+        const nextEl     = sorted[i + 1];
+        const nextIsCoil = nextEl?.type?.startsWith('coil') ?? false;
         canvas += nextIsCoil
           ? `<div class="wire${ac} flex"></div>`
           : `<div class="wire${ac}" style="width:16px"></div>`;
-
       } else {
-        // Despues del ultimo elemento
-        if (isCoil) {
-          // Bobina al final: wire corto al riel derecho
-          canvas += `<div class="wire${ac}" style="width:8px"></div>`;
-        } else {
-          // Ultimo elemento NO es bobina: wire flex al riel derecho
-          canvas += `<div class="wire${ac} flex"></div>`;
-        }
+        // Despues del ultimo
+        canvas += isCoil
+          ? `<div class="wire${ac}" style="width:8px"></div>`   // bobina → wire corto al riel
+          : `<div class="wire${ac} flex"></div>`;               // contacto → flex al riel
       }
     });
   }
 
-  canvas += `<div class="${railClass}"></div>`;
-
-  const cls = isBranch ? 'rung-canvas branch-row' : 'rung-canvas';
-  return `<div class="${cls}" data-row="${rowIdx}">${canvas}</div>`;
+  canvas += `<div class="power-rail"></div>`;
+  return `<div class="rung-canvas" data-row="${rowIdx}">${canvas}</div>`;
 }
 
-/** Renderiza un rung completo con soporte para ramas paralelas */
+/** Renderiza un rung completo */
 export function renderRung(rung, program, selection) {
   const energized = !!program.execution_state?.rung_states?.[String(rung.id)];
   const selRung   = selection?.rungId === rung.id;
   const rows      = rung.network ?? [{ row: 0, elements: [] }];
 
   const networkHTML = rows.map((row, idx) =>
-    renderNetworkRow(row, idx, rung.id, energized, selRung, selection, program.symbol_table)
+    renderNetworkRow(row, idx, rung.id, energized, selRung, selection,
+                     program.symbol_table, rung)   // <- pasamos rung completo
   ).join('');
 
   const cls = ['rung', selRung && 'selected', energized && 'energized']
@@ -217,7 +269,7 @@ export function renderRung(rung, program, selection) {
   </div>`;
 }
 
-/** Vuelca todos los rungs en el contenedor dado */
+/** Vuelca todos los rungs */
 export function renderAllRungs(container, program, selection) {
   const rungs = program.rungs ?? [];
   const html  = rungs.map(r => renderRung(r, program, selection)).join('');
@@ -243,7 +295,9 @@ export function renderIOTable(program) {
       <th>Dirección</th><th>Símbolo</th><th>Tipo</th>
       <th>Modbus fn</th><th>Reg</th><th>Comentario</th>
     </tr></thead>
-    <tbody>${rows || '<tr><td colspan="6" style="color:var(--text-tertiary);text-align:center;padding:12px">Sin variables definidas</td></tr>'}</tbody>
+    <tbody>${rows ||
+      '<tr><td colspan="6" style="color:var(--text-tertiary);text-align:center;padding:12px">Sin variables definidas</td></tr>'
+    }</tbody>
   </table>`;
 }
 
@@ -262,7 +316,7 @@ export function renderWatchTable(program) {
   </table>`;
 }
 
-/** Referencias cruzadas — recorre TODAS las filas, no solo fila 0 */
+/** Referencias cruzadas — recorre todas las filas */
 export function renderXRefTable(program) {
   const refs = [];
   for (const rung of program.rungs) {
@@ -299,6 +353,6 @@ export function renderXRefTable(program) {
 function esc(s) {
   if (s == null) return '';
   return String(s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
