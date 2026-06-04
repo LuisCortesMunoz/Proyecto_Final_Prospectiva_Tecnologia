@@ -1,6 +1,9 @@
 /**
  * app.js — Orquestador del editor Ladder
  * Store reactivo + event handlers + render loop
+ *
+ * CAMBIO v2: Agregado soporte para importar .js generado por el modelo IA
+ * Lineas modificadas marcadas con: // ← NUEVO
  */
 
 import { defaultProgram, newRung, newElement, validateProgram } from './schema.js';
@@ -17,7 +20,7 @@ function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 const store = (() => {
   let _prog   = importFromURL() ?? defaultProgram();
   let _sel    = { rungId: null, elementId: null };
-  let _armed  = null;          // component type armed from sidebar
+  let _armed  = null;
   let _log    = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v1.0' }];
   const _subs = [];
 
@@ -26,7 +29,6 @@ const store = (() => {
   return {
     subscribe(fn) { _subs.push(fn); },
 
-    // ── Program ───────────────────────────────────────────
     getProgram() { return _prog; },
 
     setProgram(p) { _prog = p; notify(); },
@@ -69,7 +71,6 @@ const store = (() => {
       _prog = p; notify();
     },
 
-    // ── Elements ─────────────────────────────────────────
     addElement(rungId, type, atCol = null) {
       const p  = deepClone(_prog);
       const r  = p.rungs.find(r => r.id === rungId);
@@ -79,7 +80,6 @@ const store = (() => {
       if (atCol !== null) {
         col = atCol;
       } else {
-        // Default: contacts before coils, coils at the end
         const coilAt = els.findIndex(e => e.type.startsWith('coil'));
         col = coilAt >= 0 ? coilAt : els.length;
       }
@@ -91,12 +91,10 @@ const store = (() => {
       _prog  = p; notify();
     },
 
-    // Agrega una nueva rama paralela al rung con un elemento inicial
     addParallelRow(rungId, type) {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
-      // Las bobinas no van en ramas paralelas — convertir a contacto
       const safeType = type.startsWith('coil') ? 'contact_no' : type;
       const el = newElement(safeType, 0);
       r.network.push({ row: r.network.length, elements: [el] });
@@ -115,7 +113,6 @@ const store = (() => {
         row.elements.splice(idx, 1);
         const sorted = row.elements.slice().sort((a, b) => a.pos.col - b.pos.col);
         sorted.forEach((e, i) => e.pos.col = i);
-        // Limpiar ramas vacías (excepto la fila 0)
         r.network = r.network.filter((row, i) => i === 0 || row.elements.length > 0);
         r.network.forEach((row, i) => row.row = i);
         break;
@@ -128,7 +125,6 @@ const store = (() => {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
-      // Buscar el elemento en todas las filas
       let found = false;
       for (const row of r.network) {
         const el = row.elements.find(e => e.id === elId);
@@ -138,7 +134,6 @@ const store = (() => {
         break;
       }
       if (!found) return;
-      // Auto-register new addresses as internal marks
       if (patch.address && !p.symbol_table[patch.address]) {
         p.symbol_table[patch.address] = {
           symbol: patch.address, type: 'BOOL',
@@ -148,18 +143,15 @@ const store = (() => {
       _prog = p; notify();
     },
 
-    // ── Selection ────────────────────────────────────────
-    getSelection() { return _sel; },
-    selectRung(id)         { _sel = { rungId: id, elementId: null }; notify(); },
-    selectElement(rid, eid){ _sel = { rungId: rid, elementId: eid }; notify(); },
+    getSelection()          { return _sel; },
+    selectRung(id)          { _sel = { rungId: id, elementId: null }; notify(); },
+    selectElement(rid, eid) { _sel = { rungId: rid, elementId: eid }; notify(); },
     clearSelection()        { _sel = { rungId: null, elementId: null }; notify(); },
 
-    // ── Armed sidebar type ───────────────────────────────
-    getArmed()    { return _armed; },
-    arm(type)     { _armed = type; notify(); },
-    disarm()      { _armed = null; notify(); },
+    getArmed()  { return _armed; },
+    arm(type)   { _armed = type; notify(); },
+    disarm()    { _armed = null; notify(); },
 
-    // ── Log (terminal) ───────────────────────────────────
     getLog() { return _log; },
     log(type, msg) {
       _log.push({ ts: ts(), type, msg });
@@ -205,7 +197,6 @@ function renderActiveTab(prog) {
   if (activeTab === 'xref')  panel.innerHTML = renderXRefTable(prog);
 }
 
-// ── Popup helpers ─────────────────────────────────────────
 function positionPopup(popup, x, y) {
   popup.style.visibility = 'hidden';
   popup.style.display    = 'flex';
@@ -276,11 +267,10 @@ function fillPropPopup(prog, sel) {
   }
 }
 
-// ── Context menu (right-click) ────────────────────────────
 function onContextMenu(e) {
   const elDiv  = e.target.closest('.ladder-el');
   const rungEl = e.target.closest('[data-rung-id]');
-  if (!elDiv && !rungEl) return;   // let native menu work elsewhere
+  if (!elDiv && !rungEl) return;
   e.preventDefault();
   if (elDiv) {
     store.selectElement(Number(elDiv.dataset.rungId), elDiv.dataset.elId);
@@ -295,13 +285,11 @@ function onDocumentMouseDown(e) {
   if (popup && !popup.contains(e.target)) hidePropPopup();
 }
 
-// ── Bottombar collapse ────────────────────────────────────
 function toggleBottomBar() {
   document.getElementById('bottombar')?.classList.toggle('collapsed');
 }
 window.toggleBottomBar = toggleBottomBar;
 
-// updatePropertyPanel is now a no-op kept for render() compatibility
 function updatePropertyPanel() {}
 
 function updateSidebarArmed() {
@@ -332,7 +320,6 @@ function render() {
 
 store.subscribe(render);
 
-// ── Event delegation: rung area ──────────────────────────
 function onRungAreaClick(e) {
   const elDiv  = e.target.closest('.ladder-el');
   const rungEl = e.target.closest('[data-rung-id]');
@@ -372,7 +359,6 @@ function onRungAreaClick(e) {
   }
 }
 
-// ── Sidebar: arm component ───────────────────────────────
 function onSidebarClick(e) {
   const item = e.target.closest('.comp-item');
   if (!item) return;
@@ -383,7 +369,6 @@ function onSidebarClick(e) {
     store.disarm();
   } else {
     store.arm(type);
-    // If a rung is selected, add immediately
     const sel = store.getSelection();
     if (sel.rungId) {
       store.addElement(sel.rungId, type);
@@ -394,8 +379,6 @@ function onSidebarClick(e) {
   }
 }
 
-// ── Drag-and-drop ────────────────────────────────────────
-// Calculates which column to insert at based on mouse X over the rung canvas
 function calcInsertCol(rungId, clientX) {
   const prog = store.getProgram();
   const rung = prog.rungs.find(r => r.id === rungId);
@@ -410,7 +393,6 @@ function calcInsertCol(rungId, clientX) {
   return sorted.length > 0 ? sorted[sorted.length - 1].pos.col + 1 : 0;
 }
 
-// Shows a vertical blue line indicating where the element will be inserted
 function showDropIndicator(canvas, clientX) {
   removeDropIndicator(canvas);
   const ladderEls = [...canvas.querySelectorAll('.ladder-el')];
@@ -481,16 +463,13 @@ function onRungAreaDragOver(e) {
   }
   rungEl.classList.add('drag-over');
 
-  // Zona paralela = tercio inferior del rung
   const rect = rungEl.getBoundingClientRect();
   const relY = (e.clientY - rect.top) / rect.height;
 
   if (relY > 0.68) {
-    // Zona paralela: indicador horizontal pulsante
     removeDropIndicator(rungEl);
     showParallelIndicator(rungEl);
   } else {
-    // Zona serie: indicador vertical en la fila principal
     removeParallelIndicator(rungEl);
     const mainCanvas = rungEl.querySelector('.rung-canvas:not(.branch-row)');
     if (mainCanvas) showDropIndicator(mainCanvas, e.clientX);
@@ -529,7 +508,6 @@ function onRungAreaDrop(e) {
   }
 }
 
-// ── Búsqueda de componentes en el sidebar ─────────────────
 function onSidebarSearch(e) {
   const q     = e.target.value.toLowerCase().trim();
   const items = document.querySelectorAll('.comp-item[data-type]');
@@ -555,7 +533,6 @@ function onSidebarSearch(e) {
   });
 }
 
-// ── Toolbar buttons ──────────────────────────────────────
 function onToolbarClick(e) {
   const btn = e.target.closest('.et-btn');
   if (!btn) return;
@@ -586,7 +563,6 @@ function onToolbarClick(e) {
   }
 }
 
-// ── Property panel inputs ────────────────────────────────
 function onPropInput(e) {
   const sel = store.getSelection();
   if (!sel.rungId) return;
@@ -624,14 +600,12 @@ function onPropInput(e) {
   }
 }
 
-// ── Tab switcher ─────────────────────────────────────────
 function showTab(name, el) {
   document.querySelectorAll('.bb-tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('tab-' + name)?.classList.add('active');
-  // Re-render tab content
-  const prog = store.getProgram();
+  const prog  = store.getProgram();
   const panel = document.getElementById('tab-' + name);
   if (!panel) return;
   if (name === 'io')       panel.innerHTML = renderIOTable(prog);
@@ -641,7 +615,6 @@ function showTab(name, el) {
 }
 window.showTab = showTab;
 
-// ── Compile / Upload (stubs) ──────────────────────────────
 function onNavBtnClick(e) {
   const btn = e.target.closest('.tnav-btn');
   if (!btn) return;
@@ -657,7 +630,6 @@ function onNavBtnClick(e) {
       errs.forEach(err => store.log('err', err));
       showToast(`${errs.length} error(es) de compilación`, 'error');
     }
-    // Make sure terminal tab is visible
     const termTab = document.getElementById('tab-btn-terminal');
     if (termTab) showTab('terminal', termTab);
   }
@@ -679,7 +651,6 @@ function onNavBtnClick(e) {
   }
 }
 
-// ── Copy link ────────────────────────────────────────────
 function copyLink() {
   const url = exportToURL(store.getProgram());
   pushToURL(store.getProgram());
@@ -687,13 +658,11 @@ function copyLink() {
     showToast('¡Link copiado al portapapeles!', 'success');
     store.log('info', 'Programa codificado en URL y copiado.');
   }).catch(() => {
-    // Fallback para file://
     prompt('Copia este link:', url);
   });
 }
 window.copyLink = copyLink;
 
-// ── Keyboard shortcuts ────────────────────────────────────
 function onKeyDown(e) {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
   const sel = store.getSelection();
@@ -712,51 +681,140 @@ function onKeyDown(e) {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// ← NUEVO: Importar programa desde .js generado por el modelo
+// ─────────────────────────────────────────────────────────
+// El .js generado por Python exporta: export const program = {...}
+// Lo leemos como texto, extraemos el objeto JSON y lo cargamos
+// en el store con store.setProgram() — que re-renderiza todo solo.
+// ═══════════════════════════════════════════════════════════
+function initImportIA() {
+  const btn   = document.getElementById('btn-import-ia');    // ← NUEVO
+  const input = document.getElementById('input-import-ia'); // ← NUEVO
+  if (!btn || !input) return;
+
+  // Click en el boton → abre el selector de archivo
+  btn.addEventListener('click', () => input.click());        // ← NUEVO
+
+  // Cuando el usuario elige un archivo
+  input.addEventListener('change', () => {                   // ← NUEVO
+    const file = input.files?.[0];
+    if (!file) return;
+
+    // Solo aceptar .js
+    if (!file.name.endsWith('.js')) {
+      showToast('Selecciona un archivo .js generado por el modelo', 'error');
+      input.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      try {
+        const contenido = e.target.result;
+
+        // El .js tiene la forma:
+        //   export const program = { ... };
+        //   export default program;
+        //
+        // Extraemos el JSON entre el primer { y el ultimo }
+        // antes del punto y coma de "export const program = ...;"
+        const inicio = contenido.indexOf('{');
+        if (inicio === -1) throw new Error('No se encontró el objeto program en el archivo.');
+
+        // Encontrar el cierre: buscamos el ";" que sigue al ultimo "}"
+        // Tomamos desde { hasta el final y quitamos la ultima linea
+        let bloque = contenido.slice(inicio);
+
+        // Remover el ";" final y lo que siga (export default program;)
+        // Buscamos el ultimo } seguido opcionalmente de espacios/newline y ";"
+        bloque = bloque.replace(/\}\s*;\s*[\s\S]*$/, '}');
+
+        const programa = JSON.parse(bloque);
+
+        // Validar que tiene la estructura minima esperada
+        if (!programa.rungs || !programa.metadata) {
+          throw new Error('El archivo no tiene la estructura de programa esperada (falta rungs o metadata).');
+        }
+
+        // Cargar en el store — esto dispara render() automaticamente
+        store.setProgram(programa);
+
+        // Resetear seleccion al primer rung
+        if (programa.rungs.length > 0) {
+          store.selectRung(programa.rungs[0].id);
+        }
+
+        // Log en terminal
+        store.log('ok',   `Importado: "${programa.metadata.name}" — ${programa.rungs.length} rungs`);
+        store.log('info', `Variables: ${Object.keys(programa.symbol_table || {}).length} en symbol table`);
+        if (programa.metadata._explicacion)    store.log('info', programa.metadata._explicacion);
+        if (programa.metadata._implementacion) store.log('info', 'Cscape: ' + programa.metadata._implementacion);
+
+        // Ir a la terminal para ver el resultado
+        const termTab = document.getElementById('tab-btn-terminal');
+        if (termTab) showTab('terminal', termTab);
+
+        showToast(`"${programa.metadata.name}" importado — ${programa.rungs.length} rungs`, 'success');
+        input.value = '';
+
+      } catch (err) {
+        store.log('err', 'Error al importar: ' + err.message);
+        showToast('Error al importar: ' + err.message, 'error');
+        console.error('[ImportIA]', err);
+        input.value = '';
+      }
+    };
+
+    reader.onerror = () => {
+      showToast('No se pudo leer el archivo', 'error');
+      input.value = '';
+    };
+
+    reader.readAsText(file, 'UTF-8');
+  });
+}
+// ═══════════════════════════════════════════════════════════
+
 // ── Init ─────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-  // Make sidebar items draggable
   document.querySelectorAll('.comp-item[data-type]').forEach(el => {
     el.setAttribute('draggable', 'true');
   });
 
-  // Búsqueda en sidebar
   document.querySelector('.sb-search input')?.addEventListener('input', onSidebarSearch);
 
-  // Event wiring — click
-  document.getElementById('rungArea')?.addEventListener('click',      onRungAreaClick);
-  document.querySelector('.sidebar')?.addEventListener('click',       onSidebarClick);
-  document.querySelector('.editor-toolbar')?.addEventListener('click',onToolbarClick);
-  document.querySelector('.top-nav')?.addEventListener('click',       onNavBtnClick);
-  document.getElementById('propScroll')?.addEventListener('input',    onPropInput);
+  document.getElementById('rungArea')?.addEventListener('click',       onRungAreaClick);
+  document.querySelector('.sidebar')?.addEventListener('click',        onSidebarClick);
+  document.querySelector('.editor-toolbar')?.addEventListener('click', onToolbarClick);
+  document.querySelector('.top-nav')?.addEventListener('click',        onNavBtnClick);
+  document.getElementById('propScroll')?.addEventListener('input',     onPropInput);
   document.addEventListener('keydown', onKeyDown);
 
-  // Context menu (right-click → popup)
   document.getElementById('rungArea')?.addEventListener('contextmenu', onContextMenu);
   document.addEventListener('mousedown', onDocumentMouseDown);
   document.getElementById('pp-close-btn')?.addEventListener('click', hidePropPopup);
 
-  // Bottom bar collapse
   document.getElementById('bb-collapse-btn')?.addEventListener('click', toggleBottomBar);
 
-  // Escape also closes popup
   document.addEventListener('keydown', e => { if (e.key === 'Escape') hidePropPopup(); });
 
-  // Event wiring — drag-and-drop
   document.querySelector('.sidebar')?.addEventListener('dragstart', onSidebarDragStart);
   const ra = document.getElementById('rungArea');
   ra?.addEventListener('dragover',  onRungAreaDragOver);
   ra?.addEventListener('dragleave', onRungAreaDragLeave);
   ra?.addEventListener('drop',      onRungAreaDrop);
 
-  // Autosave URL on change (silently)
   store.subscribe(() => {
     try { pushToURL(store.getProgram()); } catch {}
   });
 
-  // Initial render
+  // ← NUEVO: inicializar el importador de .js
+  initImportIA();
+
   render();
 
-  // Log program source
   const fromUrl = !!new URLSearchParams(window.location.search).get('l');
   store.log('info', fromUrl ? 'Programa cargado desde URL.' : 'Programa de ejemplo cargado.');
   store.log('info', `PLC target: ${store.getProgram().metadata.plc_target.ip}:${store.getProgram().metadata.plc_target.port}`);
