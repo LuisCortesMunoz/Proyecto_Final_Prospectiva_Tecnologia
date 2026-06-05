@@ -12,8 +12,6 @@
     dd.hidden = !dd.hidden;
     btn.classList.toggle('open', !dd.hidden);
   });
-  wrap.addEventListener('mouseenter', () => { dd.hidden = false; btn.classList.add('open'); });
-  wrap.addEventListener('mouseleave', () => { dd.hidden = true;  btn.classList.remove('open'); });
   document.addEventListener('click', e => {
     if (!wrap.contains(e.target)) { dd.hidden = true; btn.classList.remove('open'); }
   });

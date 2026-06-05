@@ -871,9 +871,8 @@
     const btn  = document.getElementById('tnav-logo-btn');
     const dd   = document.getElementById('tnav-dropdown');
     const wrap = btn.closest('.tnav-logo-wrap');
+    // DESPUÉS
     btn.addEventListener('click', e => { e.stopPropagation(); dd.hidden = !dd.hidden; btn.classList.toggle('open', !dd.hidden); });
-    wrap.addEventListener('mouseenter', () => { dd.hidden = false; btn.classList.add('open'); });
-    wrap.addEventListener('mouseleave', () => { dd.hidden = true;  btn.classList.remove('open'); });
     document.addEventListener('click',  e => { if (!wrap.contains(e.target)) { dd.hidden = true; btn.classList.remove('open'); }});
   })();
 </script>
