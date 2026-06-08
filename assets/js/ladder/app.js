@@ -558,7 +558,7 @@ function showCtxMenu(x, y, mode) {
 
 function hideCtxMenu() {
   const m = document.getElementById('ctxMenu');
-  m?.classList.remove('visible');
+  if (m) { m.classList.remove('visible'); m.style.display = 'none'; }
   _ctxTarget = null;
 }
 
@@ -657,31 +657,35 @@ function onCtxMenuClick(e) {
 // ── Event: rung area click ────────────────────────────────────
 function onRungAreaClick(e) {
   if (e.target.closest('#ctxMenu')) return;
-  const elHit = e.target.closest('.ladder-el');
-  const rungEl = e.target.closest('[data-rung-id]');
   const addBtn = e.target.closest('#btn-add-rung');
-
   if (addBtn) {
     store.addRung();
     store.log('info', `Rung ${store.getProgram().rungs.at(-1)?.id} agregado`);
     return;
   }
+
+  const host   = e.target.closest('.rung');
+  const elHit  = e.target.closest('.ladder-el');
+  const armed  = store.getArmed();
+
+  // Con un componente armado: colocar usando la zona bajo el cursor (serie/paralelo)
+  if (armed && host) {
+    const rungId = Number(host.dataset.rungId);
+    const svgEl  = host.querySelector('.rung-svg');
+    if (svgEl) applyPlan(rungId, armed, dropPlan(rungId, svgEl, e.clientX, e.clientY, armed));
+    else       store.addElement(rungId, armed);
+    return;
+  }
+
   if (elHit) {
     const rungId = Number(elHit.dataset.rungId);
     const elId   = elHit.dataset.elId;
-    const armed  = store.getArmed();
-    if (armed) { store.addElement(rungId, armed); return; }
     // Ctrl/Shift+clic → selección múltiple (para agrupar en paralelo)
     if (e.ctrlKey || e.metaKey || e.shiftKey) { store.toggleMultiSelect(rungId, elId); return; }
     store.selectElement(rungId, elId);
     return;
   }
-  if (rungEl) {
-    const rid   = Number(rungEl.dataset.rungId);
-    const armed = store.getArmed();
-    if (armed) { store.addElement(rid, armed); return; }
-    store.selectRung(rid);
-  }
+  if (host) store.selectRung(Number(host.dataset.rungId));
 }
 
 // ── Event: rung area double-click → abre propiedades ─────────
@@ -744,85 +748,124 @@ function onSidebarClick(e) {
 }
 
 // ── Drag-and-drop ─────────────────────────────────────────────
-function calcInsertCol(rungId, clientX) {
-  const prog = store.getProgram();
-  const rung = prog.rungs.find(r => r.id === rungId);
-  if (!rung) return 0;
-  const sorted = rung.network[0].elements.slice().sort((a,b) => a.pos.col - b.pos.col);
-  for (const el of sorted) {
-    const dom = document.querySelector(`[data-el-id="${CSS.escape(el.id)}"]`);
-    if (!dom) continue;
-    const rect = dom.getBoundingClientRect();
-    if (clientX < rect.left + rect.width / 2) return el.pos.col;
-  }
-  return sorted.length > 0 ? sorted.at(-1).pos.col + 1 : 0;
-}
-
 const SVGNS = 'http://www.w3.org/2000/svg';
 
-// Decide qué hará el drop según dónde está el cursor:
-//  - sobre la mitad inferior de un elemento de la principal → paralelo
-//  - sobre un elemento de una rama → serie dentro de esa rama
-//  - en cualquier otro punto (wire / mitad superior) → serie en la principal
-function resolveDropTarget(e, rungId, type) {
-  const elHit = e.target.closest('.ladder-el');
-  if (elHit && !isOutputType(type)) {
-    const col = Number(elHit.dataset.col ?? 0);
-    const row = Number(elHit.dataset.row ?? 0);
-    if (row > 0) return { mode: 'series-branch', col, row };
-    const rect    = elHit.getBoundingClientRect();
-    const inLower = e.clientY > rect.top + rect.height * 0.55;
-    return inLower ? { mode: 'parallel', col, row: 0 } : { mode: 'series', col, row: 0 };
+// Convierte coords de pantalla a coords internas del SVG (maneja el zoom CSS).
+function clientToSvg(svgEl, clientX, clientY) {
+  const rect = svgEl.getBoundingClientRect();
+  const vbW  = svgEl.viewBox?.baseVal?.width  || rect.width  || 1;
+  const vbH  = svgEl.viewBox?.baseVal?.height || rect.height || 1;
+  const x = (clientX - rect.left) / (rect.width  || 1) * vbW;
+  const y = (clientY - rect.top)  / (rect.height || 1) * vbH;
+  return { x, y };
+}
+
+// Decide qué hará un drop/clic SEGÚN COORDENADAS (robusto, sin depender del
+// elemento exacto bajo el cursor):
+//   - Fila principal, banda superior  → SERIE  (inserta en la columna más cercana)
+//   - Fila principal, banda inferior  → PARALELO (nueva rama sobre esa columna)
+//   - Sobre una rama existente        → SERIE dentro de esa rama
+//   - Salidas (bobina/timer)          → siempre en serie al final
+function dropPlan(rungId, svgEl, clientX, clientY, type) {
+  const prog = store.getProgram();
+  const rung = prog.rungs.find(r => r.id === rungId);
+  const numCols = Number(svgEl.dataset.numCols) || 1;
+  const numRows = rung?.network?.length || 1;
+  const mainHasEls = (rung?.network?.[0]?.elements?.length || 0) > 0;
+  const { x, y } = clientToSvg(svgEl, clientX, clientY);
+
+  if (isOutputType(type)) return { mode: 'series', insCol: null };
+
+  const overCol = Math.max(0, Math.min(numCols - 1, Math.floor((x - GR.RAIL) / GR.COL_W)));
+  let   insCol  = Math.max(0, Math.min(numCols,     Math.round((x - GR.RAIL) / GR.COL_W)));
+
+  // Un contacto nunca debe quedar después de una bobina/salida: lo limitamos
+  // a insertarse, como mucho, justo antes de la primera salida.
+  const outs = (rung?.network?.[0]?.elements || []).filter(el => isOutputType(el.type));
+  if (outs.length) {
+    const minOut = Math.min(...outs.map(el => el.pos.col));
+    if (insCol > minOut) insCol = minOut;
   }
-  const col = isOutputType(type) ? 9999 : calcInsertCol(rungId, e.clientX);
-  return { mode: 'series', col, row: 0 };
+
+  // ¿El cursor cae sobre una rama (fila >= 1)?
+  if (y > GR.ROW_H && numRows > 1) {
+    const row = Math.floor(y / GR.ROW_H);
+    if (row > numRows - 1) {
+      // por debajo de todo el rung → nueva rama en paralelo
+      return mainHasEls ? { mode: 'parallel', col: overCol } : { mode: 'series', insCol };
+    }
+    return { mode: 'series-branch', row, col: overCol };
+  }
+
+  // Fila principal: banda superior (~60%) = serie, inferior = paralelo
+  const lowerBand = y > GR.ROW_H * 0.58;
+  if (lowerBand && mainHasEls) return { mode: 'parallel', col: overCol };
+  return { mode: 'series', insCol };
 }
 
-// Indicador SERIE: línea vertical en la columna de inserción (solo su fila).
-function showSeriesIndicatorSVG(svgEl, insertX, rowIdx = 0) {
+// Dibuja un indicador grande y claro de lo que hará el drop.
+function drawDropPlan(svgEl, plan, numCols, H) {
+  removeDropIndicator(svgEl);
   if (!svgEl) return;
-  const r = document.createElementNS(SVGNS, 'rect');
-  r.classList.add('drop-ghost');
-  r.setAttribute('x', Math.max(0, insertX - 1.5));
-  r.setAttribute('y', rowIdx * GR.ROW_H + 2);
-  r.setAttribute('width', '3');
-  r.setAttribute('height', GR.ROW_H - 4);
-  r.setAttribute('fill', '#4d9ef7');
-  r.setAttribute('rx', '1.5');
-  r.setAttribute('pointer-events', 'none');
-  r.style.cssText = 'filter:drop-shadow(0 0 4px #4d9ef7);';
-  svgEl.appendChild(r);
-}
-
-// Indicador PARALELO: horquilla punteada bajo la columna (nueva rama).
-function showParallelIndicatorSVG(svgEl, col) {
-  if (!svgEl) return;
-  const H  = Number(svgEl.getAttribute('height')) || GR.ROW_H;
-  const m0 = GR.LPAD + GR.EL_H / 2;          // wire de la fila principal
-  const yb = H - 5;                          // línea de la rama preview
-  const lx = GR.RAIL + col * GR.COL_W;       // jX(col)
-  const rx = GR.RAIL + (col + 1) * GR.COL_W; // jX(col+1)
-  const g  = document.createElementNS(SVGNS, 'g');
-  g.classList.add('drop-ghost');
-  g.setAttribute('pointer-events', 'none');
+  const add  = el => { el.classList.add('drop-ghost'); el.setAttribute('pointer-events', 'none'); svgEl.appendChild(el); return el; };
+  const rect = (x, y, w, h, fill, stroke) => {
+    const r = document.createElementNS(SVGNS, 'rect');
+    r.setAttribute('x', x); r.setAttribute('y', y);
+    r.setAttribute('width', w); r.setAttribute('height', h); r.setAttribute('rx', '2');
+    r.setAttribute('fill', fill);
+    if (stroke) { r.setAttribute('stroke', stroke); r.setAttribute('stroke-width', '1.5'); }
+    return add(r);
+  };
   const line = (x1, y1, x2, y2) => {
     const l = document.createElementNS(SVGNS, 'line');
     l.setAttribute('x1', x1); l.setAttribute('y1', y1);
     l.setAttribute('x2', x2); l.setAttribute('y2', y2);
     l.setAttribute('stroke', '#4d9ef7'); l.setAttribute('stroke-width', '2.5');
     l.setAttribute('stroke-dasharray', '4 3'); l.setAttribute('stroke-linecap', 'round');
-    return l;
+    return add(l);
   };
-  g.appendChild(line(lx, m0, lx, yb));
-  g.appendChild(line(rx, m0, rx, yb));
-  g.appendChild(line(lx, yb, rx, yb));
-  for (const x of [lx, rx]) {
-    const c = document.createElementNS(SVGNS, 'circle');
-    c.setAttribute('cx', x); c.setAttribute('cy', m0); c.setAttribute('r', '3.2');
-    c.setAttribute('fill', '#5db8ff');
-    g.appendChild(c);
+  const label = (x, y, txt) => {
+    const t = document.createElementNS(SVGNS, 'text');
+    t.setAttribute('x', x); t.setAttribute('y', y);
+    t.setAttribute('font-size', '8'); t.setAttribute('font-weight', '700');
+    t.setAttribute('font-family', 'DM Mono, monospace'); t.setAttribute('fill', '#9fd0ff');
+    t.textContent = txt;
+    return add(t);
+  };
+
+  if (plan.mode === 'parallel') {
+    const lx = GR.RAIL + plan.col * GR.COL_W;
+    const rx = lx + GR.COL_W;
+    const m0 = GR.LPAD + GR.EL_H / 2;
+    const yb = H - 6;
+    rect(lx, 2, GR.COL_W, H - 4, 'rgba(77,158,247,0.13)', '#4d9ef7');
+    line(lx, m0, lx, yb); line(rx, m0, rx, yb); line(lx, yb, rx, yb);
+    label(lx + 4, 10, 'PARALELO');
+  } else if (plan.mode === 'series-branch') {
+    const ry = plan.row * GR.ROW_H;
+    const xx = GR.RAIL + (plan.col + 1) * GR.COL_W;
+    rect(xx - 2.5, ry + 2, 5, GR.ROW_H - 4, '#4d9ef7', null);
+    label(xx + 5, ry + 10, '+ SERIE');
+  } else {
+    const c  = plan.insCol == null ? numCols : plan.insCol;
+    const xx = GR.RAIL + c * GR.COL_W;
+    rect(xx - 2.5, 2, 5, GR.ROW_H - 4, '#4d9ef7', null);
+    label(xx + 5, 10, 'SERIE');
   }
-  svgEl.appendChild(g);
+}
+
+// Ejecuta el plan calculado (mismo para drop y para clic-con-componente-armado).
+function applyPlan(rungId, type, plan) {
+  if (plan.mode === 'parallel') {
+    store.addParallelElement(rungId, type, plan.col);
+    showToast('Rama en paralelo agregada', 'success');
+  } else if (plan.mode === 'series-branch') {
+    store.addSeriesToBranch(rungId, plan.row, type);
+    showToast('En serie dentro de la rama', 'success');
+  } else {
+    store.addElement(rungId, type, plan.insCol);
+    showToast(isOutputType(type) ? 'Salida agregada' : 'Elemento en serie agregado', 'success');
+  }
 }
 
 function removeDropIndicator(el) {
@@ -846,44 +889,40 @@ function onSidebarDragStart(e) {
 
 let _lastDragRungId = null;
 
+// Resuelve el contenedor .rung y su SVG sin importar qué subelemento (rect de
+// hit, wire, etc.) esté bajo el cursor — clave para que el drag sea fiable.
+function rungHostFromEvent(e) {
+  return e.target.closest('.rung');
+}
+
 function onRungAreaDragOver(e) {
-  const rungEl = e.target.closest('[data-rung-id]');
-  if (!rungEl) return;
+  const host = rungHostFromEvent(e);
+  if (!host) return;
   e.preventDefault();
   e.dataTransfer.dropEffect = 'copy';
 
-  const rungId = Number(rungEl.dataset.rungId);
+  const rungId = Number(host.dataset.rungId);
   if (_lastDragRungId !== rungId) {
     clearAllDragIndicators();
     _lastDragRungId = rungId;
   }
-  rungEl.classList.add('drag-over');
+  host.classList.add('drag-over');
 
   const type  = store.getArmed();
-  const svgEl = rungEl.querySelector('.rung-svg');
-  if (!svgEl) return;
-  removeDropIndicator(svgEl);
-
-  const t = resolveDropTarget(e, rungId, type);
-  if (t.mode === 'parallel') {
-    showParallelIndicatorSVG(svgEl, t.col);
-  } else if (t.mode === 'series-branch') {
-    // línea de inserción a la derecha del elemento de la rama
-    const insertX = GR.RAIL + (t.col + 1) * GR.COL_W;
-    showSeriesIndicatorSVG(svgEl, insertX, t.row);
-  } else {
-    const numCols = Number(svgEl.dataset.numCols) || 1;
-    const realCol = Math.min(t.col, numCols);
-    showSeriesIndicatorSVG(svgEl, GR.RAIL + realCol * GR.COL_W, 0);
-  }
+  const svgEl = host.querySelector('.rung-svg');
+  if (!svgEl || !type) return;
+  const H       = Number(svgEl.getAttribute('height')) || GR.ROW_H;
+  const numCols = Number(svgEl.dataset.numCols) || 1;
+  const plan    = dropPlan(rungId, svgEl, e.clientX, e.clientY, type);
+  drawDropPlan(svgEl, plan, numCols, H);
 }
 
 function onRungAreaDragLeave(e) {
-  const rungEl = e.target.closest('[data-rung-id]');
-  if (!rungEl) return;
-  if (e.relatedTarget && rungEl.contains(e.relatedTarget)) return;
-  rungEl.classList.remove('drag-over');
-  removeDropIndicator(rungEl.querySelector('.rung-svg'));
+  const host = rungHostFromEvent(e);
+  if (!host) return;
+  if (e.relatedTarget && host.contains(e.relatedTarget)) return;
+  host.classList.remove('drag-over');
+  removeDropIndicator(host.querySelector('.rung-svg'));
   _lastDragRungId = null;
 }
 
@@ -892,24 +931,16 @@ function onRungAreaDrop(e) {
   clearAllDragIndicators();
   _lastDragRungId = null;
 
-  const rungEl = e.target.closest('[data-rung-id]');
-  if (!rungEl) return;
-  const type   = e.dataTransfer.getData('text/plain');
+  const host = rungHostFromEvent(e);
+  if (!host) return;
+  const type   = e.dataTransfer.getData('text/plain') || store.getArmed();
   if (!type) return;
-  const rungId = Number(rungEl.dataset.rungId);
+  const rungId = Number(host.dataset.rungId);
+  const svgEl  = host.querySelector('.rung-svg');
+  if (!svgEl) { store.addElement(rungId, type); return; }
 
-  // Misma decisión que mostró el indicador durante el dragover
-  const t = resolveDropTarget(e, rungId, type);
-  if (t.mode === 'parallel') {
-    store.addParallelElement(rungId, type, t.col);
-    showToast('Rama paralela agregada', 'success');
-  } else if (t.mode === 'series-branch') {
-    store.addSeriesToBranch(rungId, t.row, type);
-    showToast('Elemento en serie agregado a la rama', 'success');
-  } else {
-    store.addElement(rungId, type, isOutputType(type) ? null : t.col);
-    showToast(`${type} agregado al rung ${rungId}`, 'success');
-  }
+  // Misma decisión por coordenadas que mostró el indicador durante el dragover
+  applyPlan(rungId, type, dropPlan(rungId, svgEl, e.clientX, e.clientY, type));
 }
 
 // ── Búsqueda en sidebar ───────────────────────────────────────
