@@ -110,6 +110,53 @@ export function newElement(type, col) {
   return el;
 }
 
+// ── Helpers de columnas (series / paralelo) ───────────────────
+// El modelo de grilla usa una columna global por elemento. La fila 0
+// es la línea serie principal; las filas 1+ son ramas paralelas con
+// span:{from,to} que indica entre qué columnas de la principal se
+// conectan. Estos helpers mantienen la alineación al insertar/borrar.
+
+/** Máxima columna usada en cualquier fila del rung (elementos y spans). */
+export function maxColOf(rung) {
+  let max = 0;
+  for (const row of rung.network ?? []) {
+    for (const el of row.elements ?? []) if (el.pos.col > max) max = el.pos.col;
+    if (row.span && row.span.to > max) max = row.span.to;
+  }
+  return max;
+}
+
+/** Corre +delta todas las columnas (elementos y spans) >= fromCol, en todas las filas. */
+export function shiftColsFrom(rung, fromCol, delta) {
+  for (const row of rung.network ?? []) {
+    for (const el of row.elements ?? []) if (el.pos.col >= fromCol) el.pos.col += delta;
+    if (row.span) {
+      if (row.span.from >= fromCol) row.span.from += delta;
+      if (row.span.to   >= fromCol) row.span.to   += delta;
+    }
+  }
+}
+
+/** Elimina columnas totalmente vacías preservando alineación y spans. */
+export function compactColumns(rung) {
+  const max  = maxColOf(rung);
+  const keep = new Set();
+  for (const row of rung.network ?? []) {
+    for (const el of row.elements ?? []) keep.add(el.pos.col);
+    if (row.span) for (let c = row.span.from; c <= row.span.to; c++) keep.add(c);
+  }
+  const map = {};
+  let n = 0;
+  for (let c = 0; c <= max; c++) if (keep.has(c)) map[c] = n++;
+  for (const row of rung.network ?? []) {
+    for (const el of row.elements ?? []) el.pos.col = map[el.pos.col] ?? el.pos.col;
+    if (row.span) {
+      row.span.from = map[row.span.from] ?? row.span.from;
+      row.span.to   = map[row.span.to]   ?? row.span.to;
+    }
+  }
+}
+
 export function validateProgram(prog) {
   const errors = [];
   const st = prog.symbol_table || {};

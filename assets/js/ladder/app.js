@@ -6,7 +6,7 @@
  * Lineas modificadas marcadas con: // ← NUEVO
  */
 
-import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES } from './schema.js';
+import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
 
@@ -17,6 +17,7 @@ function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 const store = (() => {
   let _prog  = importFromURL() ?? defaultProgram();
   let _sel   = { rungId: null, elementId: null };
+  let _multi = { rungId: null, ids: new Set() };   // selección múltiple (para paralelo por rango)
   let _armed = null;
   let _log   = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v2.0' }];
   const _subs = [];
@@ -122,6 +123,16 @@ const store = (() => {
       }
       // Desplazar elementos existentes con col >= nueva col (solo no-output si insertamos contact)
       els.filter(e => e.pos.col >= col && !(isOut && isOutputType(e.type))).forEach(e => e.pos.col++);
+      // Mantener alineadas las ramas paralelas al insertar en serie en la principal
+      if (!isOut) {
+        for (const row of r.network.slice(1)) {
+          for (const e of row.elements) if (e.pos.col >= col) e.pos.col++;
+          if (row.span) {
+            if (row.span.from >= col) row.span.from++;
+            if (row.span.to   >= col) row.span.to++;
+          }
+        }
+      }
       const el = newElement(type, col);
       els.push(el);
       _sel   = { rungId, elementId: el.id };
@@ -129,7 +140,8 @@ const store = (() => {
       _prog  = p; notify();
     },
 
-    // Agrega un elemento en paralelo con el elemento en atCol de la fila 0
+    // Agrega una NUEVA rama paralela (leg) sobre la columna atCol de la fila 0.
+    // Cada llamada crea una rama independiente → permite OR de N vías sin colisiones.
     addParallelElement(rungId, type, atCol) {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
@@ -137,22 +149,48 @@ const store = (() => {
       // Los paralelos solo aceptan contactos (no bobinas ni outputs)
       const safeType = isOutputType(type) ? 'contact_no' : type;
       const el = newElement(safeType, atCol);
-      // Buscar si ya hay una rama que cubre exactamente esa columna
-      const existing = r.network.slice(1).find(row => {
-        const sp = row.span ?? { from: atCol, to: atCol };
-        return sp.from <= atCol && sp.to >= atCol;
-      });
-      if (existing) {
-        existing.elements.push(el);
-        if (existing.span) {
-          existing.span.from = Math.min(existing.span.from, atCol);
-          existing.span.to   = Math.max(existing.span.to,   atCol);
-        }
-      } else {
-        r.network.push({ row: r.network.length, span: { from: atCol, to: atCol }, elements: [el] });
-      }
-      // Renumerar filas
+      r.network.push({ row: r.network.length, span: { from: atCol, to: atCol }, elements: [el] });
       r.network.forEach((row, i) => row.row = i);
+      _sel   = { rungId, elementId: el.id };
+      _armed = null;
+      _prog  = p; notify();
+    },
+
+    // Crea una rama paralela que abarca un RANGO de columnas [fromCol..toCol]
+    // de la principal (para enclavar un grupo de contactos en serie).
+    addParallelRange(rungId, fromCol, toCol, type) {
+      const p = deepClone(_prog);
+      const r = p.rungs.find(r => r.id === rungId);
+      if (!r) return;
+      const safeType = isOutputType(type) ? 'contact_no' : type;
+      const from = Math.min(fromCol, toCol);
+      const to   = Math.max(fromCol, toCol);
+      const el   = newElement(safeType, from);
+      r.network.push({ row: r.network.length, span: { from, to }, elements: [el] });
+      r.network.forEach((row, i) => row.row = i);
+      _sel   = { rungId, elementId: el.id };
+      _multi = { rungId: null, ids: new Set() };
+      _armed = null;
+      _prog  = p; notify();
+    },
+
+    // Agrega un elemento EN SERIE dentro de una rama paralela existente.
+    // Inserta una columna a la derecha del final de la rama y corre lo que
+    // esté más a la derecha, manteniendo todo alineado con la principal.
+    addSeriesToBranch(rungId, branchRowIdx, type) {
+      const p = deepClone(_prog);
+      const r = p.rungs.find(r => r.id === rungId);
+      if (!r) return;
+      const branch = r.network[branchRowIdx];
+      if (!branch || branchRowIdx === 0) return;
+      const safeType  = isOutputType(type) ? 'contact_no' : type;
+      const branchTo  = branch.span?.to ?? Math.max(...branch.elements.map(e => e.pos.col));
+      const insertCol = branchTo + 1;
+      // Hacer espacio: correr a la derecha todo lo que esté en col >= insertCol
+      shiftColsFrom(r, insertCol, +1);
+      const el = newElement(safeType, insertCol);
+      branch.elements.push(el);
+      branch.span = { from: branch.span?.from ?? insertCol, to: insertCol };
       _sel   = { rungId, elementId: el.id };
       _armed = null;
       _prog  = p; notify();
@@ -162,17 +200,24 @@ const store = (() => {
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
-      for (const row of r.network) {
+      for (let ri = 0; ri < r.network.length; ri++) {
+        const row = r.network[ri];
         const idx = row.elements.findIndex(e => e.id === elId);
         if (idx < 0) continue;
         row.elements.splice(idx, 1);
-        const sorted = row.elements.slice().sort((a,b) => a.pos.col - b.pos.col);
-        sorted.forEach((e,i) => e.pos.col = i);
+        // En ramas (ri>0) recomputar el span desde los elementos restantes;
+        // NO renumerar a 0 (rompería la alineación con la principal).
+        if (ri > 0 && row.span && row.elements.length) {
+          row.span.from = Math.min(...row.elements.map(e => e.pos.col));
+          row.span.to   = Math.max(...row.elements.map(e => e.pos.col));
+        }
         break;
       }
-      // Limpiar ramas vacías (no la fila 0)
+      // Limpiar ramas vacías (no la fila 0) y renumerar filas
       r.network = r.network.filter((row, i) => i === 0 || row.elements.length > 0);
-      r.network.forEach((row,i) => row.row = i);
+      r.network.forEach((row, i) => row.row = i);
+      // Quitar columnas que quedaron vacías, preservando alineación
+      compactColumns(r);
       _sel  = { rungId, elementId: null };
       _prog = p; notify();
     },
@@ -195,9 +240,19 @@ const store = (() => {
 
     // ── Selección ─────────────────────────────────────────────
     getSelection()          { return _sel; },
-    selectRung(id)          { _sel = { rungId: id, elementId: null }; notify(); },
-    selectElement(rid, eid) { _sel = { rungId: rid, elementId: eid }; notify(); },
-    clearSelection()        { _sel = { rungId: null, elementId: null }; notify(); },
+    selectRung(id)          { _sel = { rungId: id, elementId: null }; _multi = { rungId: null, ids: new Set() }; notify(); },
+    selectElement(rid, eid) { _sel = { rungId: rid, elementId: eid }; _multi = { rungId: null, ids: new Set() }; notify(); },
+    clearSelection()        { _sel = { rungId: null, elementId: null }; _multi = { rungId: null, ids: new Set() }; notify(); },
+
+    // ── Selección múltiple (Ctrl/Shift+clic) ──────────────────
+    getMultiSelection() { return _multi; },
+    toggleMultiSelect(rungId, elId) {
+      if (_multi.rungId !== rungId) _multi = { rungId, ids: new Set() };
+      if (_multi.ids.has(elId)) _multi.ids.delete(elId);
+      else                       _multi.ids.add(elId);
+      _sel = { rungId, elementId: elId };
+      notify();
+    },
 
     // ── Sidebar armed ─────────────────────────────────────────
     getArmed() { return _armed; },
@@ -271,6 +326,31 @@ function pasteFromClipboard() {
   }
 }
 
+// ── Agrupar selección en paralelo ─────────────────────────────
+function groupSelectionParallel() {
+  const multi = store.getMultiSelection();
+  if (!multi.rungId || multi.ids.size === 0) {
+    showToast('Selecciona contactos con Ctrl+clic primero', 'info');
+    return;
+  }
+  const rung = store.getProgram().rungs.find(r => r.id === multi.rungId);
+  if (!rung) return;
+  // Solo elementos de la línea principal (fila 0) que no sean salidas
+  const mainEls = (rung.network[0]?.elements ?? [])
+    .filter(e => multi.ids.has(e.id) && !isOutputType(e.type));
+  if (mainEls.length === 0) {
+    showToast('Selecciona contactos de la línea principal', 'info');
+    return;
+  }
+  const cols  = mainEls.map(e => e.pos.col);
+  const from  = Math.min(...cols);
+  const to    = Math.max(...cols);
+  const armed = store.getArmed() || 'contact_no';
+  store.addParallelRange(multi.rungId, from, to, armed);
+  showToast(`Rama paralela sobre columnas ${from}–${to}`, 'success');
+  store.log('info', `Paralelo de rango ${from}-${to} en rung ${multi.rungId}`);
+}
+
 // ── Zoom ──────────────────────────────────────────────────────
 let _zoom = 1.0;
 function adjustZoom(delta) {
@@ -315,10 +395,12 @@ function updateEtLabel(prog) {
 }
 
 function render() {
-  const prog = store.getProgram();
-  const sel  = store.getSelection();
+  const prog  = store.getProgram();
+  const sel   = store.getSelection();
+  const multi = store.getMultiSelection();
+  const selFull = { ...sel, multiRungId: multi.rungId, multiIds: multi.ids };
   const ra   = document.getElementById('rungArea');
-  if (ra) renderAllRungs(ra, prog, sel);
+  if (ra) renderAllRungs(ra, prog, selFull);
   renderTerminal();
   renderActiveTab(prog);
   updateSidebarArmed();
@@ -436,6 +518,8 @@ function showCtxMenu(x, y, mode) {
       <div class="ctx-header"><i class="ti ti-adjustments"></i> ${esc(el?.type ?? '?')} · ${esc(el?.address ?? '?')}</div>
       <div class="ctx-item" data-action="edit-props"><i class="ti ti-pencil"></i> Editar propiedades</div>
       ${isMain && isContact ? `<div class="ctx-item" data-action="add-parallel"><i class="ti ti-git-branch"></i> Poner en paralelo aquí</div>` : ''}
+      ${isMain && store.getMultiSelection().ids.size >= 1 ? `<div class="ctx-item" data-action="group-parallel"><i class="ti ti-arrows-join"></i> Agrupar selección en paralelo</div>` : ''}
+      ${!isMain ? `<div class="ctx-item" data-action="add-series-branch"><i class="ti ti-dots"></i> Agregar contacto en serie</div>` : ''}
       ${isContact ? `<div class="ctx-item" data-action="toggle-nc"><i class="ti ti-switch-horizontal"></i> ${el.type === 'contact_no' ? 'Cambiar a NC (cerrado)' : 'Cambiar a NO (abierto)'}</div>` : ''}
       <div class="ctx-sep"></div>
       <div class="ctx-item" data-action="copy-el"><i class="ti ti-copy"></i> Copiar</div>
@@ -482,7 +566,7 @@ function onCtxMenuClick(e) {
   const item = e.target.closest('[data-action]');
   if (!item || !_ctxTarget) return;
   const action  = item.dataset.action;
-  const { rungId, elId, col } = _ctxTarget;
+  const { rungId, elId, col, row } = _ctxTarget;
   hideCtxMenu();
 
   switch (action) {
@@ -504,6 +588,16 @@ function onCtxMenuClick(e) {
       store.log('info', `Paralelo en rung ${rungId} col ${col}`);
       break;
     }
+    case 'add-series-branch': {
+      const armed = store.getArmed() || 'contact_no';
+      store.addSeriesToBranch(rungId, row, armed);
+      showToast('Contacto en serie agregado a la rama', 'success');
+      store.log('info', `Serie en rama ${row} del rung ${rungId}`);
+      break;
+    }
+    case 'group-parallel':
+      groupSelectionParallel();
+      break;
     case 'toggle-nc': {
       const prog = store.getProgram();
       const rung = prog.rungs.find(r => r.id === rungId);
@@ -577,6 +671,8 @@ function onRungAreaClick(e) {
     const elId   = elHit.dataset.elId;
     const armed  = store.getArmed();
     if (armed) { store.addElement(rungId, armed); return; }
+    // Ctrl/Shift+clic → selección múltiple (para agrupar en paralelo)
+    if (e.ctrlKey || e.metaKey || e.shiftKey) { store.toggleMultiSelect(rungId, elId); return; }
     store.selectElement(rungId, elId);
     return;
   }
@@ -610,7 +706,10 @@ function onContextMenu(e) {
     const elId   = elHit.dataset.elId;
     const col    = Number(elHit.dataset.col ?? 0);
     const row    = Number(elHit.dataset.row ?? 0);
-    store.selectElement(rungId, elId);
+    // Si el elemento ya forma parte de una selección múltiple, conservarla
+    // (para poder "Agrupar en paralelo"); si no, seleccionar solo este.
+    const multi = store.getMultiSelection();
+    if (!(multi.rungId === rungId && multi.ids.has(elId))) store.selectElement(rungId, elId);
     _ctxTarget = { type: 'element', rungId, elId, col, row };
     showCtxMenu(e.clientX, e.clientY, 'element');
   } else {
@@ -659,21 +758,71 @@ function calcInsertCol(rungId, clientX) {
   return sorted.length > 0 ? sorted.at(-1).pos.col + 1 : 0;
 }
 
-function showDropIndicatorSVG(svgEl, insertX) {
-  removeDropIndicator(svgEl);
+const SVGNS = 'http://www.w3.org/2000/svg';
+
+// Decide qué hará el drop según dónde está el cursor:
+//  - sobre la mitad inferior de un elemento de la principal → paralelo
+//  - sobre un elemento de una rama → serie dentro de esa rama
+//  - en cualquier otro punto (wire / mitad superior) → serie en la principal
+function resolveDropTarget(e, rungId, type) {
+  const elHit = e.target.closest('.ladder-el');
+  if (elHit && !isOutputType(type)) {
+    const col = Number(elHit.dataset.col ?? 0);
+    const row = Number(elHit.dataset.row ?? 0);
+    if (row > 0) return { mode: 'series-branch', col, row };
+    const rect    = elHit.getBoundingClientRect();
+    const inLower = e.clientY > rect.top + rect.height * 0.55;
+    return inLower ? { mode: 'parallel', col, row: 0 } : { mode: 'series', col, row: 0 };
+  }
+  const col = isOutputType(type) ? 9999 : calcInsertCol(rungId, e.clientX);
+  return { mode: 'series', col, row: 0 };
+}
+
+// Indicador SERIE: línea vertical en la columna de inserción (solo su fila).
+function showSeriesIndicatorSVG(svgEl, insertX, rowIdx = 0) {
   if (!svgEl) return;
-  const h = Number(svgEl.getAttribute('height')) || GR.ROW_H;
-  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  const r = document.createElementNS(SVGNS, 'rect');
   r.classList.add('drop-ghost');
-  r.setAttribute('x', Math.max(0, insertX - 1));
-  r.setAttribute('y', '2');
+  r.setAttribute('x', Math.max(0, insertX - 1.5));
+  r.setAttribute('y', rowIdx * GR.ROW_H + 2);
   r.setAttribute('width', '3');
-  r.setAttribute('height', h - 4);
+  r.setAttribute('height', GR.ROW_H - 4);
   r.setAttribute('fill', '#4d9ef7');
-  r.setAttribute('rx', '1');
+  r.setAttribute('rx', '1.5');
   r.setAttribute('pointer-events', 'none');
-  r.style.cssText = 'box-shadow:0 0 6px #4d9ef7;';
+  r.style.cssText = 'filter:drop-shadow(0 0 4px #4d9ef7);';
   svgEl.appendChild(r);
+}
+
+// Indicador PARALELO: horquilla punteada bajo la columna (nueva rama).
+function showParallelIndicatorSVG(svgEl, col) {
+  if (!svgEl) return;
+  const H  = Number(svgEl.getAttribute('height')) || GR.ROW_H;
+  const m0 = GR.LPAD + GR.EL_H / 2;          // wire de la fila principal
+  const yb = H - 5;                          // línea de la rama preview
+  const lx = GR.RAIL + col * GR.COL_W;       // jX(col)
+  const rx = GR.RAIL + (col + 1) * GR.COL_W; // jX(col+1)
+  const g  = document.createElementNS(SVGNS, 'g');
+  g.classList.add('drop-ghost');
+  g.setAttribute('pointer-events', 'none');
+  const line = (x1, y1, x2, y2) => {
+    const l = document.createElementNS(SVGNS, 'line');
+    l.setAttribute('x1', x1); l.setAttribute('y1', y1);
+    l.setAttribute('x2', x2); l.setAttribute('y2', y2);
+    l.setAttribute('stroke', '#4d9ef7'); l.setAttribute('stroke-width', '2.5');
+    l.setAttribute('stroke-dasharray', '4 3'); l.setAttribute('stroke-linecap', 'round');
+    return l;
+  };
+  g.appendChild(line(lx, m0, lx, yb));
+  g.appendChild(line(rx, m0, rx, yb));
+  g.appendChild(line(lx, yb, rx, yb));
+  for (const x of [lx, rx]) {
+    const c = document.createElementNS(SVGNS, 'circle');
+    c.setAttribute('cx', x); c.setAttribute('cy', m0); c.setAttribute('r', '3.2');
+    c.setAttribute('fill', '#5db8ff');
+    g.appendChild(c);
+  }
+  svgEl.appendChild(g);
 }
 
 function removeDropIndicator(el) {
@@ -710,15 +859,22 @@ function onRungAreaDragOver(e) {
   }
   rungEl.classList.add('drag-over');
 
-  // Calcular columna de inserción y mostrar indicador en SVG
   const type  = store.getArmed();
-  const col   = isOutputType(type) ? 9999 : calcInsertCol(rungId, e.clientX);
   const svgEl = rungEl.querySelector('.rung-svg');
-  if (svgEl) {
+  if (!svgEl) return;
+  removeDropIndicator(svgEl);
+
+  const t = resolveDropTarget(e, rungId, type);
+  if (t.mode === 'parallel') {
+    showParallelIndicatorSVG(svgEl, t.col);
+  } else if (t.mode === 'series-branch') {
+    // línea de inserción a la derecha del elemento de la rama
+    const insertX = GR.RAIL + (t.col + 1) * GR.COL_W;
+    showSeriesIndicatorSVG(svgEl, insertX, t.row);
+  } else {
     const numCols = Number(svgEl.dataset.numCols) || 1;
-    const realCol = Math.min(col, numCols);
-    const insertX = GR.RAIL + realCol * GR.COL_W;
-    showDropIndicatorSVG(svgEl, insertX);
+    const realCol = Math.min(t.col, numCols);
+    showSeriesIndicatorSVG(svgEl, GR.RAIL + realCol * GR.COL_W, 0);
   }
 }
 
@@ -742,22 +898,18 @@ function onRungAreaDrop(e) {
   if (!type) return;
   const rungId = Number(rungEl.dataset.rungId);
 
-  // Detectar si se soltó sobre un elemento específico (para paralelo)
-  const elHit = e.target.closest('.ladder-el');
-  if (elHit && !isOutputType(type)) {
-    const col = Number(elHit.dataset.col ?? 0);
-    const row = Number(elHit.dataset.row ?? 0);
-    if (row === 0) {
-      // Soltar sobre elemento en fila 0: agregar en paralelo a esa columna
-      store.addParallelElement(rungId, type, col);
-      showToast('Rama paralela agregada', 'success');
-      return;
-    }
+  // Misma decisión que mostró el indicador durante el dragover
+  const t = resolveDropTarget(e, rungId, type);
+  if (t.mode === 'parallel') {
+    store.addParallelElement(rungId, type, t.col);
+    showToast('Rama paralela agregada', 'success');
+  } else if (t.mode === 'series-branch') {
+    store.addSeriesToBranch(rungId, t.row, type);
+    showToast('Elemento en serie agregado a la rama', 'success');
+  } else {
+    store.addElement(rungId, type, isOutputType(type) ? null : t.col);
+    showToast(`${type} agregado al rung ${rungId}`, 'success');
   }
-
-  const col = calcInsertCol(rungId, e.clientX);
-  store.addElement(rungId, type, col);
-  showToast(`${type} agregado al rung ${rungId}`, 'success');
 }
 
 // ── Búsqueda en sidebar ───────────────────────────────────────
@@ -818,6 +970,7 @@ function onToolbarClick(e) {
     return;
   }
   if (txt.includes('Pegar')) { pasteFromClipboard(); return; }
+  if (txt.includes('Paralelo')) { groupSelectionParallel(); return; }
   if (iconClass.includes('ti-zoom-in'))  { adjustZoom(0.2);  return; }
   if (iconClass.includes('ti-zoom-out')) { adjustZoom(-0.2); return; }
 }

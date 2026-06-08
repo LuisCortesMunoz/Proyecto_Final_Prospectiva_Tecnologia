@@ -118,9 +118,15 @@ export function renderRung(rung, program, selection) {
   const addrC = en ? 'rgba(77,158,247,0.88)' : 'rgba(77,158,247,0.55)';
   const symC  = en ? 'rgba(77,158,247,0.7)'  : 'rgba(63,92,122,0.6)';
 
-  // Columnas basadas en la fila principal (row 0)
+  // Columnas: tomar el máximo entre la principal y TODAS las ramas, para
+  // que una rama con varios elementos en serie no se desborde del SVG.
   const mainEls = [...(rows[0]?.elements ?? [])].sort((a,b) => a.pos.col - b.pos.col);
-  const numCols = mainEls.length > 0 ? mainEls[mainEls.length-1].pos.col + 1 : 1;
+  let maxCol = 0;
+  for (const row of rows) {
+    for (const el of (row.elements ?? [])) if (el.pos.col > maxCol) maxCol = el.pos.col;
+    if (row.span && row.span.to > maxCol) maxCol = row.span.to;
+  }
+  const numCols = maxCol + 1;
   const numRows = rows.length;
 
   const W = svgW(numCols);
@@ -187,9 +193,12 @@ export function renderRung(rung, program, selection) {
       const ex  = colCX(el.pos.col) - ew / 2;
       const ey  = ry - GR.EL_H / 2;
       const sel = selRung && selection?.elementId === el.id;
+      const inMulti = selection?.multiRungId === rung.id && selection?.multiIds?.has?.(el.id);
 
       if (sel) {
         elsvg += `<rect x="${ex-4}" y="${ey-2}" width="${ew+8}" height="${GR.EL_H+4}" rx="3" fill="rgba(46,125,225,0.18)" stroke="rgba(46,125,225,0.5)" stroke-width="1"/>`;
+      } else if (inMulti) {
+        elsvg += `<rect x="${ex-4}" y="${ey-2}" width="${ew+8}" height="${GR.EL_H+4}" rx="3" fill="rgba(77,158,247,0.12)" stroke="#4d9ef7" stroke-width="1" stroke-dasharray="3 2"/>`;
       }
       elsvg += `<g transform="translate(${ex},${ey})">${elInner(el.type, en)}</g>`;
 
