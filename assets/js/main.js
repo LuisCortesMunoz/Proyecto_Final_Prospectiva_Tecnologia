@@ -1,23 +1,22 @@
 // ============================
 // CONFIGURACION BACKEND
 // ============================
-// IMPORTANTE:
-// Cambia esta URL por tu URL real de Render, sin slash al final.
-// Ejemplo: https://backend-prospectiva-tecnologia.onrender.com
-const BACKEND_BASE_URL = (window.LADDERVOICE_BACKEND_URL || 'https://backend-render-prospectiva-tecnologia.onrender.com').replace(/\/$/, '');
+// URL real de Render, sin slash al final.
+const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
 const VOZ_A_LADDER_URL = `${BACKEND_BASE_URL}/voz-a-ladder`;
 
-// Si lo pones en true, al terminar abre automaticamente ladder.html con el programa generado.
-// Si lo dejas en false, aparece un boton para abrir el editor.
+// Si quieres que se abra el editor automáticamente al terminar, cambia a true.
 const AUTO_OPEN_LADDER = false;
 
 // ============================
 // NAVBAR DROPDOWN
 // ============================
 (function initNavbar() {
-  const btn  = document.getElementById('onav-logo-btn');
-  const dd   = document.getElementById('onav-dropdown');
+  const btn = document.getElementById('onav-logo-btn');
+  const dd = document.getElementById('onav-dropdown');
+
   if (!btn || !dd) return;
+
   const wrap = btn.closest('.onav-logo-wrap');
 
   btn.addEventListener('click', e => {
@@ -40,6 +39,7 @@ const AUTO_OPEN_LADDER = false;
 (function initTheme() {
   const tb = document.getElementById('theme-toggle');
   if (!tb) return;
+
   const ic = tb.querySelector('i');
   const saved = localStorage.getItem('lv_theme');
 
@@ -50,9 +50,13 @@ const AUTO_OPEN_LADDER = false;
 
   tb.addEventListener('click', () => {
     const isLight = document.documentElement.dataset.theme === 'light';
+
     document.documentElement.dataset.theme = isLight ? '' : 'light';
     localStorage.setItem('lv_theme', isLight ? '' : 'light');
-    if (ic) ic.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+
+    if (ic) {
+      ic.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
+    }
   });
 })();
 
@@ -60,13 +64,13 @@ const AUTO_OPEN_LADDER = false;
 // VOICE INTERFACE CON STT + LADDER
 // ============================
 (function initVoice() {
-  const micBtn    = document.getElementById('micBtn');
-  const micIcon   = document.getElementById('micIcon');
-  const waveform  = document.getElementById('voiceWaveform');
-  const statusEl  = document.getElementById('voiceStatus');
+  const micBtn = document.getElementById('micBtn');
+  const micIcon = document.getElementById('micIcon');
+  const waveform = document.getElementById('voiceWaveform');
+  const statusEl = document.getElementById('voiceStatus');
   const statusTxt = document.getElementById('statusText');
-  const hintEl    = document.getElementById('voiceHint');
-  const convo     = document.getElementById('conversation');
+  const hintEl = document.getElementById('voiceHint');
+  const convo = document.getElementById('conversation');
 
   if (!micBtn) return;
 
@@ -76,8 +80,11 @@ const AUTO_OPEN_LADDER = false;
   let activeStream = null;
 
   function setStatus(state, text) {
-    micBtn.className   = 'mic-orb' + (state ? ' ' + state : '');
-    statusEl.className = 'voice-status' + (state ? ' ' + state : '');
+    micBtn.className = 'mic-orb' + (state ? ' ' + state : '');
+
+    if (statusEl) {
+      statusEl.className = 'voice-status' + (state ? ' ' + state : '');
+    }
 
     if (micIcon) {
       micIcon.className = state === 'processing'
@@ -87,8 +94,13 @@ const AUTO_OPEN_LADDER = false;
           : 'fa-solid fa-microphone';
     }
 
-    if (statusTxt) statusTxt.textContent = text;
-    if (waveform) waveform.classList.toggle('active', state === 'listening');
+    if (statusTxt) {
+      statusTxt.textContent = text;
+    }
+
+    if (waveform) {
+      waveform.classList.toggle('active', state === 'listening');
+    }
 
     if (hintEl) {
       const hints = {
@@ -96,6 +108,7 @@ const AUTO_OPEN_LADDER = false;
         listening: 'Grabando... toca otra vez para detener',
         processing: 'Transcribiendo y generando Ladder...',
       };
+
       hintEl.textContent = hints[state] || hints[''];
     }
   }
@@ -143,17 +156,23 @@ const AUTO_OPEN_LADDER = false;
   }
 
   function getFileExtension(mimeType) {
+    if (!mimeType) return 'webm';
     if (mimeType.includes('mp4')) return 'm4a';
     if (mimeType.includes('ogg')) return 'ogg';
+    if (mimeType.includes('wav')) return 'wav';
     return 'webm';
   }
 
   function encodeProgramToURL(program) {
     const json = JSON.stringify(program);
-    const utf8 = encodeURIComponent(json).replace(/%([0-9A-F]{2})/g, (_, hex) => {
-      return String.fromCharCode(parseInt(hex, 16));
-    });
-    return btoa(utf8);
+    const bytes = new TextEncoder().encode(json);
+
+    let binary = '';
+    for (const b of bytes) {
+      binary += String.fromCharCode(b);
+    }
+
+    return btoa(binary);
   }
 
   function openProgramInLadder(program) {
@@ -174,18 +193,17 @@ const AUTO_OPEN_LADDER = false;
     btn.style.padding = '10px 14px';
     btn.style.fontWeight = '700';
 
-    btn.addEventListener('click', () => openProgramInLadder(program));
+    btn.addEventListener('click', () => {
+      openProgramInLadder(program);
+    });
 
     wrap.appendChild(btn);
     return wrap;
   }
 
   async function enviarAudioAVozLadder(audioBlob, mimeType) {
-    if (BACKEND_BASE_URL.includes('TU-BACKEND')) {
-      throw new Error('Falta configurar BACKEND_BASE_URL en assets/js/main.js con tu URL real de Render.');
-    }
-
     const extension = getFileExtension(mimeType || audioBlob.type || 'audio/webm');
+
     const formData = new FormData();
     formData.append('audio', audioBlob, `comando_voz.${extension}`);
 
@@ -212,13 +230,14 @@ const AUTO_OPEN_LADDER = false;
 
     try {
       const mimeType = getSupportedMimeType();
+
       activeStream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunks = [];
 
       const options = mimeType ? { mimeType } : undefined;
       mediaRecorder = new MediaRecorder(activeStream, options);
 
-      mediaRecorder.ondataavailable = (event) => {
+      mediaRecorder.ondataavailable = event => {
         if (event.data && event.data.size > 0) {
           audioChunks.push(event.data);
         }
@@ -232,6 +251,10 @@ const AUTO_OPEN_LADDER = false;
           if (activeStream) {
             activeStream.getTracks().forEach(track => track.stop());
             activeStream = null;
+          }
+
+          if (!audioBlob.size) {
+            throw new Error('No se grabó audio. Intenta de nuevo.');
           }
 
           setStatus('processing', 'Procesando...');
@@ -259,10 +282,12 @@ const AUTO_OPEN_LADDER = false;
           }
 
           setStatus('', 'Listo');
+
         } catch (err) {
           console.error(err);
           addMessage('ai', 'Error: ' + err.message);
           setStatus('', 'Error');
+
         } finally {
           isRecording = false;
           audioChunks = [];
@@ -272,11 +297,17 @@ const AUTO_OPEN_LADDER = false;
       mediaRecorder.start();
       isRecording = true;
       setStatus('listening', 'Grabando...');
+
     } catch (err) {
       console.error(err);
       addMessage('ai', 'No pude iniciar el micrófono: ' + err.message);
       setStatus('', 'Error');
       isRecording = false;
+
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+        activeStream = null;
+      }
     }
   }
 
