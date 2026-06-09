@@ -1,0 +1,27 @@
+=== Conflict 21 upstream (200) ===
+// ═══════════════════════════════════════════════════════════
+// ← NUEVO: Importar programa desde .js generado por el modelo
+// ─────────────────────────────────────────────────────────
+// El .js gen
+=== Conflict 21 stash (200) ===
+// ── Init ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  // Sidebar draggable
+  document.querySelectorAll('.comp-item[data-type]').forEa
+
+=== Conflict 23 upstream (200) ===
+  store.subscribe(() => {
+    try { pushToURL(store.getProgram()); } catch {}
+  });
+
+  // ← NUEVO: inicializar el importador de .js
+  initImportIA();
+
+
+=== Conflict 23 stash (200) ===
+  // Autosave silencioso en URL
+  store.subscribe(() => { try { pushToURL(store.getProgram()); } catch {} });
+
+  // Render inicial
+
+
