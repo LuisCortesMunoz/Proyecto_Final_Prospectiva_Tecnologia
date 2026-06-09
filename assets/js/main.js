@@ -172,7 +172,9 @@ const AUTO_OPEN_LADDER = false;
       binary += String.fromCharCode(b);
     }
 
-    return btoa(binary);
+    // Base64 URL-safe: debe coincidir con codec.js (decode). Sin +, / ni =
+    // para que el parametro ?l= no se corrompa al leerlo en el editor.
+    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   }
 
   function openProgramInLadder(program) {
