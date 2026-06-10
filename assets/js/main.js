@@ -189,11 +189,7 @@ const AUTO_OPEN_LADDER = false;
     const btn = document.createElement('button');
     btn.textContent = 'Abrir en Editor Ladder';
     btn.type = 'button';
-    btn.style.cursor = 'pointer';
-    btn.style.border = '0';
-    btn.style.borderRadius = '999px';
-    btn.style.padding = '10px 14px';
-    btn.style.fontWeight = '700';
+    btn.className = 'msg-action-btn';
 
     btn.addEventListener('click', () => {
       openProgramInLadder(program);

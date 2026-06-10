@@ -45,7 +45,9 @@ function elRX(col, type) { return colCX(col) + elW(type) / 2; }
 const BLK = { block_ton:'TON', block_tof:'TOF', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
 
 function elInner(type, en) {
-  const c  = en ? '#4d9ef7' : '#3d6fa8';
+  // Colores pensados para fondo claro: energizado azul eléctrico,
+  // desenergizado azul pizarra neutro.
+  const c  = en ? '#2e7de1' : '#5b7896';
   const sw = en ? 1.8 : 1.6;
   switch (type) {
     case 'contact_no': return `
@@ -112,11 +114,11 @@ export function renderRung(rung, program, selection) {
   const selRung = selection?.rungId === rung.id;
   const rows    = rung.network ?? [{ row: 0, elements: [] }];
 
-  const wC = en ? '#4d9ef7' : '#243a5e';   // wire color
-  const rC = en ? '#4d9ef7' : '#2a4e80';   // rail color
-  const jC = en ? '#5db8ff' : '#3a6a9a';   // junction node fill
-  const addrC = en ? 'rgba(77,158,247,0.88)' : 'rgba(77,158,247,0.55)';
-  const symC  = en ? 'rgba(77,158,247,0.7)'  : 'rgba(63,92,122,0.6)';
+  const wC = en ? '#2e7de1' : '#8fa6c0';   // wire color
+  const rC = en ? '#2e7de1' : '#2a4e80';   // rail color
+  const jC = en ? '#1f6fd6' : '#5b7896';   // junction node fill
+  const addrC = en ? 'rgba(31,111,214,0.95)' : 'rgba(31,111,214,0.60)';
+  const symC  = en ? 'rgba(31,111,214,0.75)' : 'rgba(70,98,126,0.70)';
 
   // Columnas: tomar el máximo entre la principal y TODAS las ramas, para
   // que una rama con varios elementos en serie no se desborde del SVG.

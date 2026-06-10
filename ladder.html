@@ -10,31 +10,31 @@
   <style>
     /* ── Design tokens ── */
     :root {
-      --bg-base:        #060d1b;
-      --bg-surface:     #0d1a2e;
-      --bg-elevated:    #142035;
-      --bg-hover:       #1a2840;
-      --bg-active:      #1a3055;
-      --border:         #1e3050;
-      --border-light:   #2a4068;
-      --text-primary:   #e8f0fd;
-      --text-secondary: #7a9fc0;
-      --text-tertiary:  #3f5c7a;
-      --text-mono:      #8dc8e8;
+      --bg-base:        #f2f6fb;
+      --bg-surface:     #ffffff;
+      --bg-elevated:    #f7fafd;
+      --bg-hover:       #eaf1f9;
+      --bg-active:      #dcebfb;
+      --border:         #dbe5f0;
+      --border-light:   #c7d6e8;
+      --text-primary:   #16263a;
+      --text-secondary: #44607c;
+      --text-tertiary:  #7e93aa;
+      --text-mono:      #1f6fd6;
       --accent:         #2e7de1;
-      --accent-bright:  #4d9ef7;
-      --accent-dim:     #1a3a6a;
-      --accent-glow:    rgba(46,125,225,0.18);
-      --success:        #3da84a;
-      --success-dim:    rgba(61,168,74,0.15);
-      --warning:        #d4912a;
-      --warning-dim:    rgba(212,145,42,0.15);
-      --danger:         #d44a3a;
-      --danger-dim:     rgba(212,74,58,0.15);
-      --info:           #3d9cb8;
-      --rail-color:     #2a4a7a;
+      --accent-bright:  #1f6fd6;
+      --accent-dim:     #dcebfb;
+      --accent-glow:    rgba(46,125,225,0.12);
+      --success:        #1e8e46;
+      --success-dim:    rgba(30,142,70,0.12);
+      --warning:        #b97a14;
+      --warning-dim:    rgba(185,122,20,0.12);
+      --danger:         #c93a2a;
+      --danger-dim:     rgba(201,58,42,0.10);
+      --info:           #1c7f9e;
+      --rail-color:     #2a4e80;
       --wire-active:    #2e7de1;
-      --wire-inactive:  #1e3050;
+      --wire-inactive:  #9fb4cc;
       --font-ui:        'DM Sans', sans-serif;
       --font-mono:      'DM Mono', monospace;
       --font-display:   'Syne', sans-serif;
@@ -51,7 +51,7 @@
     /* ══ TOP NAV ══════════════════════════════════════════ */
     .top-nav {
       display: flex; align-items: center; height: 44px; padding: 0 14px;
-      background: rgba(6,13,27,0.96); border-bottom: 1px solid var(--border);
+      background: rgba(255,255,255,0.94); border-bottom: 1px solid var(--border);
       flex-shrink: 0; gap: 0; z-index: 20; backdrop-filter: blur(12px);
     }
 
@@ -63,7 +63,7 @@
       color: var(--text-primary); padding: 4px 8px; border-radius: var(--radius-md);
       transition: background var(--transition); letter-spacing: -0.02em;
     }
-    .tnav-logo-btn:hover { background: rgba(255,255,255,0.05); }
+    .tnav-logo-btn:hover { background: rgba(22,38,58,0.05); }
     .tnav-logo-btn.open .tnav-chevron { transform: rotate(180deg); }
     .tnav-logo-accent { color: var(--accent-bright); }
     .tnav-chevron { width: 12px; height: 12px; stroke: var(--text-tertiary); flex-shrink: 0; transition: transform var(--transition); }
@@ -72,7 +72,7 @@
       position: absolute; top: calc(100% + 6px); left: 0; min-width: 220px;
       background: var(--bg-surface); border: 1px solid var(--border);
       border-radius: var(--radius-lg); padding: 5px;
-      box-shadow: 0 12px 40px rgba(0,0,0,0.5); z-index: 300;
+      box-shadow: 0 12px 40px rgba(22,38,58,0.16); z-index: 300;
     }
     .tnav-dropdown-item {
       display: flex; flex-direction: column; padding: 7px 10px;
@@ -201,21 +201,21 @@
     /* Power rails — rieles de alimentacion */
     .power-rail {
       width: 5px; height: 52px; border-radius: 2px;
-      background: #2a4e80; flex-shrink: 0;
+      background: var(--rail-color); flex-shrink: 0;
       transition: background var(--transition), box-shadow var(--transition);
     }
     .rung.energized .power-rail {
-      background: #4d9ef7;
-      box-shadow: 0 0 10px rgba(77,158,247,0.55);
+      background: var(--wire-active);
+      box-shadow: 0 0 10px rgba(46,125,225,0.45);
     }
 
     /* Wires — conductores horizontales */
     .wire {
-      height: 2px; background: #2a4060;
+      height: 2px; background: var(--wire-inactive);
       min-width: 8px; flex-shrink: 0;
     }
     .wire.flex { flex: 1; min-width: 8px; max-width: none; }
-    .wire.active { background: #4d9ef7; box-shadow: 0 0 3px rgba(77,158,247,0.5); }
+    .wire.active { background: var(--wire-active); box-shadow: 0 0 3px rgba(46,125,225,0.4); }
 
     /* Elementos ladder */
     .ladder-el {
@@ -260,7 +260,7 @@
     .branch-rail {
       width: 5px;
       flex-shrink: 0;
-      background: #2a4e80;
+      background: var(--rail-color);
       border-radius: 0 0 2px 2px;   /* redondeado solo abajo */
       position: relative;
       /* Altura: ocupa toda la fila de la rama */
@@ -279,7 +279,7 @@
       left: 0;
       width: 5px;
       height: 28px;          /* sube hasta el wire horizontal de la fila 0 */
-      background: #2a4e80;
+      background: var(--rail-color);
       border-radius: 2px 2px 0 0;
     }
 
@@ -294,13 +294,13 @@
       left: 5px;
       width: 16px;                 /* ancho del primer wire de la fila 0 */
       height: 2px;
-      background: #2a4e80;
+      background: var(--rail-color);
     }
 
     .rung.energized .branch-rail,
     .rung.energized .branch-rail::before,
     .rung.energized .branch-rail::after {
-      background: #4d9ef7;
+      background: var(--wire-active);
     }
 
     /* Boton agregar rung */
@@ -329,7 +329,7 @@
       position: fixed; z-index: 600; width: 224px;
       background: var(--bg-elevated); border: 1px solid var(--border-light);
       border-radius: var(--radius-lg);
-      box-shadow: 0 8px 40px rgba(0,0,0,0.65), 0 0 0 1px rgba(46,125,225,0.12);
+      box-shadow: 0 8px 40px rgba(22,38,58,0.18), 0 0 0 1px rgba(46,125,225,0.12);
       display: none; flex-direction: column; overflow: hidden;
     }
     .prop-popup.visible { display: flex; }
@@ -441,7 +441,7 @@
       position: fixed; z-index: 700; min-width: 210px;
       background: var(--bg-elevated); border: 1px solid var(--border-light);
       border-radius: var(--radius-lg); padding: 4px; display: none;
-      box-shadow: 0 8px 36px rgba(0,0,0,0.65), 0 0 0 1px rgba(46,125,225,0.1);
+      box-shadow: 0 8px 36px rgba(22,38,58,0.18), 0 0 0 1px rgba(46,125,225,0.1);
     }
     .ctx-menu.visible { display: block; }
     .ctx-header { padding: 5px 10px 3px; font-size: 9px; font-weight: 600; font-family: var(--font-mono); color: var(--text-tertiary); letter-spacing: 0.8px; text-transform: uppercase; display: flex; align-items: center; gap: 5px; }
@@ -457,7 +457,7 @@
     .tnav-menu-btn { display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--radius-md); border: none; background: transparent; cursor: pointer; font-family: var(--font-ui); font-size: 12px; color: var(--text-secondary); white-space: nowrap; transition: background var(--transition), color var(--transition); }
     .tnav-menu-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
     .tnav-menu-btn i { font-size: 14px; }
-    .tnav-dropmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 200px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; box-shadow: 0 10px 36px rgba(0,0,0,0.5); z-index: 300; }
+    .tnav-dropmenu { position: absolute; top: calc(100% + 4px); left: 0; min-width: 200px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 4px; box-shadow: 0 10px 36px rgba(22,38,58,0.16); z-index: 300; }
     .tnd-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: var(--radius-md); cursor: pointer; font-size: 12px; color: var(--text-secondary); transition: background var(--transition), color var(--transition); }
     .tnd-item:hover { background: rgba(46,125,225,0.1); color: var(--text-primary); }
     .tnd-item i { font-size: 13px; width: 16px; text-align: center; }
