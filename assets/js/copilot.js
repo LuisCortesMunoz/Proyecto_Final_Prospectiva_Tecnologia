@@ -52,17 +52,69 @@ const CHIP_TEMPLATES = {
   escribe: 'Mejora la redacción de este texto técnico manteniendo su significado:\n\n',
 };
 
-const PLACEHOLDERS = {
-  chat: 'Pregunta lo que quieras',
-  ladder: 'Describe el programa Ladder que quieres generar…',
-  listening: 'Escuchando… habla ahora',
+const LISTENING_PLACEHOLDER = 'Escuchando… habla ahora';
+
+// ---------- Modos de operación ----------
+// Capa adicional sobre la infraestructura existente: cada modo solo
+// cambia el comportamiento de respuesta (prompt prioritario + ruta).
+// - aprendizaje / practico: usan el chat actual (backend local + Ollama),
+//   con instrucciones que les prohíben generar Ladder.
+// - disenador: usa el flujo existente /generar-ladder (Render) → editor.
+const OPERATION_MODES = {
+  aprendizaje: {
+    label: 'Aprendizaje',
+    icon: 'fa-solid fa-graduation-cap',
+    placeholder: 'Pregunta un concepto de Ladder o PLCs…',
+    system_prefix:
+      'MODO APRENDIZAJE — instrucciones prioritarias de comportamiento:\n' +
+      'Actúas como tutor educativo de programación Ladder y PLCs para principiantes. ' +
+      'Tu función es únicamente educativa.\n' +
+      '- Explica conceptos de Ladder: contactos NO/NC, bobinas, set/reset, timers TON/TOF, ' +
+      'contadores CTU/CTD y enclavamientos (sello).\n' +
+      '- Responde preguntas teóricas con ejemplos sencillos y analogías, y guía paso a paso.\n' +
+      '- Cuando ayude al aprendizaje, termina con una pregunta breve para que el usuario practique.\n' +
+      '- NO generes JSON, NO generes programas Ladder completos listos para usar y NO menciones ' +
+      'envíos al editor. Si el usuario pide generar un programa, explica los conceptos involucrados ' +
+      'y sugiérele cambiar al modo Diseñador.\n' +
+      '- Responde únicamente en texto.',
+  },
+  practico: {
+    label: 'Práctico',
+    icon: 'fa-solid fa-screwdriver-wrench',
+    placeholder: 'Plantea tu duda técnica o describe tu lógica…',
+    system_prefix:
+      'MODO PRÁCTICO — instrucciones prioritarias de comportamiento:\n' +
+      'Actúas como asesor técnico de programación Ladder y automatización para usuarios intermedios.\n' +
+      '- Resuelve dudas específicas y recomienda estructuras de programación ' +
+      '(enclavamiento, prioridad del paro, interlocks, secuencias).\n' +
+      '- Analiza las propuestas del usuario, detecta errores conceptuales y explica buenas prácticas ' +
+      '(paro con contacto NC cableado, prioridad de paro sobre marcha, seguridad).\n' +
+      '- Puedes describir en texto qué contactos, bobinas o bloques usar, pero NO generes JSON ' +
+      'ni programas finales para el editor. Si el usuario quiere el programa ya generado, ' +
+      'sugiérele cambiar al modo Diseñador.\n' +
+      '- Responde principalmente en texto.',
+  },
+  disenador: {
+    label: 'Diseñador',
+    icon: 'fa-solid fa-diagram-project',
+    placeholder: 'Describe el programa Ladder que quieres generar…',
+    system_prefix: null, // este modo usa el generador Ladder, no el chat
+  },
+};
+
+// Cada chip activa el modo que le corresponde
+const CHIP_MODES = {
+  ladder: 'disenador',
+  concepto: 'aprendizaje',
+  depura: 'practico',
+  escribe: 'practico',
 };
 
 // ---------- Estado ----------
 let profiles = { ...FALLBACK_PROFILES };
 let currentProfile = localStorage.getItem('lv_copilot_profile') || 'media';
+let currentMode = localStorage.getItem('lv_copilot_mode') || 'aprendizaje';
 let isBusy = false;
-let ladderMode = false;
 
 // ---------- Referencias DOM ----------
 const $ = id => document.getElementById(id);
@@ -79,7 +131,10 @@ const plusMenu = $('cpPlusMenu');
 const effortBtn = $('cpEffortBtn');
 const effortMenu = $('cpEffortMenu');
 const effortLabel = $('cpEffortLabel');
-const ladderBtn = $('cpLadderBtn');
+const modeBtn = $('cpModeBtn');
+const modeMenu = $('cpModeMenu');
+const modeLabel = $('cpModeLabel');
+const modeIcon = $('cpModeIcon');
 const drawer = $('cpDrawer');
 const scrim = $('cpScrim');
 const backendPillText = $('backendPillText');
@@ -239,7 +294,10 @@ function addAssistantMessage(text, meta) {
   const role = document.createElement('div');
   role.className = 'cp-msg-role';
   role.innerHTML = '<i class="fa-solid fa-robot"></i>';
-  role.appendChild(document.createTextNode(`Copiloto · ${meta?.copilot_label || profiles[currentProfile]?.label || ''}`));
+  const modeName = OPERATION_MODES[currentMode]?.label || '';
+  role.appendChild(document.createTextNode(
+    `Copiloto · ${modeName} · ${meta?.copilot_label || profiles[currentProfile]?.label || ''}`
+  ));
   row.appendChild(role);
 
   const msg = document.createElement('div');
@@ -280,16 +338,23 @@ function addErrorMessage(text) {
 
 function addSystemInfoMessage() {
   const p = profiles[currentProfile];
+  const m = OPERATION_MODES[currentMode];
   const row = document.createElement('div');
   row.className = 'cp-msg-row ai';
   const role = document.createElement('div');
   role.className = 'cp-msg-role';
   role.innerHTML = '<i class="fa-solid fa-file-lines"></i>';
-  role.appendChild(document.createTextNode(`Instrucción de sistema activa — ${p?.label || currentProfile}`));
+  role.appendChild(document.createTextNode(
+    `Instrucción de sistema activa — ${m?.label || currentMode} · ${p?.label || currentProfile}`
+  ));
   const msg = document.createElement('div');
   msg.className = 'cp-msg';
   const pre = document.createElement('pre');
-  pre.textContent = cfg.system.value.trim() || p?.system_prompt || '';
+  pre.textContent = currentMode === 'disenador'
+    ? 'El modo Diseñador no usa el chat local: envía tu instrucción al generador ' +
+      'Ladder (backend de Render, /generar-ladder) y devuelve el programa JSON ' +
+      'listo para abrir en el editor.'
+    : effectiveSystemPrompt();
   msg.appendChild(pre);
   row.append(role, msg);
   threadEl.appendChild(row);
@@ -301,8 +366,9 @@ function addTypingIndicator(label) {
   const row = document.createElement('div');
   row.className = 'cp-msg-row ai';
   row.id = 'cpTypingRow';
+  const defaultLabel = `Copiloto · ${OPERATION_MODES[currentMode]?.label || ''} · ${profiles[currentProfile]?.label || ''}`;
   row.innerHTML = `
-    <div class="cp-msg-role"><i class="fa-solid fa-robot"></i>${escapeHtml(label || 'Copiloto · ' + (profiles[currentProfile]?.label || ''))}</div>
+    <div class="cp-msg-role"><i class="fa-solid fa-robot"></i>${escapeHtml(label || defaultLabel)}</div>
     <div class="cp-typing"><span></span><span></span><span></span></div>`;
   threadEl.appendChild(row);
   setEmptyState();
@@ -411,7 +477,7 @@ function buildPayload(message) {
     message,
     model: cfg.model.value.trim() || 'llama3.2:3b',
     copilot_profile: currentProfile,
-    system_prompt: cfg.system.value.trim() || null,
+    system_prompt: effectiveSystemPrompt() || null,
     temperature: parseFloat(cfg.temperature.value),
     top_p: parseFloat(cfg.topP.value),
     num_predict: parseInt(cfg.numPredict.value, 10),
@@ -474,7 +540,7 @@ async function sendMessage() {
   addUserMessage(message);
 
   try {
-    if (ladderMode) {
+    if (currentMode === 'disenador') {
       await sendLadderRequest(message);
     } else {
       await sendChatRequest(message);
@@ -501,13 +567,31 @@ function updateSendState() {
   if (!isBusy) sendIcon.className = 'fa-solid fa-arrow-up';
 }
 
-function setLadderMode(on) {
-  ladderMode = on;
-  ladderBtn.classList.toggle('active', on);
-  ladderBtn.setAttribute('aria-pressed', String(on));
-  if (!isListening()) {
-    inputEl.placeholder = on ? PLACEHOLDERS.ladder : PLACEHOLDERS.chat;
-  }
+function applyMode(id) {
+  if (!OPERATION_MODES[id]) id = 'aprendizaje';
+  currentMode = id;
+  localStorage.setItem('lv_copilot_mode', id);
+
+  const m = OPERATION_MODES[id];
+  modeLabel.textContent = m.label;
+  modeIcon.className = m.icon;
+  // En Diseñador la píldora se resalta: avisa que SÍ se generará Ladder.
+  modeBtn.classList.toggle('active', id === 'disenador');
+
+  modeMenu.querySelectorAll('.cp-menu-item[data-mode]').forEach(item => {
+    item.classList.toggle('selected', item.dataset.mode === id);
+  });
+
+  if (!isListening()) inputEl.placeholder = m.placeholder;
+}
+
+// Prompt que realmente se envía en los modos de chat: las instrucciones
+// del modo van primero (prioritarias) y debajo el perfil de esfuerzo
+// (o el system prompt editado por el usuario en el panel).
+function effectiveSystemPrompt() {
+  const base = cfg.system.value.trim() || profiles[currentProfile]?.system_prompt || '';
+  const prefix = OPERATION_MODES[currentMode]?.system_prefix;
+  return (prefix ? `${prefix}\n\n${base}` : base).slice(0, 6000);
 }
 
 inputEl.addEventListener('input', () => { autosize(); updateSendState(); });
@@ -519,15 +603,10 @@ inputEl.addEventListener('keydown', e => {
 });
 sendBtn.addEventListener('click', sendMessage);
 
-ladderBtn.addEventListener('click', () => {
-  setLadderMode(!ladderMode);
-  inputEl.focus();
-});
-
 document.querySelectorAll('.cp-chip[data-chip]').forEach(chip => {
   chip.addEventListener('click', () => {
     const kind = chip.dataset.chip;
-    setLadderMode(kind === 'ladder');
+    applyMode(CHIP_MODES[kind] || currentMode);
     inputEl.value = CHIP_TEMPLATES[kind] || '';
     autosize();
     updateSendState();
@@ -542,23 +621,42 @@ document.querySelectorAll('.cp-chip[data-chip]').forEach(chip => {
 function closeMenus() {
   plusMenu.hidden = true;
   effortMenu.hidden = true;
+  modeMenu.hidden = true;
 }
 
 plusBtn.addEventListener('click', e => {
   e.stopPropagation();
   effortMenu.hidden = true;
+  modeMenu.hidden = true;
   plusMenu.hidden = !plusMenu.hidden;
 });
 
 effortBtn.addEventListener('click', e => {
   e.stopPropagation();
   plusMenu.hidden = true;
+  modeMenu.hidden = true;
   effortMenu.hidden = !effortMenu.hidden;
+});
+
+modeBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  plusMenu.hidden = true;
+  effortMenu.hidden = true;
+  modeMenu.hidden = !modeMenu.hidden;
 });
 
 document.addEventListener('click', closeMenus);
 plusMenu.addEventListener('click', e => e.stopPropagation());
 effortMenu.addEventListener('click', e => e.stopPropagation());
+modeMenu.addEventListener('click', e => e.stopPropagation());
+
+modeMenu.querySelectorAll('.cp-menu-item[data-mode]').forEach(item => {
+  item.addEventListener('click', () => {
+    applyMode(item.dataset.mode);
+    closeMenus();
+    inputEl.focus();
+  });
+});
 
 effortMenu.querySelectorAll('.cp-menu-item[data-profile]').forEach(item => {
   item.addEventListener('click', () => {
@@ -666,8 +764,8 @@ let isListening = () => false;
     const icon = micBtn.querySelector('i');
     if (icon) icon.className = on ? 'fa-solid fa-stop' : 'fa-solid fa-microphone';
     inputEl.placeholder = on
-      ? PLACEHOLDERS.listening
-      : (ladderMode ? PLACEHOLDERS.ladder : PLACEHOLDERS.chat);
+      ? LISTENING_PLACEHOLDER
+      : (OPERATION_MODES[currentMode]?.placeholder || 'Pregunta lo que quieras');
     if (on) {
       showHint('Escuchando… presiona de nuevo para detener.', 'listening');
     } else {
@@ -757,10 +855,10 @@ let isListening = () => false;
 
   populateProfileSelect();
   applyProfile(currentProfile);
+  applyMode(currentMode);
   syncOutputs();
   updateSendState();
   setEmptyState();
-  setLadderMode(false);
 
   loadProfiles();
   checkHealth();

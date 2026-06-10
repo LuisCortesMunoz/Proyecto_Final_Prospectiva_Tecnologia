@@ -395,6 +395,7 @@
   z-index: 60;
 }
 .cp-effort-menu { left: 46px; }
+.cp-mode-menu { left: 46px; }
 
 .cp-menu-title {
   font-size: 0.69rem;
@@ -621,4 +622,5 @@
   .cp-chip { font-size: 0.78rem; padding: 0.48rem 0.85rem; }
   .cp-menu { min-width: 240px; }
   .cp-effort-menu { left: 0; }
+  .cp-mode-menu { left: 0; }
 }

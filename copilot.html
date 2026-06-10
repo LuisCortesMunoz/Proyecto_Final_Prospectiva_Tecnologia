@@ -63,7 +63,7 @@
     <!-- Hero (solo visible sin mensajes) -->
     <section class="cp-hero" id="cpHero">
       <h1>¿En qué puedo ayudarte?</h1>
-      <p>Pregunta, dicta por voz o activa el modo <strong>Ladder</strong> para generar programas PLC listos para abrir en el editor.</p>
+      <p>Aprende, consulta a tu asesor técnico o activa el modo <strong>Diseñador</strong> para generar programas Ladder listos para abrir en el editor.</p>
     </section>
 
     <!-- Compositor -->
@@ -144,11 +144,40 @@
               </button>
             </div>
 
-            <button class="cp-mode" id="cpLadderBtn" type="button" aria-pressed="false"
-                    title="Modo Ladder: el texto se envía al generador de programas Ladder">
-              <i class="fa-solid fa-diagram-project"></i>
-              <span>Ladder</span>
+            <button class="cp-mode" id="cpModeBtn" type="button" aria-haspopup="true"
+                    title="Modo de operación del copiloto">
+              <i class="fa-solid fa-graduation-cap" id="cpModeIcon"></i>
+              <span id="cpModeLabel">Aprendizaje</span>
+              <i class="fa-solid fa-chevron-down cp-effort-caret"></i>
             </button>
+            <div class="cp-menu cp-mode-menu" id="cpModeMenu" hidden>
+              <div class="cp-menu-title">Modo de operación</div>
+              <button class="cp-menu-item" data-mode="aprendizaje" type="button">
+                <i class="fa-solid fa-graduation-cap"></i>
+                <span class="cp-menu-text">
+                  <strong>Aprendizaje</strong>
+                  <span>Tutor para principiantes: explica conceptos, solo texto</span>
+                </span>
+                <i class="fa-solid fa-check cp-check"></i>
+              </button>
+              <button class="cp-menu-item" data-mode="practico" type="button">
+                <i class="fa-solid fa-screwdriver-wrench"></i>
+                <span class="cp-menu-text">
+                  <strong>Práctico</strong>
+                  <span>Asesor técnico: revisa tu lógica y buenas prácticas</span>
+                </span>
+                <i class="fa-solid fa-check cp-check"></i>
+              </button>
+              <div class="cp-menu-sep"></div>
+              <button class="cp-menu-item" data-mode="disenador" type="button">
+                <i class="fa-solid fa-diagram-project"></i>
+                <span class="cp-menu-text">
+                  <strong>Diseñador</strong>
+                  <span>Genera el JSON Ladder y ábrelo en el editor</span>
+                </span>
+                <i class="fa-solid fa-check cp-check"></i>
+              </button>
+            </div>
           </div>
 
           <div class="cp-bar-right">
