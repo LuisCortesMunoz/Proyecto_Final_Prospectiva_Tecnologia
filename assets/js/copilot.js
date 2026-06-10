@@ -2,11 +2,18 @@
 // LADDERVOICE COPILOT — Práctica 4 (Prompting y Copilotos)
 // Frontend estilo ChatGPT sobre FastAPI + Ollama.
 // Perfiles de esfuerzo: Instantánea / Media / Alta (+ Genérico).
+// Modo Ladder: envía el prompt al backend de Render que genera
+// el JSON de instrucciones Ladder y lo abre en el editor.
 // ============================================================
 
 // ---------- Configuración ----------
 const DEFAULT_API_BASE = 'http://localhost:8000';
 const CHAT_TIMEOUT_MS = 180000;
+
+// Backend en Render (mismo que usa el Asistente de Voz de index.html).
+const LADDER_BACKEND_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
+const GENERAR_LADDER_URL = `${LADDER_BACKEND_URL}/generar-ladder`;
+const LADDER_TIMEOUT_MS = 150000; // Render gratuito puede tardar en despertar
 
 // Copia local de los perfiles para que el selector y el panel
 // funcionen aunque el backend aún no esté corriendo. Al cargar
@@ -39,16 +46,23 @@ const FALLBACK_PROFILES = {
 };
 
 const CHIP_TEMPLATES = {
-  ladder: 'Diseña la lógica ladder para el siguiente proceso (descríbeme cada rung con sus elementos y direcciones):\n\nProceso: ',
+  ladder: 'Genera un arranque-paro de motor con enclavamiento: botón de inicio I0.0, botón de paro I0.1 y motor en Q0.0.',
   concepto: 'Explícame con un ejemplo sencillo, para un estudiante de primer semestre, qué es ',
   depura: 'Analiza este error y propón una corrección paso a paso:\n\n',
   escribe: 'Mejora la redacción de este texto técnico manteniendo su significado:\n\n',
+};
+
+const PLACEHOLDERS = {
+  chat: 'Pregunta lo que quieras',
+  ladder: 'Describe el programa Ladder que quieres generar…',
+  listening: 'Escuchando… habla ahora',
 };
 
 // ---------- Estado ----------
 let profiles = { ...FALLBACK_PROFILES };
 let currentProfile = localStorage.getItem('lv_copilot_profile') || 'media';
 let isBusy = false;
+let ladderMode = false;
 
 // ---------- Referencias DOM ----------
 const $ = id => document.getElementById(id);
@@ -59,11 +73,13 @@ const inputEl = $('cpInput');
 const sendBtn = $('cpSendBtn');
 const sendIcon = $('cpSendIcon');
 const micBtn = $('cpMicBtn');
+const micHint = $('cpMicHint');
 const plusBtn = $('cpPlusBtn');
 const plusMenu = $('cpPlusMenu');
 const effortBtn = $('cpEffortBtn');
 const effortMenu = $('cpEffortMenu');
 const effortLabel = $('cpEffortLabel');
+const ladderBtn = $('cpLadderBtn');
 const drawer = $('cpDrawer');
 const scrim = $('cpScrim');
 const backendPillText = $('backendPillText');
@@ -87,7 +103,7 @@ const out = {
 };
 
 // ============================================================
-// NAVBAR + TEMA (mismo comportamiento que main.js)
+// NAVBAR (mismo comportamiento que main.js)
 // ============================================================
 (function initNavbar() {
   const btn = $('onav-logo-btn');
@@ -104,22 +120,6 @@ const out = {
       dd.hidden = true;
       btn.classList.remove('open');
     }
-  });
-})();
-
-(function initTheme() {
-  const tb = $('theme-toggle');
-  if (!tb) return;
-  const ic = tb.querySelector('i');
-  if (localStorage.getItem('lv_theme') === 'light') {
-    document.documentElement.dataset.theme = 'light';
-    if (ic) ic.className = 'fa-solid fa-sun';
-  }
-  tb.addEventListener('click', () => {
-    const isLight = document.documentElement.dataset.theme === 'light';
-    document.documentElement.dataset.theme = isLight ? '' : 'light';
-    localStorage.setItem('lv_theme', isLight ? '' : 'light');
-    if (ic) ic.className = isLight ? 'fa-solid fa-moon' : 'fa-solid fa-sun';
   });
 })();
 
@@ -174,7 +174,7 @@ async function loadProfiles() {
       profiles = data.profiles;
     }
   } catch (_) {
-    // Sin backend: se conservan las plantillas locales.
+    // Sin backend local: se conservan las plantillas locales.
   }
   if (!profiles[currentProfile]) currentProfile = 'media';
   populateProfileSelect();
@@ -297,12 +297,12 @@ function addSystemInfoMessage() {
   scrollToBottom();
 }
 
-function addTypingIndicator() {
+function addTypingIndicator(label) {
   const row = document.createElement('div');
   row.className = 'cp-msg-row ai';
   row.id = 'cpTypingRow';
   row.innerHTML = `
-    <div class="cp-msg-role"><i class="fa-solid fa-robot"></i>Copiloto · ${escapeHtml(profiles[currentProfile]?.label || '')}</div>
+    <div class="cp-msg-role"><i class="fa-solid fa-robot"></i>${escapeHtml(label || 'Copiloto · ' + (profiles[currentProfile]?.label || ''))}</div>
     <div class="cp-typing"><span></span><span></span><span></span></div>`;
   threadEl.appendChild(row);
   setEmptyState();
@@ -320,7 +320,91 @@ function escapeHtml(text) {
 }
 
 // ============================================================
-// ENVÍO AL BACKEND
+// GENERACIÓN LADDER (backend de Render — /generar-ladder)
+// ============================================================
+
+// Base64 URL-safe: debe coincidir con codec.js (decode) y main.js.
+function encodeProgramToURL(program) {
+  const json = JSON.stringify(program);
+  const bytes = new TextEncoder().encode(json);
+  let binary = '';
+  for (const b of bytes) binary += String.fromCharCode(b);
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function addLadderMessage(data) {
+  const row = document.createElement('div');
+  row.className = 'cp-msg-row ai';
+
+  const role = document.createElement('div');
+  role.className = 'cp-msg-role';
+  role.innerHTML = '<i class="fa-solid fa-diagram-project"></i>';
+  role.appendChild(document.createTextNode('Generador Ladder'));
+  row.appendChild(role);
+
+  const msg = document.createElement('div');
+  msg.className = 'cp-msg';
+  const lines = [
+    `Programa generado: ${data.nombre || 'sin nombre'}`,
+    `Rungs: ${data.rungs ?? '—'} · Ramas paralelas: ${data.ramas_paralelas ?? 0} · Variables: ${data.variables ?? '—'}`,
+  ];
+  if (data.es_enclavamiento) lines.push('Incluye lógica de enclavamiento (sello).');
+  msg.textContent = lines.join('\n');
+  row.appendChild(msg);
+
+  const actions = document.createElement('div');
+  actions.className = 'cp-msg-actions';
+  const openBtn = document.createElement('button');
+  openBtn.type = 'button';
+  openBtn.className = 'cp-action-btn';
+  openBtn.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i> Abrir en Editor Ladder';
+  openBtn.addEventListener('click', () => {
+    window.location.href = `ladder.html?l=${encodeProgramToURL(data.program)}`;
+  });
+  actions.appendChild(openBtn);
+  row.appendChild(actions);
+
+  threadEl.appendChild(row);
+  setEmptyState();
+  scrollToBottom();
+}
+
+async function sendLadderRequest(message) {
+  addTypingIndicator('Generador Ladder · creando programa…');
+  try {
+    const res = await fetch(GENERAR_LADDER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: message }),
+      signal: AbortSignal.timeout(LADDER_TIMEOUT_MS),
+    });
+
+    const data = await res.json().catch(() => null);
+    removeTypingIndicator();
+
+    if (!res.ok) {
+      const detail = data?.detail || `Error HTTP ${res.status}`;
+      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
+    }
+    if (!data?.program) {
+      throw new Error('El backend respondió, pero no regresó un programa Ladder válido.');
+    }
+
+    addLadderMessage(data);
+  } catch (err) {
+    removeTypingIndicator();
+    let hint = err.message;
+    if (err.name === 'TimeoutError') {
+      hint = 'El servidor de Render tardó demasiado (el plan gratuito se duerme y puede tardar ~1 min en despertar). Intenta de nuevo.';
+    } else if (/Failed to fetch|NetworkError/i.test(err.message)) {
+      hint = 'No se pudo conectar con el backend de Render. Revisa tu conexión a internet.';
+    }
+    addErrorMessage('Error al generar Ladder: ' + hint);
+  }
+}
+
+// ============================================================
+// CHAT (backend local — Práctica 4)
 // ============================================================
 function buildPayload(message) {
   return {
@@ -337,20 +421,8 @@ function buildPayload(message) {
   };
 }
 
-async function sendMessage() {
-  const message = inputEl.value.trim();
-  if (!message || isBusy) return;
-
-  isBusy = true;
-  inputEl.value = '';
-  autosize();
-  updateSendState();
-  sendBtn.classList.add('busy');
-  sendIcon.className = 'fa-solid fa-circle-notch';
-
-  addUserMessage(message);
+async function sendChatRequest(message) {
   addTypingIndicator();
-
   try {
     const res = await fetch(`${apiBase()}/chat`, {
       method: 'POST',
@@ -379,16 +451,44 @@ async function sendMessage() {
     }
     addErrorMessage('Error: ' + hint);
   } finally {
+    checkHealth();
+  }
+}
+
+// ============================================================
+// ENVÍO (dispatcher)
+// ============================================================
+async function sendMessage() {
+  const message = inputEl.value.trim();
+  if (!message || isBusy) return;
+
+  stopDictation(); // si el mic sigue abierto, se apaga al enviar
+
+  isBusy = true;
+  inputEl.value = '';
+  autosize();
+  updateSendState();
+  sendBtn.classList.add('busy');
+  sendIcon.className = 'fa-solid fa-circle-notch';
+
+  addUserMessage(message);
+
+  try {
+    if (ladderMode) {
+      await sendLadderRequest(message);
+    } else {
+      await sendChatRequest(message);
+    }
+  } finally {
     isBusy = false;
     sendBtn.classList.remove('busy');
     updateSendState();
-    checkHealth();
     inputEl.focus();
   }
 }
 
 // ============================================================
-// COMPOSITOR (textarea, enviar, chips)
+// COMPOSITOR (textarea, enviar, chips, modo ladder)
 // ============================================================
 function autosize() {
   inputEl.style.height = 'auto';
@@ -401,6 +501,15 @@ function updateSendState() {
   if (!isBusy) sendIcon.className = 'fa-solid fa-arrow-up';
 }
 
+function setLadderMode(on) {
+  ladderMode = on;
+  ladderBtn.classList.toggle('active', on);
+  ladderBtn.setAttribute('aria-pressed', String(on));
+  if (!isListening()) {
+    inputEl.placeholder = on ? PLACEHOLDERS.ladder : PLACEHOLDERS.chat;
+  }
+}
+
 inputEl.addEventListener('input', () => { autosize(); updateSendState(); });
 inputEl.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) {
@@ -410,9 +519,16 @@ inputEl.addEventListener('keydown', e => {
 });
 sendBtn.addEventListener('click', sendMessage);
 
+ladderBtn.addEventListener('click', () => {
+  setLadderMode(!ladderMode);
+  inputEl.focus();
+});
+
 document.querySelectorAll('.cp-chip[data-chip]').forEach(chip => {
   chip.addEventListener('click', () => {
-    inputEl.value = CHIP_TEMPLATES[chip.dataset.chip] || '';
+    const kind = chip.dataset.chip;
+    setLadderMode(kind === 'ladder');
+    inputEl.value = CHIP_TEMPLATES[kind] || '';
     autosize();
     updateSendState();
     inputEl.focus();
@@ -504,50 +620,131 @@ cfg.api.addEventListener('change', () => {
 });
 
 // ============================================================
-// DICTADO POR VOZ (Web Speech API)
+// DICTADO POR VOZ (Web Speech API) — interruptor on/off
 // ============================================================
+// - Un clic enciende; otro clic apaga INMEDIATAMENTE (rec.abort()
+//   descarta resultados pendientes, así no sigue escribiendo).
+// - `dictating` actúa de candado: los onresult que lleguen tarde
+//   se ignoran y rec.start() nunca se llama dos veces.
+let dictating = false;
+let stopDictation = () => {};
+let isListening = () => false;
+
 (function initMic() {
   const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+
   if (!SR) {
+    micBtn.disabled = true;
     micBtn.title = 'Dictado no soportado en este navegador (usa Chrome o Edge)';
     return;
   }
 
-  let recognizing = false;
-  let baseText = '';
+  let sessionBase = ''; // texto que ya había antes de empezar a dictar
   const rec = new SR();
   rec.lang = 'es-MX';
   rec.interimResults = true;
-  rec.continuous = false;
+  rec.continuous = true; // sigue escuchando hasta que el usuario apague
+
+  isListening = () => dictating;
+
+  function joinText(base, extra) {
+    if (!base) return extra;
+    if (!extra) return base;
+    return base + (/\s$/.test(base) ? '' : ' ') + extra;
+  }
+
+  function showHint(text, type) {
+    if (!micHint) return;
+    micHint.textContent = text || '';
+    micHint.hidden = !text;
+    micHint.className = 'cp-mic-hint' + (type ? ' ' + type : '');
+  }
+
+  function micUI(on) {
+    micBtn.classList.toggle('recording', on);
+    micBtn.title = on ? 'Detener dictado' : 'Dictar por voz';
+    const icon = micBtn.querySelector('i');
+    if (icon) icon.className = on ? 'fa-solid fa-stop' : 'fa-solid fa-microphone';
+    inputEl.placeholder = on
+      ? PLACEHOLDERS.listening
+      : (ladderMode ? PLACEHOLDERS.ladder : PLACEHOLDERS.chat);
+    if (on) {
+      showHint('Escuchando… presiona de nuevo para detener.', 'listening');
+    } else {
+      showHint('');
+    }
+  }
+
+  function startDictation() {
+    if (dictating) return; // evita dobles arranques
+    sessionBase = inputEl.value.trim();
+    try {
+      rec.start();
+      dictating = true;
+      micUI(true);
+    } catch (_) {
+      // InvalidStateError: ya había una sesión activa; se ignora.
+    }
+  }
+
+  stopDictation = function () {
+    if (!dictating) return;
+    dictating = false; // primero el candado: onresult tardíos se ignoran
+    try { rec.abort(); } catch (_) { /* sin sesión activa */ }
+    micUI(false);
+  };
 
   rec.onresult = e => {
-    let transcript = '';
-    for (const result of e.results) transcript += result[0].transcript;
-    inputEl.value = (baseText ? baseText + ' ' : '') + transcript;
+    if (!dictating) return; // el usuario ya apagó: no escribir más
+    let finalText = '';
+    let interimText = '';
+    for (const result of e.results) {
+      if (result.isFinal) finalText += result[0].transcript;
+      else interimText += result[0].transcript;
+    }
+    inputEl.value = joinText(sessionBase, (finalText + ' ' + interimText).trim());
     autosize();
     updateSendState();
   };
+
   rec.onend = () => {
-    recognizing = false;
-    micBtn.classList.remove('recording');
+    // Fin automático (silencio largo, red, etc.) sin pasar por el botón.
+    if (dictating) {
+      dictating = false;
+      micUI(false);
+    }
     inputEl.focus();
   };
-  rec.onerror = () => {
-    recognizing = false;
-    micBtn.classList.remove('recording');
+
+  rec.onerror = e => {
+    const wasDictating = dictating;
+    dictating = false;
+    micUI(false);
+    if (!wasDictating && e.error === 'aborted') return;
+    switch (e.error) {
+      case 'not-allowed':
+      case 'service-not-allowed':
+        showHint('Permiso de micrófono denegado. Actívalo desde el candado de la barra de direcciones.', 'error');
+        break;
+      case 'audio-capture':
+        showHint('No se detectó ningún micrófono. Conecta uno e intenta de nuevo.', 'error');
+        break;
+      case 'network':
+        showHint('Error de red en el servicio de voz. Revisa tu conexión.', 'error');
+        break;
+      case 'no-speech':
+        showHint('No se escuchó nada. Intenta de nuevo.', 'error');
+        break;
+      case 'aborted':
+        break; // apagado manual: no es un error
+      default:
+        showHint('Error del dictado: ' + e.error, 'error');
+    }
   };
 
   micBtn.addEventListener('click', () => {
-    if (recognizing) {
-      rec.stop();
-      return;
-    }
-    baseText = inputEl.value.trim();
-    try {
-      rec.start();
-      recognizing = true;
-      micBtn.classList.add('recording');
-    } catch (_) { /* start() doble: ignorar */ }
+    if (dictating) stopDictation();
+    else startDictation();
   });
 })();
 
@@ -563,10 +760,11 @@ cfg.api.addEventListener('change', () => {
   syncOutputs();
   updateSendState();
   setEmptyState();
+  setLadderMode(false);
 
   loadProfiles();
   checkHealth();
   inputEl.focus();
 })();
 
-console.log('%cLadderVoice Copilot — Práctica 4', 'color:#3b9eff;font-size:1.05rem;font-weight:bold;');
+console.log('%cLadderVoice Copilot — Práctica 4', 'color:#2e7de1;font-size:1.05rem;font-weight:bold;');

@@ -48,9 +48,6 @@
 
     <div class="onav-spacer"></div>
 
-    <button id="theme-toggle" class="theme-toggle-btn" title="Cambiar tema">
-      <i class="fa-solid fa-moon"></i>
-    </button>
     <div class="onav-online" id="backendPill">
       <span class="onav-dot"></span>
       <span class="onav-online-text" id="backendPillText">Conectando…</span>
@@ -66,7 +63,7 @@
     <!-- Hero (solo visible sin mensajes) -->
     <section class="cp-hero" id="cpHero">
       <h1>¿En qué puedo ayudarte?</h1>
-      <p>Copiloto de PLCs, lógica Ladder y programación — elige cuánto esfuerzo de razonamiento usar.</p>
+      <p>Pregunta, dicta por voz o activa el modo <strong>Ladder</strong> para generar programas PLC listos para abrir en el editor.</p>
     </section>
 
     <!-- Compositor -->
@@ -146,6 +143,12 @@
                 <i class="fa-solid fa-check cp-check"></i>
               </button>
             </div>
+
+            <button class="cp-mode" id="cpLadderBtn" type="button" aria-pressed="false"
+                    title="Modo Ladder: el texto se envía al generador de programas Ladder">
+              <i class="fa-solid fa-diagram-project"></i>
+              <span>Ladder</span>
+            </button>
           </div>
 
           <div class="cp-bar-right">
@@ -158,6 +161,8 @@
           </div>
         </div>
       </div>
+
+      <p class="cp-mic-hint" id="cpMicHint" hidden></p>
 
       <!-- Accesos rápidos -->
       <div class="cp-chips" id="cpChips">
