@@ -832,63 +832,73 @@ body {
 }
 
 /* =========================================================
-   AJUSTE REAL COPILOT IA — SELECTORES CON ID
-   Mismo ancho del hero y del input + posición más arriba.
-   SOLO CSS: no cambia HTML, JS, IDs ni lógica.
+   AJUSTE FINAL COPILOT IA
+   Solo mueve un poco el cuadro superior.
+   La barra de escritura se queda en su posición original.
+   SIN tocar estructura, JavaScript, IDs ni lógica.
 ========================================================= */
 
-/* Contenedor inicial del Copilot */
-html body .cp-page main#cpMain.cp-main.is-empty {
-  justify-content: flex-start !important;
+/* NO mover todo el contenido */
+.cp-page .cp-main.is-empty {
+  justify-content: center !important;
   align-items: center !important;
-  padding-top: 22px !important;
-  gap: 0 !important;
+  padding-top: 0 !important;
 }
 
-/* Cuadro superior */
-html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero {
+/* Cuadro superior: mismo ancho que el input */
+.cp-page .cp-main.is-empty > #cpHero.cp-hero {
   width: 780px !important;
   max-width: 780px !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
-  margin: 0 auto 10px auto !important;
+
+  /* Este es el único movimiento: sube SOLO el cuadro de LadderVoice */
+  transform: translateY(-18px) !important;
+
+  margin-left: auto !important;
+  margin-right: auto !important;
+  margin-bottom: 10px !important;
+
   padding: 30px 36px 26px !important;
 }
 
-/* Caja donde está el input */
-html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone {
+/* Barra de escritura: queda donde estaba */
+.cp-page .cp-main.is-empty .cp-composer-zone {
   width: 780px !important;
   max-width: 780px !important;
   min-width: 0 !important;
   box-sizing: border-box !important;
-  margin: 0 auto !important;
-  padding: 0.5rem 0 1rem !important;
-}
 
-/* Input interno ocupando exactamente el ancho disponible */
-html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone div#cpComposer.cp-composer {
-  width: 100% !important;
-  max-width: none !important;
-  box-sizing: border-box !important;
-}
-
-/* Botones sugeridos de abajo y aviso */
-html body .cp-page main#cpMain.cp-main.is-empty div.cp-chips,
-html body .cp-page main#cpMain.cp-main.is-empty p.cp-disclaimer {
-  width: 780px !important;
-  max-width: 780px !important;
-  box-sizing: border-box !important;
   margin-left: auto !important;
   margin-right: auto !important;
+
+  /* No subir ni bajar la barra */
+  transform: none !important;
 }
 
-/* Ajustes de texto del hero */
-html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero h1 {
+/* El input ocupa todo el ancho disponible */
+.cp-page .cp-main.is-empty .cp-composer-zone > .cp-composer {
+  width: 100% !important;
+  box-sizing: border-box !important;
+}
+
+/* Chips y aviso se quedan centrados debajo del input */
+.cp-page .cp-main.is-empty .cp-chips,
+.cp-page .cp-main.is-empty .cp-disclaimer {
+  width: 780px !important;
+  max-width: 780px !important;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box !important;
+}
+
+/* Texto del hero */
+.cp-page .cp-main.is-empty > #cpHero.cp-hero h1 {
   margin-top: 18px !important;
   margin-bottom: 14px !important;
 }
 
-html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero p {
+.cp-page .cp-main.is-empty > #cpHero.cp-hero p {
   max-width: 560px !important;
   margin-left: auto !important;
   margin-right: auto !important;
@@ -896,20 +906,16 @@ html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero p {
 
 /* Responsivo */
 @media (max-width: 820px) {
-  html body .cp-page main#cpMain.cp-main.is-empty {
-    padding-top: 18px !important;
-  }
-
-  html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero,
-  html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone,
-  html body .cp-page main#cpMain.cp-main.is-empty div.cp-chips,
-  html body .cp-page main#cpMain.cp-main.is-empty p.cp-disclaimer {
+  .cp-page .cp-main.is-empty > #cpHero.cp-hero,
+  .cp-page .cp-main.is-empty .cp-composer-zone,
+  .cp-page .cp-main.is-empty .cp-chips,
+  .cp-page .cp-main.is-empty .cp-disclaimer {
     width: calc(100% - 28px) !important;
     max-width: calc(100% - 28px) !important;
   }
 
-  html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero {
+  .cp-page .cp-main.is-empty > #cpHero.cp-hero {
+    transform: translateY(-10px) !important;
     padding: 28px 22px 24px !important;
   }
 }
-
