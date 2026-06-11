@@ -845,8 +845,8 @@ body.cp-page .cp-main.is-empty {
 
 /* Cuadro superior */
 body.cp-page .cp-main.is-empty > #cpHero.cp-hero {
-  width: 780px !important;
-  max-width: 780px !important;
+  width: 760px !important;
+  max-width: 760px !important;
   min-width: 0 !important;
   margin: 0 auto 8px auto !important;
   padding: 30px 36px 26px !important;
