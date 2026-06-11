@@ -832,66 +832,63 @@ body {
 }
 
 /* =========================================================
-   AJUSTE FINAL COPILOT IA
-   Hero mismo ancho visual que el input y más arriba
-   SIN tocar estructura, JavaScript, IDs ni lógica
-
-   IMPORTANTE:
-   En copilot.html la clase cp-page está en un DIV:
-   <div class="cp-page">
-   Por eso el selector correcto es .cp-page, no body.cp-page.
+   AJUSTE REAL COPILOT IA — SELECTORES CON ID
+   Mismo ancho del hero y del input + posición más arriba.
+   SOLO CSS: no cambia HTML, JS, IDs ni lógica.
 ========================================================= */
 
-/* Sube el conjunto inicial y evita el centrado vertical */
-.cp-page .cp-main.is-empty {
+/* Contenedor inicial del Copilot */
+html body .cp-page main#cpMain.cp-main.is-empty {
   justify-content: flex-start !important;
   align-items: center !important;
-  padding-top: 24px !important;
+  padding-top: 22px !important;
+  gap: 0 !important;
 }
 
-/* Cuadro superior: mismo ancho visible que el compositor */
-.cp-page .cp-main.is-empty > #cpHero.cp-hero {
+/* Cuadro superior */
+html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero {
   width: 780px !important;
   max-width: 780px !important;
   min-width: 0 !important;
+  box-sizing: border-box !important;
   margin: 0 auto 10px auto !important;
   padding: 30px 36px 26px !important;
-  box-sizing: border-box !important;
 }
 
-/* Zona del input: quitamos padding lateral para que el borde del input mida igual que el hero */
-.cp-page .cp-main.is-empty .cp-composer-zone {
+/* Caja donde está el input */
+html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone {
   width: 780px !important;
   max-width: 780px !important;
   min-width: 0 !important;
+  box-sizing: border-box !important;
   margin: 0 auto !important;
-  padding: 0.5rem 0 1.2rem !important;
-  box-sizing: border-box !important;
+  padding: 0.5rem 0 1rem !important;
 }
 
-/* El compositor ocupa todo el ancho de su zona */
-.cp-page .cp-main.is-empty .cp-composer-zone > .cp-composer {
+/* Input interno ocupando exactamente el ancho disponible */
+html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone div#cpComposer.cp-composer {
   width: 100% !important;
+  max-width: none !important;
   box-sizing: border-box !important;
 }
 
-/* Chips y aviso centrados con el mismo ancho base */
-.cp-page .cp-main.is-empty .cp-chips,
-.cp-page .cp-main.is-empty .cp-disclaimer {
+/* Botones sugeridos de abajo y aviso */
+html body .cp-page main#cpMain.cp-main.is-empty div.cp-chips,
+html body .cp-page main#cpMain.cp-main.is-empty p.cp-disclaimer {
   width: 780px !important;
   max-width: 780px !important;
+  box-sizing: border-box !important;
   margin-left: auto !important;
   margin-right: auto !important;
-  box-sizing: border-box !important;
 }
 
-/* Ajuste visual interno del hero */
-.cp-page .cp-main.is-empty > #cpHero.cp-hero h1 {
+/* Ajustes de texto del hero */
+html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero h1 {
   margin-top: 18px !important;
   margin-bottom: 14px !important;
 }
 
-.cp-page .cp-main.is-empty > #cpHero.cp-hero p {
+html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero p {
   max-width: 560px !important;
   margin-left: auto !important;
   margin-right: auto !important;
@@ -899,19 +896,20 @@ body {
 
 /* Responsivo */
 @media (max-width: 820px) {
-  .cp-page .cp-main.is-empty {
+  html body .cp-page main#cpMain.cp-main.is-empty {
     padding-top: 18px !important;
   }
 
-  .cp-page .cp-main.is-empty > #cpHero.cp-hero,
-  .cp-page .cp-main.is-empty .cp-composer-zone,
-  .cp-page .cp-main.is-empty .cp-chips,
-  .cp-page .cp-main.is-empty .cp-disclaimer {
+  html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero,
+  html body .cp-page main#cpMain.cp-main.is-empty section.cp-composer-zone,
+  html body .cp-page main#cpMain.cp-main.is-empty div.cp-chips,
+  html body .cp-page main#cpMain.cp-main.is-empty p.cp-disclaimer {
     width: calc(100% - 28px) !important;
     max-width: calc(100% - 28px) !important;
   }
 
-  .cp-page .cp-main.is-empty > #cpHero.cp-hero {
+  html body .cp-page main#cpMain.cp-main.is-empty section#cpHero.cp-hero {
     padding: 28px 22px 24px !important;
   }
 }
+
