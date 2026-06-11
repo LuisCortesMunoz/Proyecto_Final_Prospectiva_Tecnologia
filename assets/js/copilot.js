@@ -116,6 +116,13 @@ let currentProfile = localStorage.getItem('lv_copilot_profile') || 'media';
 let currentMode = localStorage.getItem('lv_copilot_mode') || 'aprendizaje';
 let isBusy = false;
 
+// Contexto conversacional del modo Diseñador: el backend /generar-ladder
+// no guarda estado, así que el frontend recuerda el último programa
+// generado y los prompts previos para que instrucciones como "cámbialo"
+// o "agrégale un paro" tengan referencia.
+let lastLadderProgram = null; // JSON del último programa generado
+let ladderPrompts = [];       // prompts previos del modo Diseñador
+
 // ---------- Referencias DOM ----------
 const $ = id => document.getElementById(id);
 
@@ -532,7 +539,9 @@ function addLadderMessage(data) {
   openBtn.className = 'cp-action-btn';
   openBtn.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i> Abrir en Editor Ladder';
   openBtn.addEventListener('click', () => {
-    window.location.href = `ladder.html?l=${encodeProgramToURL(data.program)}`;
+    // Pestaña nueva: si navegáramos aquí mismo se perdería el historial
+    // del chat (el estado de la conversación vive solo en memoria).
+    window.open(`ladder.html?l=${encodeProgramToURL(data.program)}`, '_blank', 'noopener');
   });
   actions.appendChild(openBtn);
 
@@ -564,13 +573,28 @@ function addLadderMessage(data) {
 }
 
 async function sendLadderRequest(message) {
-  addTypingIndicator('Generador Ladder · creando programa…');
+  const isFollowUp = lastLadderProgram != null;
+  addTypingIndicator(isFollowUp
+    ? 'Generador Ladder · aplicando cambios…'
+    : 'Generador Ladder · creando programa…');
   setBackendStatus('busy', 'Generando JSON Ladder…');
+
+  // Si ya hay un programa generado, se manda como contexto para que el
+  // modelo entienda instrucciones de modificación. El backend actual lo
+  // ignora sin romperse si aún no soporta el campo `contexto`.
+  const payload = { prompt: message };
+  if (isFollowUp) {
+    payload.contexto = {
+      programa_anterior: lastLadderProgram,
+      historial: ladderPrompts.slice(-4),
+    };
+  }
+
   try {
     const res = await fetch(GENERAR_LADDER_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt: message }),
+      body: JSON.stringify(payload),
       signal: AbortSignal.timeout(LADDER_TIMEOUT_MS),
     });
 
@@ -586,6 +610,8 @@ async function sendLadderRequest(message) {
     }
 
     addLadderMessage(data);
+    lastLadderProgram = data.program;
+    ladderPrompts.push(message);
     setBackendStatus('ok', 'Backend conectado');
   } catch (err) {
     removeTypingIndicator();
@@ -820,6 +846,8 @@ $('cpViewSystem').addEventListener('click', () => { closeMenus(); addSystemInfoM
 $('cpClearChat').addEventListener('click', () => {
   closeMenus();
   threadEl.innerHTML = '';
+  lastLadderProgram = null; // limpiar chat también olvida el contexto Ladder
+  ladderPrompts = [];
   setEmptyState();
   inputEl.focus();
 });
