@@ -541,7 +541,9 @@ function addLadderMessage(data) {
   openBtn.addEventListener('click', () => {
     // Pestaña nueva: si navegáramos aquí mismo se perdería el historial
     // del chat (el estado de la conversación vive solo en memoria).
-    window.open(`ladder.html?l=${encodeProgramToURL(data.program)}`, '_blank', 'noopener');
+    // `from=chat` hace que el editor muestre su botón "Volver al chat",
+    // y conservar window.opener le permite re-enfocar esta pestaña.
+    window.open(`ladder.html?l=${encodeProgramToURL(data.program)}&from=chat`, '_blank');
   });
   actions.appendChild(openBtn);
 

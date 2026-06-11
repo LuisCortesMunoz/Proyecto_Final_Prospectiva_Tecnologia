@@ -148,6 +148,9 @@
     .et-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-light); }
     .et-btn i { font-size: 13px; }
     .et-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
+    .et-back { margin-left: auto; color: var(--accent-bright); border-color: var(--accent-dim); }
+    .et-back:hover { background: var(--accent-dim); color: var(--accent-bright); }
+    .et-back[hidden] { display: none; } /* .et-btn es display:flex y anularía el atributo hidden */
     .et-label { font-size: 11px; color: var(--text-tertiary); margin-left: auto; font-family: var(--font-mono); }
 
     .rung-area { flex: 1; overflow-y: auto; padding: 8px 16px 16px; background: var(--bg-base); }
@@ -778,6 +781,10 @@
         <div class="et-sep"></div>
         <button class="et-btn"><i class="ti ti-zoom-in"></i></button>
         <button class="et-btn"><i class="ti ti-zoom-out"></i></button>
+        <button class="et-btn et-back" id="btnBackToChat" hidden
+                title="Regresar a la conversación del Copiloto para pedir cambios">
+          <i class="ti ti-arrow-back-up"></i> Volver al chat
+        </button>
         <span class="et-label">Cargando...</span>
       </div>
 
@@ -886,6 +893,31 @@
     // DESPUÉS
     btn.addEventListener('click', e => { e.stopPropagation(); dd.hidden = !dd.hidden; btn.classList.toggle('open', !dd.hidden); });
     document.addEventListener('click',  e => { if (!wrap.contains(e.target)) { dd.hidden = true; btn.classList.remove('open'); }});
+  })();
+
+  // ── Volver al chat del Copiloto ──────────────────────────────
+  // Visible solo si el editor se abrió desde la conversación
+  // (?from=chat en la URL). El parámetro se captura AQUÍ, al cargar,
+  // porque el autosave (pushToURL) reescribe la URL dejando solo ?l=.
+  (function() {
+    const backBtn  = document.getElementById('btnBackToChat');
+    const fromChat = new URLSearchParams(window.location.search).get('from') === 'chat';
+    if (!backBtn || !fromChat) return;
+
+    backBtn.hidden = false;
+    backBtn.addEventListener('click', () => {
+      if (window.opener && !window.opener.closed) {
+        // La pestaña del chat sigue viva: traerla al frente y cerrar esta.
+        // Si el navegador bloquea el close(), el focus() ya dejó al
+        // usuario en la conversación, que conserva todo el historial.
+        window.opener.focus();
+        window.close();
+      } else {
+        // No hay pestaña de chat (se cerró o se llegó por enlace directo):
+        // abrir el Copiloto. La conversación anterior ya no existe.
+        window.location.href = 'index.html';
+      }
+    });
   })();
 </script>
 
