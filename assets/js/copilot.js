@@ -137,6 +137,7 @@ const modeLabel = $('cpModeLabel');
 const modeIcon = $('cpModeIcon');
 const drawer = $('cpDrawer');
 const scrim = $('cpScrim');
+const backendPill = $('backendPill');
 const backendPillText = $('backendPillText');
 
 const cfg = {
@@ -218,6 +219,9 @@ function applyProfile(id) {
   effortMenu.querySelectorAll('.cp-menu-item[data-profile]').forEach(item => {
     item.classList.toggle('selected', item.dataset.profile === id);
   });
+  document.querySelectorAll('#cpEffortCards .cp-effort-card').forEach(card => {
+    card.classList.toggle('selected', card.dataset.profile === id);
+  });
 }
 
 async function loadProfiles() {
@@ -236,14 +240,24 @@ async function loadProfiles() {
   applyProfile(currentProfile);
 }
 
+// ---------- Indicador de estado del backend ----------
+// Estados: ok (conectado), busy (generando), warn (modelo no
+// disponible), error (sin conexión).
+function setBackendStatus(state, text) {
+  if (!backendPill) return;
+  backendPill.className = 'onav-online cp-status-' + state;
+  backendPillText.textContent = text;
+}
+
 async function checkHealth() {
   if (!backendPillText) return;
   try {
     const res = await fetch(`${apiBase()}/health`, { signal: AbortSignal.timeout(4000) });
     const data = await res.json();
-    backendPillText.textContent = data.ollama ? 'En línea' : 'Sin Ollama';
+    if (data.ollama) setBackendStatus('ok', 'Backend conectado');
+    else setBackendStatus('warn', 'Modelo no disponible');
   } catch (_) {
-    backendPillText.textContent = 'Backend offline';
+    setBackendStatus('error', 'Error de conexión');
   }
 }
 
@@ -270,19 +284,111 @@ function addUserMessage(text) {
   scrollToBottom();
 }
 
-// Renderiza texto plano separando bloques ```código```
+// ------------------------------------------------------------
+// Render de Markdown SEGURO (sin librerías): primero se escapa
+// todo el HTML del modelo y después solo se insertan etiquetas
+// generadas aquí (strong, em, code, h1-h3, ul/ol, p). Los bloques
+// ``` van a <pre><code> vía textContent, nunca como HTML.
+// ------------------------------------------------------------
+function escapeMd(s) {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// Formato en línea: `código`, **negritas**, *cursivas*
+function mdInline(s) {
+  return escapeMd(s)
+    .replace(/`([^`]+)`/g, '<code>$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+}
+
+// Convierte un fragmento de Markdown (sin fences) a HTML controlado
+function mdToHtml(src) {
+  const lines = String(src).split('\n');
+  let html = '';
+  let list = null;          // 'ul' | 'ol' abierta
+  let para = [];            // líneas del párrafo en curso
+
+  const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+  const flushPara = () => {
+    if (para.length) {
+      html += `<p>${para.map(mdInline).join('<br>')}</p>`;
+      para = [];
+    }
+  };
+
+  for (const raw of lines) {
+    const t = raw.trim();
+
+    if (!t) { flushPara(); closeList(); continue; }
+
+    const h = t.match(/^(#{1,3})\s+(.*)$/);
+    if (h) {
+      flushPara(); closeList();
+      const lvl = h[1].length;
+      html += `<h${lvl}>${mdInline(h[2])}</h${lvl}>`;
+      continue;
+    }
+
+    const ul = t.match(/^[-*•]\s+(.*)$/);
+    if (ul) {
+      flushPara();
+      if (list !== 'ul') { closeList(); html += '<ul>'; list = 'ul'; }
+      html += `<li>${mdInline(ul[1])}</li>`;
+      continue;
+    }
+
+    const ol = t.match(/^\d+[.)]\s+(.*)$/);
+    if (ol) {
+      flushPara();
+      if (list !== 'ol') { closeList(); html += '<ol>'; list = 'ol'; }
+      html += `<li>${mdInline(ol[1])}</li>`;
+      continue;
+    }
+
+    closeList();
+    para.push(t);
+  }
+  flushPara();
+  closeList();
+  return html;
+}
+
+// Renderiza la respuesta completa: alterna texto Markdown y ```código```
 function renderBody(container, text) {
   const parts = String(text).split('```');
   parts.forEach((part, i) => {
     if (i % 2 === 1) {
+      // Bloque de código: separa etiqueta de lenguaje de la 1.ª línea
+      let lang = '';
+      let code = part;
+      const nl = part.indexOf('\n');
+      if (nl > -1 && /^[a-zA-Z0-9+#_-]*$/.test(part.slice(0, nl).trim())) {
+        lang = part.slice(0, nl).trim().toLowerCase();
+        code = part.slice(nl + 1);
+      }
+      // JSON: se reformatea con sangría para que sea legible
+      if (lang === 'json' || (!lang && /^\s*[{[]/.test(code))) {
+        try {
+          code = JSON.stringify(JSON.parse(code), null, 2);
+          lang = lang || 'json';
+        } catch (_) { /* no era JSON válido: se muestra tal cual */ }
+      }
       const pre = document.createElement('pre');
-      // quita la etiqueta de lenguaje de la primera línea (```python)
-      pre.textContent = part.replace(/^[a-zA-Z0-9+#-]*\n/, '');
+      if (lang) pre.dataset.lang = lang;
+      const codeEl = document.createElement('code');
+      codeEl.textContent = code.replace(/\s+$/, '');
+      pre.appendChild(codeEl);
       container.appendChild(pre);
-    } else if (part) {
-      const span = document.createElement('span');
-      span.textContent = part;
-      container.appendChild(span);
+    } else if (part.trim()) {
+      const div = document.createElement('div');
+      div.className = 'cp-md';
+      div.innerHTML = mdToHtml(part);
+      container.appendChild(div);
     }
   });
 }
@@ -420,6 +526,7 @@ function addLadderMessage(data) {
 
   const actions = document.createElement('div');
   actions.className = 'cp-msg-actions';
+
   const openBtn = document.createElement('button');
   openBtn.type = 'button';
   openBtn.className = 'cp-action-btn';
@@ -428,7 +535,28 @@ function addLadderMessage(data) {
     window.location.href = `ladder.html?l=${encodeProgramToURL(data.program)}`;
   });
   actions.appendChild(openBtn);
+
+  // Visor del JSON de instrucciones Ladder generado
+  const jsonPre = document.createElement('pre');
+  jsonPre.className = 'cp-json';
+  jsonPre.dataset.lang = 'json';
+  jsonPre.hidden = true;
+  jsonPre.textContent = JSON.stringify(data.program, null, 2);
+
+  const jsonBtn = document.createElement('button');
+  jsonBtn.type = 'button';
+  jsonBtn.className = 'cp-action-btn ghost';
+  jsonBtn.innerHTML = '<i class="fa-solid fa-code"></i> Ver JSON';
+  jsonBtn.addEventListener('click', () => {
+    jsonPre.hidden = !jsonPre.hidden;
+    jsonBtn.innerHTML = jsonPre.hidden
+      ? '<i class="fa-solid fa-code"></i> Ver JSON'
+      : '<i class="fa-solid fa-code"></i> Ocultar JSON';
+  });
+  actions.appendChild(jsonBtn);
+
   row.appendChild(actions);
+  row.appendChild(jsonPre);
 
   threadEl.appendChild(row);
   setEmptyState();
@@ -437,6 +565,7 @@ function addLadderMessage(data) {
 
 async function sendLadderRequest(message) {
   addTypingIndicator('Generador Ladder · creando programa…');
+  setBackendStatus('busy', 'Generando JSON Ladder…');
   try {
     const res = await fetch(GENERAR_LADDER_URL, {
       method: 'POST',
@@ -457,8 +586,10 @@ async function sendLadderRequest(message) {
     }
 
     addLadderMessage(data);
+    setBackendStatus('ok', 'Backend conectado');
   } catch (err) {
     removeTypingIndicator();
+    setBackendStatus('error', 'Error de conexión');
     let hint = err.message;
     if (err.name === 'TimeoutError') {
       hint = 'El servidor de Render tardó demasiado (el plan gratuito se duerme y puede tardar ~1 min en despertar). Intenta de nuevo.';
@@ -489,6 +620,7 @@ function buildPayload(message) {
 
 async function sendChatRequest(message) {
   addTypingIndicator();
+  setBackendStatus('busy', 'Generando respuesta…');
   try {
     const res = await fetch(`${apiBase()}/chat`, {
       method: 'POST',
@@ -581,6 +713,9 @@ function applyMode(id) {
   modeMenu.querySelectorAll('.cp-menu-item[data-mode]').forEach(item => {
     item.classList.toggle('selected', item.dataset.mode === id);
   });
+  document.querySelectorAll('#cpModeCards .cp-mode-card').forEach(card => {
+    card.classList.toggle('selected', card.dataset.mode === id);
+  });
 
   if (!isListening()) inputEl.placeholder = m.placeholder;
 }
@@ -654,6 +789,20 @@ modeMenu.querySelectorAll('.cp-menu-item[data-mode]').forEach(item => {
   item.addEventListener('click', () => {
     applyMode(item.dataset.mode);
     closeMenus();
+    inputEl.focus();
+  });
+});
+
+// Tarjetas del hero (modos y perfiles): mismo estado que las píldoras
+document.querySelectorAll('#cpModeCards .cp-mode-card').forEach(card => {
+  card.addEventListener('click', () => {
+    applyMode(card.dataset.mode);
+    inputEl.focus();
+  });
+});
+document.querySelectorAll('#cpEffortCards .cp-effort-card').forEach(card => {
+  card.addEventListener('click', () => {
+    applyProfile(card.dataset.profile);
     inputEl.focus();
   });
 });

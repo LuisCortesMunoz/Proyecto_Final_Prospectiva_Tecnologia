@@ -62,8 +62,69 @@
 
     <!-- Hero (solo visible sin mensajes) -->
     <section class="cp-hero" id="cpHero">
-      <h1>¿En qué puedo ayudarte?</h1>
-      <p>Aprende, consulta a tu asesor técnico o activa el modo <strong>Diseñador</strong> para generar programas Ladder listos para abrir en el editor.</p>
+      <div class="cp-hero-badge">
+        <i class="fa-solid fa-industry"></i> Automatización industrial · PLC · IEC 61131-3
+      </div>
+      <h1>LadderVoice <span class="cp-hero-accent">Copilot IA</span></h1>
+      <p>Asistente inteligente para generar, explicar y depurar lógica Ladder mediante voz e inteligencia artificial.</p>
+
+      <!-- Modos de operación -->
+      <div class="cp-mode-cards" id="cpModeCards">
+        <button class="cp-mode-card" data-mode="aprendizaje" type="button">
+          <div class="cp-card-head">
+            <span class="cp-card-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+            <i class="fa-solid fa-circle-check cp-card-check"></i>
+          </div>
+          <strong>Aprendizaje</strong>
+          <span>Aprende PLC desde cero: contactos, bobinas, timers, contadores y enclavamientos. Solo respuestas en texto.</span>
+        </button>
+        <button class="cp-mode-card" data-mode="practico" type="button">
+          <div class="cp-card-head">
+            <span class="cp-card-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span>
+            <i class="fa-solid fa-circle-check cp-card-check"></i>
+          </div>
+          <strong>Práctico</strong>
+          <span>Depura tu lógica: asesor técnico que detecta errores conceptuales y recomienda buenas prácticas.</span>
+        </button>
+        <button class="cp-mode-card featured" data-mode="disenador" type="button">
+          <div class="cp-card-head">
+            <span class="cp-card-icon"><i class="fa-solid fa-diagram-project"></i></span>
+            <span class="cp-card-badge">JSON Ladder</span>
+            <i class="fa-solid fa-circle-check cp-card-check"></i>
+          </div>
+          <strong>Diseñador</strong>
+          <span>Genera el JSON de instrucciones Ladder con IA y ábrelo directo en el editor visual.</span>
+        </button>
+      </div>
+
+      <!-- Perfiles de respuesta -->
+      <div class="cp-effort-cards-label">Nivel de razonamiento</div>
+      <div class="cp-effort-cards" id="cpEffortCards">
+        <button class="cp-effort-card" data-profile="instantanea" type="button">
+          <i class="fa-solid fa-bolt"></i>
+          <span class="cp-effort-card-text">
+            <strong>Instantánea</strong>
+            <span>Respuestas rápidas para dudas simples</span>
+          </span>
+          <i class="fa-solid fa-circle-check cp-card-check"></i>
+        </button>
+        <button class="cp-effort-card" data-profile="media" type="button">
+          <i class="fa-solid fa-gauge-simple-high"></i>
+          <span class="cp-effort-card-text">
+            <strong>Media</strong>
+            <span>Equilibrio entre rapidez y explicación</span>
+          </span>
+          <i class="fa-solid fa-circle-check cp-card-check"></i>
+        </button>
+        <button class="cp-effort-card" data-profile="alta" type="button">
+          <i class="fa-solid fa-brain"></i>
+          <span class="cp-effort-card-text">
+            <strong>Alta</strong>
+            <span>Razonamiento profundo para Ladder, PLC y errores técnicos</span>
+          </span>
+          <i class="fa-solid fa-circle-check cp-card-check"></i>
+        </button>
+      </div>
     </section>
 
     <!-- Compositor -->
