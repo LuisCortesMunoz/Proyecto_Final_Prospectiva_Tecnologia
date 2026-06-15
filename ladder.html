@@ -143,15 +143,25 @@
 
     /* ══ EDITOR ═══════════════════════════════════════════ */
     .editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-base); }
-    .editor-toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border); flex-shrink: 0; }
-    .et-btn { display: flex; align-items: center; gap: 4px; padding: 4px 8px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: 11px; cursor: pointer; transition: all var(--transition); }
-    .et-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-light); }
-    .et-btn i { font-size: 13px; }
-    .et-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; }
-    .et-back { margin-left: auto; color: var(--accent-bright); border-color: var(--accent-dim); }
+    /* Barra de herramientas agrupada (estilo del render): grupos con
+       etiqueta arriba y botones icono-sobre-texto. */
+    .editor-toolbar { display: flex; align-items: stretch; gap: 0; padding: 5px 12px; background: var(--bg-surface); border-bottom: 1px solid var(--border); flex-shrink: 0; min-height: 58px; }
+    .et-group { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; }
+    .et-group-label { font-size: 8.5px; font-weight: 600; font-family: var(--font-mono); color: var(--text-tertiary); letter-spacing: 0.9px; text-transform: uppercase; line-height: 1; }
+    .et-group-btns { display: flex; align-items: stretch; gap: 2px; }
+    .et-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-width: 48px; padding: 4px 7px; border-radius: var(--radius-md); border: 1px solid transparent; background: transparent; color: var(--text-secondary); font-family: var(--font-ui); font-size: 10px; line-height: 1; cursor: pointer; transition: all var(--transition); }
+    .et-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+    .et-btn i { font-size: 17px; }
+    .et-btn.is-disabled { opacity: 0.4; pointer-events: none; }
+    .et-sep { width: 1px; align-self: center; height: 34px; background: var(--border); margin: 0 5px; }
+    .et-zoom-val { display: flex; align-items: center; justify-content: center; min-width: 40px; padding: 0 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); }
+    .et-spacer { flex: 1; }
+    .et-back { flex-direction: row; min-width: 0; gap: 5px; padding: 6px 10px; font-size: 11px; align-self: center; color: var(--accent-bright); border-color: var(--accent-dim); }
+    .et-back i { font-size: 14px; }
     .et-back:hover { background: var(--accent-dim); color: var(--accent-bright); }
     .et-back[hidden] { display: none; } /* .et-btn es display:flex y anularía el atributo hidden */
-    .et-label { font-size: 11px; color: var(--text-tertiary); margin-left: auto; font-family: var(--font-mono); }
+    .et-label { display: flex; align-items: center; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); align-self: center; }
+    .et-label-check { font-size: 15px; color: var(--success); margin-left: 6px; align-self: center; }
 
     .rung-area { flex: 1; overflow-y: auto; padding: 8px 16px 16px; background: var(--bg-base); }
     .rung-area::-webkit-scrollbar { width: 6px; }
@@ -172,7 +182,7 @@
     }
     .rung:hover::before    { background: rgba(46,125,225,0.25); }
     .rung.selected::before { background: var(--accent); }
-    .rung.energized::before{ background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+    .rung.energized::before{ background: var(--accent); }
 
     .rung-num {
       width: 30px; flex-shrink: 0;
@@ -209,7 +219,6 @@
     }
     .rung.energized .power-rail {
       background: var(--wire-active);
-      box-shadow: 0 0 10px rgba(46,125,225,0.45);
     }
 
     /* Wires — conductores horizontales */
@@ -218,7 +227,7 @@
       min-width: 8px; flex-shrink: 0;
     }
     .wire.flex { flex: 1; min-width: 8px; max-width: none; }
-    .wire.active { background: var(--wire-active); box-shadow: 0 0 3px rgba(46,125,225,0.4); }
+    .wire.active { background: var(--wire-active); }
 
     /* Elementos ladder */
     .ladder-el {
@@ -322,7 +331,6 @@
     .parallel-ghost {
       height: 3px; margin: 3px 4px;
       background: var(--accent); border-radius: 2px;
-      box-shadow: 0 0 8px var(--accent-bright);
       animation: parallelPulse 0.7s ease-in-out infinite alternate;
     }
     @keyframes parallelPulse { from { opacity: 0.5; } to { opacity: 1; } }
@@ -797,24 +805,78 @@
     <!-- ── EDITOR ── -->
     <main class="editor" aria-label="Área de programación ladder">
       <div class="editor-toolbar">
-        <button class="et-btn"><i class="ti ti-cursor-text"></i> Insertar</button>
-        <button class="et-btn"><i class="ti ti-trash"></i> Eliminar</button>
+
+        <div class="et-group">
+          <span class="et-group-label">Edición</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Deshacer"><i class="ti ti-arrow-back-up"></i><span>Deshacer</span></button>
+            <button class="et-btn is-disabled" title="Rehacer" aria-disabled="true"><i class="ti ti-arrow-forward-up"></i><span>Rehacer</span></button>
+          </div>
+        </div>
         <div class="et-sep"></div>
-        <button class="et-btn"><i class="ti ti-arrow-up"></i> Subir</button>
-        <button class="et-btn"><i class="ti ti-arrow-down"></i> Bajar</button>
+
+        <div class="et-group">
+          <span class="et-group-label">Insertar</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Insertar el componente armado en el rung seleccionado"><i class="ti ti-cursor-text"></i><span>Insertar</span></button>
+            <button class="et-btn" title="Eliminar el elemento o rung seleccionado"><i class="ti ti-trash"></i><span>Eliminar</span></button>
+          </div>
+        </div>
         <div class="et-sep"></div>
-        <button class="et-btn"><i class="ti ti-copy"></i> Copiar</button>
-        <button class="et-btn"><i class="ti ti-clipboard"></i> Pegar</button>
+
+        <div class="et-group">
+          <span class="et-group-label">Mover</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Subir rung"><i class="ti ti-arrow-up"></i><span>Subir</span></button>
+            <button class="et-btn" title="Bajar rung"><i class="ti ti-arrow-down"></i><span>Bajar</span></button>
+          </div>
+        </div>
         <div class="et-sep"></div>
-        <button class="et-btn" title="Agrupar los elementos seleccionados (Ctrl+clic) en una rama paralela"><i class="ti ti-arrows-join"></i> Paralelo</button>
+
+        <div class="et-group">
+          <span class="et-group-label">Portapapeles</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Copiar"><i class="ti ti-copy"></i><span>Copiar</span></button>
+            <button class="et-btn" title="Pegar"><i class="ti ti-clipboard"></i><span>Pegar</span></button>
+          </div>
+        </div>
         <div class="et-sep"></div>
-        <button class="et-btn"><i class="ti ti-zoom-in"></i></button>
-        <button class="et-btn"><i class="ti ti-zoom-out"></i></button>
+
+        <div class="et-group">
+          <span class="et-group-label">Rama</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Agrupar los elementos seleccionados (Ctrl+clic) en una rama paralela"><i class="ti ti-arrows-join"></i><span>Paralelo</span></button>
+          </div>
+        </div>
+        <div class="et-sep"></div>
+
+        <div class="et-group">
+          <span class="et-group-label">Alinear</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Alinear a la izquierda"><i class="ti ti-align-left"></i><span>Izquierda</span></button>
+            <button class="et-btn" title="Centrar"><i class="ti ti-align-center"></i><span>Centro</span></button>
+            <button class="et-btn" title="Alinear a la derecha"><i class="ti ti-align-right"></i><span>Derecha</span></button>
+          </div>
+        </div>
+        <div class="et-sep"></div>
+
+        <div class="et-group">
+          <span class="et-group-label">Vista</span>
+          <div class="et-group-btns">
+            <button class="et-btn" title="Alejar" aria-label="Alejar"><i class="ti ti-zoom-out"></i></button>
+            <span class="et-zoom-val" id="etZoomVal">100%</span>
+            <button class="et-btn" title="Acercar" aria-label="Acercar"><i class="ti ti-zoom-in"></i></button>
+          </div>
+        </div>
+
+        <div class="et-spacer"></div>
+
         <button class="et-btn et-back" id="btnBackToChat" hidden
                 title="Regresar a la conversación del Copiloto para pedir cambios">
           <i class="ti ti-arrow-back-up"></i> Volver al chat
         </button>
         <span class="et-label">Cargando...</span>
+        <i class="ti ti-circle-check et-label-check" aria-hidden="true"></i>
       </div>
 
       <div class="rung-area" id="rungArea" role="list" aria-label="Rungs del programa ladder"></div>

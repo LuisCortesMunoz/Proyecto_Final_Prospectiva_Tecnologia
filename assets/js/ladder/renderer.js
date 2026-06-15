@@ -45,9 +45,9 @@ function elRX(col, type) { return colCX(col) + elW(type) / 2; }
 const BLK = { block_ton:'TON', block_tof:'TOF', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
 
 function elInner(type, en) {
-  // Colores pensados para fondo claro: energizado azul eléctrico,
-  // desenergizado azul pizarra neutro.
-  const c  = en ? '#2e7de1' : '#5b7896';
+  // Paleta clara y suave (sin neón): energizado azul sereno,
+  // desenergizado pizarra clara.
+  const c  = en ? '#2f7ad6' : '#6f8aa6';
   const sw = en ? 1.8 : 1.6;
   switch (type) {
     case 'contact_no': return `
@@ -89,7 +89,7 @@ function elInner(type, en) {
       <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
     default:
       if (BLK[type]) return `
-        <rect x="0" y="0" width="54" height="24" rx="3" fill="none" stroke="${c}" stroke-width="1.4"/>
+        <rect x="0" y="0" width="54" height="24" rx="3" fill="${en ? 'rgba(47,122,214,0.10)' : 'rgba(99,122,150,0.06)'}" stroke="${c}" stroke-width="1.4"/>
         <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">${BLK[type]}</text>`;
       return `<text x="20" y="16" text-anchor="middle" font-size="9" fill="${c}">?</text>`;
   }
@@ -114,11 +114,11 @@ export function renderRung(rung, program, selection) {
   const selRung = selection?.rungId === rung.id;
   const rows    = rung.network ?? [{ row: 0, elements: [] }];
 
-  const wC = en ? '#2e7de1' : '#8fa6c0';   // wire color
-  const rC = en ? '#2e7de1' : '#2a4e80';   // rail color
-  const jC = en ? '#1f6fd6' : '#5b7896';   // junction node fill
-  const addrC = en ? 'rgba(31,111,214,0.95)' : 'rgba(31,111,214,0.60)';
-  const symC  = en ? 'rgba(31,111,214,0.75)' : 'rgba(70,98,126,0.70)';
+  const wC = en ? '#2f7ad6' : '#aebfd2';   // wire color (claro, sin neón)
+  const rC = en ? '#2f7ad6' : '#7089a8';   // rail color (pizarra clara, ya no azul marino)
+  const jC = en ? '#2f7ad6' : '#6f8aa6';   // junction node fill
+  const addrC = en ? 'rgba(31,111,214,0.95)' : 'rgba(45,110,190,0.72)';
+  const symC  = en ? 'rgba(45,110,190,0.80)' : 'rgba(90,112,140,0.72)';
 
   // Columnas: tomar el máximo entre la principal y TODAS las ramas, para
   // que una rama con varios elementos en serie no se desborde del SVG.

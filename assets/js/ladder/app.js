@@ -367,6 +367,8 @@ function adjustZoom(delta) {
   _zoom = Math.max(0.4, Math.min(2.5, _zoom + delta));
   const ra = document.getElementById('rungArea');
   if (ra) { ra.style.transform = `scale(${_zoom})`; ra.style.transformOrigin = 'top left'; }
+  const zv = document.getElementById('etZoomVal');
+  if (zv) zv.textContent = `${Math.round(_zoom * 100)}%`;
   showToast(`Zoom: ${Math.round(_zoom * 100)}%`, 'info');
 }
 
@@ -985,6 +987,7 @@ function onToolbarClick(e) {
   const iconClass = icon?.className ?? '';
   const txt  = btn.textContent.trim();
 
+  if (txt.includes('Deshacer') || txt.includes('Rehacer')) { showToast('Deshacer aún no disponible', 'info'); return; }
   if (txt.includes('Insertar')) {
     const armed = store.getArmed();
     if (armed && sel.rungId) { store.addElement(sel.rungId, armed); showToast(`${armed} insertado`, 'success'); }
