@@ -473,6 +473,35 @@
     .toast.error   { border-color: var(--danger);  color: var(--danger);  }
     .toast.info    { border-color: var(--accent);  color: var(--accent-bright); }
     @keyframes toastIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
+    /* ── Panel de chat / asistente IA (switch de arquitectura) ── */
+    .chat-panel { width: 340px; flex-shrink: 0; background: var(--bg-surface); border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; transition: width var(--transition); }
+    .chat-panel.collapsed { width: 0; border-left: 0; }
+    .chat-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; border-bottom: 1px solid var(--border); flex-shrink: 0; }
+    .chat-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-primary); }
+    .chat-collapse { background: none; border: none; color: var(--text-tertiary); cursor: pointer; padding: 2px; }
+    .chat-engine { padding: 8px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; flex-shrink: 0; }
+    .seg { display: flex; gap: 2px; background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 2px; }
+    .seg-btn { flex: 1; padding: 5px 6px; font-size: 10px; font-family: var(--font-mono); border: none; border-radius: 4px; background: transparent; color: var(--text-secondary); cursor: pointer; transition: all var(--transition); }
+    .seg-btn.active { background: #1d3a5f; color: #cfe6ff; font-weight: 600; }
+    .chat-badge { align-self: flex-start; font-size: 9px; font-family: var(--font-mono); font-weight: 700; color: #06121f; background: #4d9ef7; padding: 2px 8px; border-radius: 10px; letter-spacing: 0.4px; }
+    .chat-messages { flex: 1; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+    .cmsg { max-width: 92%; padding: 7px 9px; border-radius: 8px; font-size: 11.5px; line-height: 1.45; word-break: break-word; }
+    .cmsg.user { align-self: flex-end; background: #1d3a5f; color: #e6f1ff; }
+    .cmsg.ai { align-self: flex-start; background: var(--bg-elevated); color: var(--text-secondary); border: 1px solid var(--border); }
+    .cmsg-text.err { color: #ff8f8f; }
+    .cmsg-tel { width: 100%; margin-top: 6px; border-collapse: collapse; font-family: var(--font-mono); font-size: 9.5px; }
+    .cmsg-tel td { border-top: 1px solid var(--border); padding: 2px 4px; color: var(--text-tertiary); }
+    .cmsg-tel td:first-child { color: var(--text-secondary); }
+    .cmsg-warn { margin-top: 6px; font-size: 10px; color: #e0b070; }
+    .cmsg-warn summary { cursor: pointer; }
+    .cmsg-warn ul { margin: 4px 0 0; padding-left: 16px; }
+    .chat-input { border-top: 1px solid var(--border); padding: 8px; flex-shrink: 0; }
+    .chat-input textarea { width: 100%; resize: vertical; background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-ui); font-size: 11.5px; padding: 7px 8px; box-sizing: border-box; }
+    .chat-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .chat-send { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; border: none; border-radius: var(--radius-sm); background: #2e6dba; color: #fff; font-size: 11px; cursor: pointer; }
+    .chat-send:hover { background: #357fd4; }
+    .chat-compare { padding: 6px 9px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: 11px; cursor: pointer; }
+    .chat-reopen { position: fixed; right: 0; top: 56px; z-index: 50; background: #2e6dba; color: #fff; border: none; border-radius: 6px 0 0 6px; padding: 9px 7px; cursor: pointer; display: none; }
   </style>
   <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
 
@@ -791,6 +820,30 @@
       <div class="rung-area" id="rungArea" role="list" aria-label="Rungs del programa ladder"></div>
     </main>
 
+    <!-- ── PANEL CHAT / ASISTENTE IA (switch de arquitectura A/B) ── -->
+    <aside class="chat-panel" id="chatPanel" aria-label="Asistente IA">
+      <div class="chat-head">
+        <div class="chat-title"><i class="ti ti-message-chatbot"></i> Asistente IA</div>
+        <button class="chat-collapse" id="chatCollapseBtn" type="button" title="Colapsar panel"><i class="ti ti-chevron-right"></i></button>
+      </div>
+      <div class="chat-engine">
+        <div class="seg" role="tablist" aria-label="Motor de generación">
+          <button class="seg-btn" data-engine="A" type="button">A · Geometría IA</button>
+          <button class="seg-btn" data-engine="B" type="button">B · Lógica booleana</button>
+        </div>
+        <span class="chat-badge" id="chatBadge">Motor A</span>
+      </div>
+      <div class="chat-messages" id="chatMessages"></div>
+      <div class="chat-input">
+        <textarea id="chatInput" rows="3" placeholder="Describe el programa..."></textarea>
+        <div class="chat-actions">
+          <button class="chat-send" id="chatSendBtn" type="button"><i class="ti ti-send"></i> Generar</button>
+          <button class="chat-compare" id="chatCompareBtn" type="button" title="Correr el mismo prompt en ambos motores">⇄ Comparar</button>
+        </div>
+      </div>
+    </aside>
+    <button class="chat-reopen" id="chatReopenBtn" type="button" title="Abrir asistente"><i class="ti ti-message-chatbot"></i></button>
+
   </div><!-- /main -->
 
   <!-- ══ CONTEXT MENU (clic derecho) ══════════════════════ -->
@@ -922,5 +975,6 @@
 </script>
 
 <script type="module" src="assets/js/ladder/app.js"></script>
+<script type="module" src="assets/js/ladder/chat.js"></script>
 </body>
 </html>

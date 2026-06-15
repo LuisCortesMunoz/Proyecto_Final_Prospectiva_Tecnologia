@@ -1,0 +1,25 @@
+{
+  "id": "maletin_basico",
+  "name": "Maletín básico — PLC + 3 botones + 3 lámparas",
+  "descripcion": "Kit de laboratorio para aprender lenguaje escalera. PLC Horner con botones de marcha/paro, un selector, paro de emergencia, 3 lámparas y un par de entradas analógicas.",
+  "plc": {
+    "familia": "Horner XL4 / XC1E5",
+    "software": "Cscape 10.2",
+    "modbus": { "ip": "192.168.1.100", "port": 502, "unit_id": 1 }
+  },
+  "inputs": [
+    { "id": "BTN_VERDE", "addr": "%I1", "kind": "NO", "label": "Botón verde (arranque)", "rol": "marcha" },
+    { "id": "BTN_ROJO",  "addr": "%I2", "kind": "NC", "label": "Botón rojo (paro)",     "rol": "paro" },
+    { "id": "SELECTOR",  "addr": "%I3", "kind": "NO", "label": "Selector / reset",       "rol": "selector" },
+    { "id": "SELECTOR_2","addr": "%I4", "kind": "NO", "label": "Selector 2" },
+    { "id": "PARO_EMERG","addr": "%I8", "kind": "NC", "label": "Paro de emergencia",     "rol": "emergencia" },
+    { "id": "AI_1", "addr": "%AI1", "kind": "analog", "label": "Entrada analógica 1" },
+    { "id": "AI_2", "addr": "%AI2", "kind": "analog", "label": "Entrada analógica 2" }
+  ],
+  "outputs": [
+    { "id": "LAMP_VERDE",    "addr": "%Q10", "label": "Lámpara verde" },
+    { "id": "LAMP_AMARILLA", "addr": "%Q11", "label": "Lámpara amarilla" },
+    { "id": "LAMP_ROJA",     "addr": "%Q12", "label": "Lámpara roja" }
+  ],
+  "recursos": { "timers": 8, "contadores": 8, "marcas": "%M", "registros": "%R" }
+}

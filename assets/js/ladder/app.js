@@ -269,6 +269,16 @@ const store = (() => {
   };
 })();
 
+// ── Puente para módulos externos (panel de chat / motores IA) ──
+// El store es privado del módulo; exponemos una API mínima en window para que
+// chat.js pueda aplicar programas generados por cualquier motor (A/B).
+window.LadderEditor = {
+  setProgram: (p) => store.setProgram(p),
+  getProgram: () => store.getProgram(),
+  selectRung: (id) => store.selectRung(id),
+  log: (type, msg) => store.log(type, msg),
+};
+
 // ── Toast ──────────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
   const c = document.getElementById('toast-container');
