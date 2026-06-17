@@ -1,15 +1,10 @@
 /**
- * patterns.js — Patrones secuenciales para la arquitectura B.
+ * patterns.js — Helpers de patrones secuenciales reutilizables por el compilador.
  *
- * La IA elige un patrón + parámetros; el compilador lo expande a rungs.
- * La IA nunca cablea timers ni toca columnas.
- *
- * Estado del esqueleto:
- *   - latch   : ✅ enclavamiento (azúcar sobre una ecuación booleana).
- *   - blinker : ⛔ pendiente. El schema actual NO modela el bit ".done" del
- *               timer como contacto direccionable, así que un oscilador
- *               correcto (TON↔TON) requiere extender schema.js primero.
- *               Se deja fuera a propósito para no emitir geometría incorrecta.
+ * El compilador (logicToSchema.js) expande las secciones del JSON lógico simple
+ * a rungs. `latch` da el sello (auto-retención) usado por states[].type='latch'.
+ * El parpadeo se modela vía timers[].type='OSCILLATOR' (bloque OSC) + el bit
+ * del oscilador como contacto en la expr de la salida, no aquí.
  */
 export const patterns = {
   // { pattern:'latch', coil:'Q10', start:'I1', stop:'I2' | stops:['I2','I8'] }

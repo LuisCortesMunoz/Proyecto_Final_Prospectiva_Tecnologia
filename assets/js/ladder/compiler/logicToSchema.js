@@ -1,23 +1,24 @@
 /**
- * logicToSchema.js — Compilador DETERMINISTA: lógica booleana → schema ladder.
+ * logicToSchema.js — Compilador DETERMINISTA: JSON lógico simple → schema ladder.
  *
- * Arquitectura B: la IA emite LÓGICA (ecuaciones/patrones); este código (sin
- * IA) calcula la GEOMETRÍA (network/row/span) que entiende el renderer.
+ * Arquitectura ÚNICA del proyecto (ver CONTRACT.md): la IA emite el JSON
+ * LÓGICO SIMPLE (outputs/timers/states/global_rules) y este código (sin IA)
+ * calcula la GEOMETRÍA (network/row/span) que entiende el renderer.
  *
- * Sintaxis de ecuación por rung:   COIL = expr
+ * Cada salida tiene una expresión booleana `expr`:
  *     *  &   → serie (AND)
  *     +  |   → paralelo (OR)
  *     !  ~  /→ contacto NC (negado), como prefijo de un operando
  *     ( )    → agrupación
- *     operando → id de símbolo (BTN_VERDE) o dirección (Q10, %I1, I0.0)
+ *     operando → nombre lógico (I1, Q10, M1, T1.DN, BLINK_1S)
  *
- * Que la bobina aparezca como operando dentro de su propia ecuación es la
+ * Que la bobina aparezca como operando dentro de su propia expresión es la
  * auto-retención (enclavamiento), resuelta de forma estructural.
  *
- * Alcance del esqueleto: AND de factores en el nivel superior; cada factor es
- * un literal o un grupo OR; cada alternativa del OR es un literal o una serie
- * (AND) de literales. Anidamientos más profundos generan un aviso y se
- * aproximan. Cubre los casos del maletín (arranque/paro, enclavamiento…).
+ * Alcance: AND de factores en el nivel superior; cada factor es un literal o
+ * un grupo OR; cada alternativa del OR es un literal o una serie (AND) de
+ * literales. Anidamientos más profundos generan un aviso y se aproximan.
+ * Cubre los casos del maletín (arranque/paro, enclavamiento, timers…).
  */
 import { patterns } from './patterns.js';
 
@@ -150,18 +151,38 @@ export function compileEquation(rungSpec, idx, ctx) {
   return { id: idx + 1, enabled: true, comment: rungSpec.comment || '', network };
 }
 
+// Compila un timer del contrato a un rung: [contacto(enable)] → bloque TON/TOF/OSC
+function compileTimer(tm, idx, ctx) {
+  const els = [];
+  let col = 0;
+  if (tm.enable) { els.push(mkContact({ name: tm.enable, neg: false }, col, ctx)); col++; }
+  const type = tm.type === 'TOF' ? 'block_tof'
+             : tm.type === 'OSCILLATOR' ? 'block_osc'
+             : 'block_ton';
+  const addr = ctx.resolveAddr(tm.id);
+  ctx.useAddr(addr);
+  els.push({ id: eid(), type, address: addr, pos: { col }, params: { preset_ms: tm.preset_ms ?? 1000 } });
+  return { id: idx + 1, enabled: true, comment: tm.comment || `Timer ${tm.id}`, network: [{ row: 0, elements: els }] };
+}
+
 // ── Símbolos y direcciones ─────────────────────────────────────
+// El programa usa NOMBRES LÓGICOS como dirección (I1, Q10, M1, T1, T1.DN),
+// igual que el contrato. El símbolo/comentario amigable viene del perfil.
+function normalizeLogical(addr) { return String(addr).replace(/^%/, ''); }
+
+function modbusFor(io, key) {
+  if (io.kind === 'analog') return { fn: 'holding_reg', address: null };
+  // entrada (input) → read_coil ; salida (output) → write_coil
+  if (io._dir === 'out') return { fn: 'write_coil', address: null };
+  if (io._dir === 'in') return { fn: 'read_coil', address: null };
+  return guessModbus(key);
+}
+
 function buildSymbols(logic, profile) {
   const map = {};
   if (profile) {
-    for (const io of [...(profile.inputs || []), ...(profile.outputs || [])]) {
-      map[io.id] = { addr: io.addr, type: io.kind === 'analog' ? 'INT' : 'BOOL', comment: io.label || '', symbol: io.id };
-    }
-  }
-  if (logic.symbols) {
-    for (const [k, v] of Object.entries(logic.symbols)) {
-      map[k] = { addr: v.addr || k, type: v.type || 'BOOL', comment: v.comment || v.label || '', symbol: k };
-    }
+    for (const io of (profile.inputs || []))  { const k = normalizeLogical(io.addr); map[k] = { addr: k, symbol: io.id || k, type: io.kind === 'analog' ? 'INT' : 'BOOL', comment: io.label || '', modbus: modbusFor({ ...io, _dir: 'in' }, k) }; }
+    for (const io of (profile.outputs || [])) { const k = normalizeLogical(io.addr); map[k] = { addr: k, symbol: io.id || k, type: 'BOOL', comment: io.label || '', modbus: modbusFor({ ...io, _dir: 'out' }, k) }; }
   }
   return map;
 }
@@ -175,17 +196,25 @@ function guessModbus(a) {
   return { fn: 'internal', address: null };
 }
 function symbolEntryFor(addr, symbols) {
-  let found = null;
-  for (const s of Object.values(symbols)) if (s.addr === addr) { found = s; break; }
+  const found = symbols[addr];
   return {
     symbol: found ? found.symbol : String(addr).replace(/[%.]/g, '_'),
-    type: found ? found.type : guessType(addr),
-    modbus: guessModbus(addr),
+    type:   found ? found.type   : guessType(addr),
+    modbus: found && found.modbus ? found.modbus : guessModbus(addr),
     comment: found ? found.comment : '',
   };
 }
 
-// ── Entrada principal ──────────────────────────────────────────
+// ¿La expresión ya referencia la variable de paro? (para no duplicarla)
+function exprUsesVar(expr, name) {
+  if (!name) return false;
+  const re = new RegExp('(^|[^\\w.%])' + String(name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '([^\\w.%]|$)');
+  return re.test(String(expr || ''));
+}
+
+// ── Entrada principal: JSON LÓGICO SIMPLE → schema ladder ──────
+// Contrato: { name, outputs:[{coil,expr,mode,comment}], timers:[...],
+//             states:[...], global_rules:{global_stop, stop_priority} }
 export function compileLogicToSchema(logic, profile) {
   const warnings = [];
   const used = new Map();
@@ -193,24 +222,41 @@ export function compileLogicToSchema(logic, profile) {
 
   const ctx = {
     warnings,
-    resolveAddr(name) { if (name == null) return ''; const s = symbols[name]; return s ? s.addr : name; },
+    resolveAddr(name) { if (name == null) return ''; const n = String(name).trim(); const s = symbols[n]; return s ? s.addr : n; },
     useAddr(addr) { if (addr && !used.has(addr)) used.set(addr, symbolEntryFor(addr, symbols)); },
   };
 
   const rungs = [];
   const helpers = { compileEquation, mkRungId: () => rungs.length + 1 };
-  for (const [i, rs] of (logic.rungs || []).entries()) {
-    if (rs.pattern) {
-      const fn = patterns[rs.pattern];
-      if (!fn) { warnings.push(`Patrón "${rs.pattern}" no soportado (esqueleto). Disponibles: ${Object.keys(patterns).join(', ')}.`); continue; }
-      const built = fn(rs, ctx, helpers);
-      (Array.isArray(built) ? built : [built]).forEach(r => { r.id = rungs.length + 1; rungs.push(r); });
-    } else if (rs.expr && rs.coil) {
-      rungs.push(compileEquation(rs, rungs.length, ctx));
-    } else {
-      warnings.push(`Rung ${i + 1} ignorado: falta 'expr'+'coil' o 'pattern'.`);
-    }
+  const gStop = logic?.global_rules?.global_stop;
+  const stopPriority = logic?.global_rules?.stop_priority !== false; // por defecto el paro tiene prioridad
+
+  // 1) Estados (latch) primero, para que M1 ya exista al compilar las salidas.
+  for (const st of (logic?.states || [])) {
+    if (st.type && st.type !== 'latch') { warnings.push(`Estado "${st.id}": tipo "${st.type}" no soportado; se usa latch.`); }
+    const built = patterns.latch(
+      { coil: st.id, start: st.set, stops: st.reset ? [st.reset] : [], comment: st.comment },
+      ctx, helpers,
+    );
+    built.id = rungs.length + 1;
+    rungs.push(built);
   }
+
+  // 2) Timers → un rung con su bloque.
+  for (const tm of (logic?.timers || [])) {
+    rungs.push(compileTimer(tm, rungs.length, ctx));
+  }
+
+  // 3) Salidas → un rung por bobina. El paro global se aplica con prioridad.
+  for (const out of (logic?.outputs || [])) {
+    let expr = out.expr || '';
+    if (gStop && stopPriority && !exprUsesVar(expr, gStop)) {
+      expr = expr ? `(${expr}) * !${gStop}` : `!${gStop}`;
+    }
+    rungs.push(compileEquation({ coil: out.coil, expr, comment: out.comment || '', coilType: 'output' }, rungs.length, ctx));
+  }
+
+  if (!rungs.length) warnings.push('El JSON lógico no produjo ningún rung (sin outputs/timers/states).');
 
   const symbol_table = {};
   for (const [addr, entry] of used) symbol_table[addr] = entry;
@@ -218,13 +264,14 @@ export function compileLogicToSchema(logic, profile) {
   const program = {
     metadata: {
       project_id: 'logic_' + Date.now().toString(36),
-      name: (logic && logic.name) || 'Programa (lógica booleana)',
+      name: (logic && logic.name) || 'Programa lógico',
       version: '1.0.0',
+      device_profile: (logic && logic.device_profile) || (profile && profile.id) || null,
+      logic_type: (logic && logic.logic_type) || null,
       plc_target: (profile && profile.plc && profile.plc.modbus)
-        ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: 1 }
+        ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
         : { ip: '192.168.1.100', port: 502, unit_id: 1 },
       scan_time_ms: 100,
-      _engine: 'B',
       _warnings: warnings,
     },
     symbol_table,

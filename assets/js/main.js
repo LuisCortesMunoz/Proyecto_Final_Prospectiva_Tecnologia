@@ -3,7 +3,10 @@
 // ============================
 // URL real de Render, sin slash al final.
 const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
-const VOZ_A_LADDER_URL = `${BACKEND_BASE_URL}/voz-a-ladder`;
+// Arquitectura única (ver CONTRACT.md): la voz solo transcribe; el texto pasa
+// luego por window.LadderGen.generate (→ /generar-logica → JSON lógico →
+// compilación en el front). El backend ya NO devuelve geometría.
+const TRANSCRIBIR_URL = `${BACKEND_BASE_URL}/transcribir`;
 
 // Si quieres que se abra el editor automáticamente al terminar, cambia a true.
 const AUTO_OPEN_LADDER = false;
@@ -163,22 +166,9 @@ const AUTO_OPEN_LADDER = false;
     return 'webm';
   }
 
-  function encodeProgramToURL(program) {
-    const json = JSON.stringify(program);
-    const bytes = new TextEncoder().encode(json);
-
-    let binary = '';
-    for (const b of bytes) {
-      binary += String.fromCharCode(b);
-    }
-
-    // Base64 URL-safe: debe coincidir con codec.js (decode). Sin +, / ni =
-    // para que el parametro ?l= no se corrompa al leerlo en el editor.
-    return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-  }
-
+  // Codificación URL-safe centralizada en codec.js, expuesta por gen-bridge.js.
   function openProgramInLadder(program) {
-    const encoded = encodeProgramToURL(program);
+    const encoded = window.LadderGen.encodeProgramToURL(program);
     window.location.href = `ladder.html?l=${encoded}`;
   }
 
@@ -199,13 +189,15 @@ const AUTO_OPEN_LADDER = false;
     return wrap;
   }
 
-  async function enviarAudioAVozLadder(audioBlob, mimeType) {
+  // Solo transcribe el audio a texto. La generación del programa la hace
+  // window.LadderGen.generate con ese texto (arquitectura única).
+  async function transcribirAudio(audioBlob, mimeType) {
     const extension = getFileExtension(mimeType || audioBlob.type || 'audio/webm');
 
     const formData = new FormData();
     formData.append('audio', audioBlob, `comando_voz.${extension}`);
 
-    const response = await fetch(VOZ_A_LADDER_URL, {
+    const response = await fetch(TRANSCRIBIR_URL, {
       method: 'POST',
       body: formData,
     });
@@ -217,7 +209,7 @@ const AUTO_OPEN_LADDER = false;
       throw new Error(detail);
     }
 
-    return data;
+    return data?.texto || data?.stt?.texto || '';
   }
 
   async function startRecording() {
@@ -256,21 +248,21 @@ const AUTO_OPEN_LADDER = false;
           }
 
           setStatus('processing', 'Procesando...');
-          addMessage('ai', 'Audio recibido. Transcribiendo y generando programa Ladder...');
+          addMessage('ai', 'Audio recibido. Transcribiendo...');
 
-          const data = await enviarAudioAVozLadder(audioBlob, finalMimeType);
-
-          const texto = data.texto || data.stt?.texto || '';
-          const ladder = data.ladder;
-          const program = ladder?.program;
-
+          const texto = await transcribirAudio(audioBlob, finalMimeType);
           addMessage('user', texto || '(transcripción vacía)');
 
-          if (!program) {
-            throw new Error('El backend respondió, pero no regresó un programa Ladder válido.');
+          if (!texto.trim()) {
+            throw new Error('No se entendió ninguna instrucción en el audio. Intenta de nuevo.');
           }
 
-          const resumen = `Programa generado: ${ladder.nombre}. Rungs: ${ladder.rungs}. Variables: ${ladder.variables}.`;
+          // Texto → JSON lógico → programa (arquitectura única, vía bridge ESM).
+          const out = await window.LadderGen.generate(texto);
+          const program = out.program;
+          const nombre = program.metadata?.name || 'programa';
+          const avisos = out.warnings?.length ? ` (${out.warnings.length} aviso/s)` : '';
+          const resumen = `Programa generado: ${nombre}. Rungs: ${program.rungs.length}.${avisos}`;
 
           if (AUTO_OPEN_LADDER) {
             addMessage('ai', resumen + ' Abriendo editor Ladder...');

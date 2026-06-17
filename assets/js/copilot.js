@@ -2,18 +2,18 @@
 // LADDERVOICE COPILOT — Práctica 4 (Prompting y Copilotos)
 // Frontend estilo ChatGPT sobre FastAPI + Ollama.
 // Perfiles de esfuerzo: Instantánea / Media / Alta (+ Genérico).
-// Modo Ladder: envía el prompt al backend de Render que genera
-// el JSON de instrucciones Ladder y lo abre en el editor.
+// Modo Diseñador: arquitectura única (ver CONTRACT.md). El prompt
+// pasa por window.LadderGen.generate (→ /generar-logica → JSON lógico
+// simple → compilación en el front) y abre el programa en el editor.
 // ============================================================
 
 // ---------- Configuración ----------
 const DEFAULT_API_BASE = 'http://localhost:8000';
 const CHAT_TIMEOUT_MS = 180000;
 
-// Backend en Render (mismo que usa el Asistente de Voz de index.html).
-const LADDER_BACKEND_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
-const GENERAR_LADDER_URL = `${LADDER_BACKEND_URL}/generar-ladder`;
-const LADDER_TIMEOUT_MS = 150000; // Render gratuito puede tardar en despertar
+// El modo Diseñador genera el programa vía window.LadderGen (gen-bridge.js),
+// que apunta al backend de Render. Render gratuito puede tardar en despertar.
+const LADDER_TIMEOUT_MS = 150000;
 
 // Copia local de los perfiles para que el selector y el panel
 // funcionen aunque el backend aún no esté corriendo. Al cargar
@@ -59,7 +59,7 @@ const LISTENING_PLACEHOLDER = 'Escuchando… habla ahora';
 // cambia el comportamiento de respuesta (prompt prioritario + ruta).
 // - aprendizaje / practico: usan el chat actual (backend local + Ollama),
 //   con instrucciones que les prohíben generar Ladder.
-// - disenador: usa el flujo existente /generar-ladder (Render) → editor.
+// - disenador: usa window.LadderGen.generate (arquitectura única) → editor.
 const OPERATION_MODES = {
   aprendizaje: {
     label: 'Aprendizaje',
@@ -116,10 +116,10 @@ let currentProfile = localStorage.getItem('lv_copilot_profile') || 'media';
 let currentMode = localStorage.getItem('lv_copilot_mode') || 'aprendizaje';
 let isBusy = false;
 
-// Contexto conversacional del modo Diseñador: el backend /generar-ladder
-// no guarda estado, así que el frontend recuerda el último programa
-// generado y los prompts previos para que instrucciones como "cámbialo"
-// o "agrégale un paro" tengan referencia.
+// Contexto conversacional del modo Diseñador: el backend no guarda estado,
+// así que el frontend recuerda el último programa generado y los prompts
+// previos (se pasan como `contexto` a window.LadderGen.generate) para que
+// instrucciones como "cámbialo" o "agrégale un paro" tengan referencia.
 let lastLadderProgram = null; // JSON del último programa generado
 let ladderPrompts = [];       // prompts previos del modo Diseñador
 
@@ -465,8 +465,8 @@ function addSystemInfoMessage() {
   const pre = document.createElement('pre');
   pre.textContent = currentMode === 'disenador'
     ? 'El modo Diseñador no usa el chat local: envía tu instrucción al generador ' +
-      'Ladder (backend de Render, /generar-ladder) y devuelve el programa JSON ' +
-      'listo para abrir en el editor.'
+      'Ladder, que la IA convierte en un JSON lógico simple (ver CONTRACT.md); ' +
+      'el front lo valida y compila a un programa listo para abrir en el editor.'
     : effectiveSystemPrompt();
   msg.appendChild(pre);
   row.append(role, msg);
@@ -499,19 +499,15 @@ function escapeHtml(text) {
 }
 
 // ============================================================
-// GENERACIÓN LADDER (backend de Render — /generar-ladder)
+// GENERACIÓN LADDER (arquitectura única — window.LadderGen)
 // ============================================================
 
-// Base64 URL-safe: debe coincidir con codec.js (decode) y main.js.
-function encodeProgramToURL(program) {
-  const json = JSON.stringify(program);
-  const bytes = new TextEncoder().encode(json);
-  let binary = '';
-  for (const b of bytes) binary += String.fromCharCode(b);
-  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+// `out` es el resultado de window.LadderGen.generate:
+//   { program, logic, warnings, telemetry }
+function addLadderMessage(out) {
+  const program = out.program;
+  const symbols = program.symbol_table ? Object.keys(program.symbol_table).length : 0;
 
-function addLadderMessage(data) {
   const row = document.createElement('div');
   row.className = 'cp-msg-row ai';
 
@@ -524,10 +520,10 @@ function addLadderMessage(data) {
   const msg = document.createElement('div');
   msg.className = 'cp-msg';
   const lines = [
-    `Programa generado: ${data.nombre || 'sin nombre'}`,
-    `Rungs: ${data.rungs ?? '—'} · Ramas paralelas: ${data.ramas_paralelas ?? 0} · Variables: ${data.variables ?? '—'}`,
+    `Programa generado: ${program.metadata?.name || 'sin nombre'}`,
+    `Rungs: ${program.rungs.length} · Variables: ${symbols}`,
   ];
-  if (data.es_enclavamiento) lines.push('Incluye lógica de enclavamiento (sello).');
+  if (out.warnings?.length) lines.push(`${out.warnings.length} aviso(s): ${out.warnings.join(' · ')}`);
   msg.textContent = lines.join('\n');
   row.appendChild(msg);
 
@@ -543,7 +539,7 @@ function addLadderMessage(data) {
     // del chat (el estado de la conversación vive solo en memoria).
     // `from=chat` hace que el editor muestre su botón "Volver al chat",
     // y conservar window.opener le permite re-enfocar esta pestaña.
-    window.open(`ladder.html?l=${encodeProgramToURL(data.program)}&from=chat`, '_blank');
+    window.open(`ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`, '_blank');
   });
   actions.appendChild(openBtn);
 
@@ -552,7 +548,7 @@ function addLadderMessage(data) {
   jsonPre.className = 'cp-json';
   jsonPre.dataset.lang = 'json';
   jsonPre.hidden = true;
-  jsonPre.textContent = JSON.stringify(data.program, null, 2);
+  jsonPre.textContent = JSON.stringify(program, null, 2);
 
   const jsonBtn = document.createElement('button');
   jsonBtn.type = 'button';
@@ -579,40 +575,27 @@ async function sendLadderRequest(message) {
   addTypingIndicator(isFollowUp
     ? 'Generador Ladder · aplicando cambios…'
     : 'Generador Ladder · creando programa…');
-  setBackendStatus('busy', 'Generando JSON Ladder…');
+  setBackendStatus('busy', 'Generando programa Ladder…');
 
-  // Si ya hay un programa generado, se manda como contexto para que el
-  // modelo entienda instrucciones de modificación. El backend actual lo
-  // ignora sin romperse si aún no soporta el campo `contexto`.
-  const payload = { prompt: message };
+  // Si ya hay un programa generado, se manda como contexto para que la IA
+  // entienda instrucciones de modificación ("cámbialo", "agrégale un paro").
+  let context = null;
   if (isFollowUp) {
-    payload.contexto = {
+    context = {
       programa_anterior: lastLadderProgram,
       historial: ladderPrompts.slice(-4),
     };
   }
 
   try {
-    const res = await fetch(GENERAR_LADDER_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+    const out = await window.LadderGen.generate(message, {
+      context,
       signal: AbortSignal.timeout(LADDER_TIMEOUT_MS),
     });
-
-    const data = await res.json().catch(() => null);
     removeTypingIndicator();
 
-    if (!res.ok) {
-      const detail = data?.detail || `Error HTTP ${res.status}`;
-      throw new Error(typeof detail === 'string' ? detail : JSON.stringify(detail));
-    }
-    if (!data?.program) {
-      throw new Error('El backend respondió, pero no regresó un programa Ladder válido.');
-    }
-
-    addLadderMessage(data);
-    lastLadderProgram = data.program;
+    addLadderMessage(out);
+    lastLadderProgram = out.program;
     ladderPrompts.push(message);
     setBackendStatus('ok', 'Backend conectado');
   } catch (err) {
@@ -623,6 +606,10 @@ async function sendLadderRequest(message) {
       hint = 'El servidor de Render tardó demasiado (el plan gratuito se duerme y puede tardar ~1 min en despertar). Intenta de nuevo.';
     } else if (/Failed to fetch|NetworkError/i.test(err.message)) {
       hint = 'No se pudo conectar con el backend de Render. Revisa tu conexión a internet.';
+    }
+    // Si el JSON lógico no validó, listar los errores concretos del contrato.
+    if (Array.isArray(err.logicErrors) && err.logicErrors.length) {
+      hint += '\n• ' + err.logicErrors.join('\n• ');
     }
     addErrorMessage('Error al generar Ladder: ' + hint);
   }

@@ -12,6 +12,7 @@ export const ELEMENT_TYPES = {
   coil_r:           { label: 'Bobina R',     category: 'coil'    },
   block_ton:        { label: 'Timer TON',    category: 'block'   },
   block_tof:        { label: 'Timer TOF',    category: 'block'   },
+  block_osc:        { label: 'Oscilador',    category: 'block'   },
   block_ctu:        { label: 'Contador CTU', category: 'block'   },
   block_ctd:        { label: 'Contador CTD', category: 'block'   },
   block_cmp:        { label: 'Comparador',   category: 'block'   },
@@ -22,7 +23,7 @@ export const ELEMENT_TYPES = {
 // Tipos que solo van en la zona derecha (salida del rung)
 export const OUTPUT_TYPES = new Set([
   'coil', 'coil_s', 'coil_r',
-  'block_ton', 'block_tof', 'block_ctu', 'block_ctd',
+  'block_ton', 'block_tof', 'block_osc', 'block_ctu', 'block_ctd',
 ]);
 
 export function isOutputType(t) { return OUTPUT_TYPES.has(t); }
@@ -104,7 +105,7 @@ export function newElement(type, col) {
   if (type === 'coil')   el.coil_type = 'output';
   if (type === 'coil_s') el.coil_type = 'set';
   if (type === 'coil_r') el.coil_type = 'reset';
-  if (type === 'block_ton' || type === 'block_tof') el.params = { preset_ms: 1000 };
+  if (type === 'block_ton' || type === 'block_tof' || type === 'block_osc') el.params = { preset_ms: 1000 };
   if (type === 'block_ctu' || type === 'block_ctd') el.params = { preset: 10 };
   if (type === 'block_cmp') el.params = { op: 'EQ', value: 0 };
   return el;

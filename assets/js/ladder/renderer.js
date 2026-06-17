@@ -42,7 +42,7 @@ function fmtAddr(address) {
 function elLX(col, type) { return colCX(col) - elW(type) / 2; }
 function elRX(col, type) { return colCX(col) + elW(type) / 2; }
 
-const BLK = { block_ton:'TON', block_tof:'TOF', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
+const BLK = { block_ton:'TON', block_tof:'TOF', block_osc:'OSC', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
 
 function elInner(type, en) {
   // Paleta clara y suave (sin neón): energizado azul sereno,
