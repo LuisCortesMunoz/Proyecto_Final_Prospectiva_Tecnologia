@@ -1,11 +1,15 @@
 /**
- * logicToSchema.js — Compilador DETERMINISTA: JSON lógico simple → schema ladder.
+ * logicToSchema.js — Compilador DETERMINISTA: JSON dual engine-config → schema ladder.
  *
- * Arquitectura ÚNICA del proyecto (ver CONTRACT.md): la IA emite el JSON
- * LÓGICO SIMPLE (outputs/timers/states/global_rules) y este código (sin IA)
- * calcula la GEOMETRÍA (network/row/span) que entiende el renderer.
+ * Arquitectura ÚNICA del proyecto: la IA emite el JSON DUAL del motor del
+ * maletín (outputs[].logic/timer/counter + system + un `expr` legible). Python
+ * (clase XL4) ejecuta la config sobre el PLC; este código (sin IA) deriva de
+ * `logic` la GEOMETRÍA (network/row/span) que entiende el renderer. El JSON
+ * dual completo se conserva en program.metadata.engine_config para reenviarlo
+ * a Python tal cual.
  *
- * Cada salida tiene una expresión booleana `expr`:
+ * La vista de cada salida se dibuja a partir de su expresión booleana `expr`
+ * (derivada de `logic` si falta):
  *     *  &   → serie (AND)
  *     +  |   → paralelo (OR)
  *     !  ~  /→ contacto NC (negado), como prefijo de un operando
@@ -20,8 +24,6 @@
  * literales. Anidamientos más profundos generan un aviso y se aproximan.
  * Cubre los casos del maletín (arranque/paro, enclavamiento, timers…).
  */
-import { patterns } from './patterns.js';
-
 let _uid = 0;
 function eid() { return 'b' + Date.now().toString(36) + (_uid++).toString(36) + Math.random().toString(36).slice(2, 4); }
 
@@ -151,18 +153,94 @@ export function compileEquation(rungSpec, idx, ctx) {
   return { id: idx + 1, enabled: true, comment: rungSpec.comment || '', network };
 }
 
-// Compila un timer del contrato a un rung: [contacto(enable)] → bloque TON/TOF/OSC
-function compileTimer(tm, idx, ctx) {
-  const els = [];
-  let col = 0;
-  if (tm.enable) { els.push(mkContact({ name: tm.enable, neg: false }, col, ctx)); col++; }
-  const type = tm.type === 'TOF' ? 'block_tof'
-             : tm.type === 'OSCILLATOR' ? 'block_osc'
-             : 'block_ton';
-  const addr = ctx.resolveAddr(tm.id);
-  ctx.useAddr(addr);
-  els.push({ id: eid(), type, address: addr, pos: { col }, params: { preset_ms: tm.preset_ms ?? 1000 } });
-  return { id: idx + 1, enabled: true, comment: tm.comment || `Timer ${tm.id}`, network: [{ row: 0, elements: els }] };
+// ── Engine-config → expr legible (espejo de _expr_de_logica en el backend) ──
+// La IA da `expr` para mostrar, pero derivamos la geometría desde `logic`
+// (fuente de verdad) para que el dibujo sea fiel al motor del PLC.
+function exprFromLogic(lg, out) {
+  const mode = String(lg?.mode || 'off').toLowerCase();
+  if (mode === 'off') return '';
+  if (mode === 'directo') {
+    let e = String(lg.source || '');
+    if (lg.enable) e += ` * ${lg.enable}`;
+    return e;
+  }
+  if (mode === 'enclavado') {
+    let e = `(${lg.start || ''} + ${out})`;
+    if (lg.stop) e += ` * !${lg.stop}`;
+    if (lg.enable) e += ` * ${lg.enable}`;
+    return e;
+  }
+  if (mode === 'combinacional') {
+    const op = String(lg.op || 'OR').toUpperCase() === 'OR' ? '+' : '*';
+    let e = `${lg.a || ''} ${op} ${lg.b || ''}`;
+    if (lg.latched) e = `(${e} + ${out})`;
+    if (lg.stop) e = `(${e}) * !${lg.stop}`;
+    return e;
+  }
+  return '';
+}
+
+// Bloque terminal (lado derecho del rung) para timer/contador del motor.
+function timerEl(tm, addr, col) {
+  const type = String(tm.type).toLowerCase() === 'on_delay' ? 'block_ton' : 'block_tof';
+  return { id: eid(), type, address: addr, pos: { col }, params: { preset_ms: Number(tm.preset_s || 0) * 1000 } };
+}
+function counterEl(ct, addr, col) {
+  return { id: eid(), type: 'block_ctu', address: addr, pos: { col }, params: { preset: Number(ct.preset || 0) } };
+}
+
+// Compila UNA salida del engine-config a uno o más rungs.
+function compileOutput(o, ctx, gStop) {
+  const out = o.output;
+  const coilAddr = ctx.resolveAddr(out);
+  const expr = (o.expr && String(o.expr).trim()) || exprFromLogic(o.logic, out);
+
+  let ast = null;
+  if (String(expr).trim()) {
+    try { ast = parseExpr(tokenize(expr), ctx); }
+    catch { ctx.warnings.push(`${out}: no se pudo parsear "${expr}".`); ast = { type: 'lit', name: out, neg: false }; }
+  }
+  // El paro global se añade como factor AND a nivel del AST (no como string),
+  // para no anidar y romper las ramas OR (p. ej. el sello del enclavamiento).
+  if (gStop && !(expr && exprUsesVar(expr, gStop))) {
+    const stopLit = { type: 'lit', name: gStop, neg: true };
+    if (!ast) ast = stopLit;
+    else if (ast.type === 'and') ast.terms.push(stopLit);
+    else ast = { type: 'and', terms: [ast, stopLit] };
+  }
+
+  let row0 = [], branches = [], width = 0;
+  if (ast) ({ row0, branches, width } = layout(ast, ctx));
+
+  ctx.useAddr(coilAddr);
+  const tm = o.timer, ct = o.counter;
+  const rungs = [];
+
+  // Terminal: timer > contador > bobina. Si hay ambos, la bobina va aquí y el
+  // contador se dibuja en un rung aparte (el motor los maneja independientes).
+  let terminal;
+  if (tm && !ct)       terminal = timerEl(tm, coilAddr, width);
+  else if (ct && !tm)  terminal = counterEl(ct, coilAddr, width);
+  else                 terminal = { id: eid(), type: 'coil', address: coilAddr, pos: { col: width }, coil_type: 'output' };
+  row0.push(terminal);
+
+  const network = [{ row: 0, elements: row0 }];
+  branches.forEach((b, k) => network.push({ row: k + 1, span: b.span, elements: b.elements }));
+  let comentario = o.comment || `${out}: ${o.logic?.mode || 'off'}`;
+  if (tm) comentario += ` · timer ${tm.type} ${tm.preset_s}s`;
+  if (ct && (!tm)) comentario += ` · contador ${ct.type} ${ct.preset}${ct.reset_input ? ` (reset ${ct.reset_input})` : ''}`;
+  rungs.push({ id: ctx.nextId(), enabled: true, comment: comentario, network });
+
+  if (tm && ct) {
+    const drive = o.logic?.source || o.logic?.start || o.logic?.a || out;
+    const els = [mkContact({ name: drive, neg: false }, 0, ctx), counterEl(ct, coilAddr, 1)];
+    if (ct.reset_input) els.unshift(mkContact({ name: ct.reset_input, neg: true }, 0, ctx));
+    els.forEach((e, c) => { e.pos.col = c; });
+    rungs.push({ id: ctx.nextId(), enabled: true,
+      comment: `${out}: contador ${ct.type} ${ct.preset}${ct.reset_input ? ` (reset ${ct.reset_input})` : ''}`,
+      network: [{ row: 0, elements: els }] });
+  }
+  return rungs;
 }
 
 // ── Símbolos y direcciones ─────────────────────────────────────
@@ -212,51 +290,32 @@ function exprUsesVar(expr, name) {
   return re.test(String(expr || ''));
 }
 
-// ── Entrada principal: JSON LÓGICO SIMPLE → schema ladder ──────
-// Contrato: { name, outputs:[{coil,expr,mode,comment}], timers:[...],
-//             states:[...], global_rules:{global_stop, stop_priority} }
+// ── Entrada principal: JSON DUAL engine-config → schema ladder ──
+// Contrato: { name, device_profile, system:{enable,global_stop},
+//             outputs:[{ output, logic:{mode,...}, timer, counter, expr, comment }] }
+// Python lee output/logic/timer/counter/system; aquí dibujamos la vista ladder.
 export function compileLogicToSchema(logic, profile) {
   const warnings = [];
   const used = new Map();
   const symbols = buildSymbols(logic || {}, profile);
 
+  let _id = 0;
   const ctx = {
     warnings,
     resolveAddr(name) { if (name == null) return ''; const n = String(name).trim(); const s = symbols[n]; return s ? s.addr : n; },
     useAddr(addr) { if (addr && !used.has(addr)) used.set(addr, symbolEntryFor(addr, symbols)); },
+    nextId() { return ++_id; },
   };
 
+  const gStop = logic?.system?.global_stop || null;
+
   const rungs = [];
-  const helpers = { compileEquation, mkRungId: () => rungs.length + 1 };
-  const gStop = logic?.global_rules?.global_stop;
-  const stopPriority = logic?.global_rules?.stop_priority !== false; // por defecto el paro tiene prioridad
-
-  // 1) Estados (latch) primero, para que M1 ya exista al compilar las salidas.
-  for (const st of (logic?.states || [])) {
-    if (st.type && st.type !== 'latch') { warnings.push(`Estado "${st.id}": tipo "${st.type}" no soportado; se usa latch.`); }
-    const built = patterns.latch(
-      { coil: st.id, start: st.set, stops: st.reset ? [st.reset] : [], comment: st.comment },
-      ctx, helpers,
-    );
-    built.id = rungs.length + 1;
-    rungs.push(built);
+  for (const o of (logic?.outputs || [])) {
+    if (!o || !o.output) continue;
+    rungs.push(...compileOutput(o, ctx, gStop));
   }
 
-  // 2) Timers → un rung con su bloque.
-  for (const tm of (logic?.timers || [])) {
-    rungs.push(compileTimer(tm, rungs.length, ctx));
-  }
-
-  // 3) Salidas → un rung por bobina. El paro global se aplica con prioridad.
-  for (const out of (logic?.outputs || [])) {
-    let expr = out.expr || '';
-    if (gStop && stopPriority && !exprUsesVar(expr, gStop)) {
-      expr = expr ? `(${expr}) * !${gStop}` : `!${gStop}`;
-    }
-    rungs.push(compileEquation({ coil: out.coil, expr, comment: out.comment || '', coilType: 'output' }, rungs.length, ctx));
-  }
-
-  if (!rungs.length) warnings.push('El JSON lógico no produjo ningún rung (sin outputs/timers/states).');
+  if (!rungs.length) warnings.push('El JSON engine-config no produjo ningún rung (sin "outputs").');
 
   const symbol_table = {};
   for (const [addr, entry] of used) symbol_table[addr] = entry;
@@ -264,10 +323,11 @@ export function compileLogicToSchema(logic, profile) {
   const program = {
     metadata: {
       project_id: 'logic_' + Date.now().toString(36),
-      name: (logic && logic.name) || 'Programa lógico',
+      name: (logic && logic.name) || 'Programa maletín',
       version: '1.0.0',
-      device_profile: (logic && logic.device_profile) || (profile && profile.id) || null,
-      logic_type: (logic && logic.logic_type) || null,
+      device_profile: (logic && logic.device_profile) || (profile && profile.id) || 'maletin_basico',
+      // El JSON dual completo viaja en la metadata para enviarse a Python tal cual.
+      engine_config: logic || null,
       plc_target: (profile && profile.plc && profile.plc.modbus)
         ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
         : { ip: '192.168.1.100', port: 502, unit_id: 1 },

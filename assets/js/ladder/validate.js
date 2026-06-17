@@ -9,31 +9,35 @@
  */
 import { validateProgram, compactColumns } from './schema.js';
 
-const OP = new Set(['(', ')', '*', '+', '&', '|', '!', '~', '/']);
-const stripPct = (a) => String(a).replace(/^%/, '');
+// Vocabulario FIJO del motor del maletín (espejo de la clase XL4 en Python y
+// del validador del backend). La IA no puede salirse de aquí.
+const ENGINE_INPUTS  = new Set(['NINGUNA', 'I1', 'I2', 'I3', 'I4', 'I7']);
+const ENGINE_OUTPUTS = new Set(['Q10', 'Q11', 'Q12', 'VERDE', 'AMARILLA', 'ROJA']);
+const ENGINE_MODES   = new Set(['off', 'directo', 'enclavado', 'combinacional']);
+const TIMER_TYPES    = new Set(['on_delay', 'pulse']);
+const COUNTER_TYPES  = new Set(['up', 'up_held']);
 
-function tokensOf(expr) {
-  const out = [];
-  const re = /([A-Za-z_%][\w.%]*|[()*+&|!~/])/g;
-  let m;
-  while ((m = re.exec(String(expr || ''))) !== null) out.push(m[1]);
-  return out;
-}
+const esEntrada = (n) => n == null || ENGINE_INPUTS.has(String(n).toUpperCase());
+const canonOut  = (s) => {
+  const u = String(s).toUpperCase();
+  if (u === 'Q10' || u === 'VERDE') return 'Q10';
+  if (u === 'Q11' || u === 'AMARILLA') return 'Q11';
+  if (u === 'Q12' || u === 'ROJA') return 'Q12';
+  return u;
+};
 
-function parensBalanced(expr) {
-  let depth = 0;
-  for (const ch of String(expr || '')) {
-    if (ch === '(') depth++;
-    else if (ch === ')') { depth--; if (depth < 0) return false; }
-  }
-  return depth === 0;
+function rangoEntero(v, low, high, tag, campo, errors) {
+  const n = Number(v);
+  if (!Number.isInteger(n)) { errors.push(`${tag}: ${campo}="${v}" no es entero.`); return; }
+  if (n < low || n > high) errors.push(`${tag}: ${campo}=${n} fuera de [${low}, ${high}].`);
 }
 
 /**
- * Valida el JSON lógico simple contra el contrato + el perfil del dispositivo.
+ * Valida el JSON dual engine-config contra el hardware fijo del maletín.
  * Devuelve { ok, errors, warnings }. `errors` bloquea el render.
+ * (El `profile` solo aporta etiquetas; la verdad es el vocabulario del motor.)
  */
-export function validateLogicJson(logic, profile) {
+export function validateLogicJson(logic, /* profile */ _profile) {
   const errors = [];
   const warnings = Array.isArray(logic?.warnings) ? [...logic.warnings] : [];
 
@@ -41,54 +45,55 @@ export function validateLogicJson(logic, profile) {
     return { ok: false, errors: ['El JSON lógico está vacío o no es un objeto.'], warnings };
   }
   if (!Array.isArray(logic.outputs) || logic.outputs.length === 0) {
-    errors.push('Falta "outputs" o está vacío: debe haber al menos una salida.');
+    return { ok: false, errors: ['Falta "outputs" o está vacío: debe haber al menos una salida.'], warnings };
   }
 
-  // Conjuntos de nombres válidos (nombres lógicos del perfil + estados + timers)
-  const profOutNames = new Set();   // bobinas válidas (salidas del perfil)
-  const known = new Set();          // todo lo referenciable en una expr
-  if (profile) {
-    for (const io of (profile.inputs || []))  { known.add(stripPct(io.addr)); if (io.id) known.add(io.id); }
-    for (const io of (profile.outputs || [])) { const n = stripPct(io.addr); known.add(n); profOutNames.add(n); if (io.id) { known.add(io.id); profOutNames.add(io.id); } }
-  }
-  for (const st of (logic.states || [])) if (st.id) known.add(st.id);
-  for (const tm of (logic.timers || [])) if (tm.id) { known.add(tm.id); known.add(tm.id + '.DN'); }
-  for (const out of (logic.outputs || [])) if (out.coil) known.add(out.coil); // una salida puede leer otra bobina
+  const vistos = new Set();
+  for (const [i, o] of logic.outputs.entries()) {
+    const tag = `salida ${i + 1} (${o?.output ?? '?'})`;
+    if (!o || typeof o !== 'object') { errors.push(`${tag}: no es un objeto.`); continue; }
 
-  const timerIds = new Set((logic.timers || []).map(t => t.id));
+    if (!ENGINE_OUTPUTS.has(String(o.output).toUpperCase())) {
+      errors.push(`${tag}: salida inválida. Usa Q10, Q11 o Q12.`);
+    } else {
+      const c = canonOut(o.output);
+      if (vistos.has(c)) errors.push(`${tag}: salida repetida.`);
+      vistos.add(c);
+    }
 
-  const gStop = logic.global_rules?.global_stop;
-  if (gStop && profile && !known.has(gStop)) errors.push(`global_stop "${gStop}" no existe en el perfil del dispositivo.`);
+    const lg = o.logic || { mode: 'off' };
+    const mode = String(lg.mode || 'off').toLowerCase();
+    if (!ENGINE_MODES.has(mode)) errors.push(`${tag}: mode "${mode}" no soportado.`);
 
-  for (const [i, out] of (logic.outputs || []).entries()) {
-    const tag = `salida ${i + 1} (${out.coil || '?'})`;
-    if (!out.coil) errors.push(`${tag}: falta "coil".`);
-    else if (profile && !profOutNames.has(out.coil)) errors.push(`${tag}: la bobina "${out.coil}" no es una salida del perfil.`);
-    if (out.expr == null || out.expr === '') { errors.push(`${tag}: falta "expr".`); continue; }
-    if (!parensBalanced(out.expr)) errors.push(`${tag}: paréntesis sin balancear en "${out.expr}".`);
+    if (mode === 'directo') {
+      if (!lg.source) errors.push(`${tag}: "directo" requiere "source".`);
+      for (const c of ['source', 'enable']) if (!esEntrada(lg[c])) errors.push(`${tag}: ${c}="${lg[c]}" no es entrada válida.`);
+    } else if (mode === 'enclavado') {
+      if (!lg.start) errors.push(`${tag}: "enclavado" requiere "start".`);
+      for (const c of ['start', 'stop', 'enable']) if (!esEntrada(lg[c])) errors.push(`${tag}: ${c}="${lg[c]}" no es entrada válida.`);
+    } else if (mode === 'combinacional') {
+      if (!lg.a || !lg.b) errors.push(`${tag}: "combinacional" requiere "a" y "b".`);
+      for (const c of ['a', 'b', 'stop']) if (!esEntrada(lg[c])) errors.push(`${tag}: ${c}="${lg[c]}" no es entrada válida.`);
+      const op = String(lg.op || 'OR').toUpperCase();
+      if (op !== 'OR' && op !== 'AND') errors.push(`${tag}: op="${op}" debe ser OR o AND.`);
+      if (op === 'AND' && lg.enable) errors.push(`${tag}: en AND no se permite "enable".`);
+    }
 
-    for (const tk of tokensOf(out.expr)) {
-      if (OP.has(tk)) continue;
-      if (/\.DN$/.test(tk)) {
-        const base = tk.replace(/\.DN$/, '');
-        if (!timerIds.has(base)) errors.push(`${tag}: usa "${tk}" pero no existe el timer "${base}" en "timers".`);
-        continue;
+    if (o.timer) {
+      if (!TIMER_TYPES.has(String(o.timer.type).toLowerCase())) errors.push(`${tag}: timer.type debe ser on_delay o pulse.`);
+      else rangoEntero(o.timer.preset_s, o.timer.type === 'on_delay' ? 0 : 1, 32767, tag, 'timer.preset_s', errors);
+    }
+    if (o.counter) {
+      if (!COUNTER_TYPES.has(String(o.counter.type).toLowerCase())) errors.push(`${tag}: counter.type debe ser up o up_held.`);
+      else {
+        rangoEntero(o.counter.preset, o.counter.type === 'up' ? 0 : 1, 32767, tag, 'counter.preset', errors);
+        if (!esEntrada(o.counter.reset_input)) errors.push(`${tag}: counter.reset_input="${o.counter.reset_input}" inválido.`);
       }
-      if (known.has(tk)) continue;
-      if (/^M\d/.test(tk)) { errors.push(`${tag}: usa la memoria "${tk}" pero no está declarada en "states".`); continue; }
-      if (profile) errors.push(`${tag}: variable "${tk}" no existe (ni entrada/salida del perfil, ni estado, ni timer).`);
     }
   }
 
-  for (const tm of (logic.timers || [])) {
-    if (!tm.id) errors.push('Un timer no tiene "id".');
-    if (tm.enable && profile && !known.has(tm.enable)) errors.push(`Timer "${tm.id}": enable "${tm.enable}" no existe en el perfil.`);
-  }
-  for (const st of (logic.states || [])) {
-    if (!st.id) errors.push('Un estado no tiene "id".');
-    if (st.set && profile && !known.has(st.set)) errors.push(`Estado "${st.id}": set "${st.set}" no existe en el perfil.`);
-    if (st.reset && profile && !known.has(st.reset)) errors.push(`Estado "${st.id}": reset "${st.reset}" no existe en el perfil.`);
-  }
+  const gStop = logic.system?.global_stop;
+  if (!esEntrada(gStop)) errors.push(`system.global_stop="${gStop}" no es entrada válida.`);
 
   return { ok: errors.length === 0, errors, warnings };
 }

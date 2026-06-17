@@ -12,7 +12,7 @@
     { "id": "BTN_ROJO",  "addr": "%I2", "kind": "NC", "label": "Botón rojo (paro)",     "rol": "paro" },
     { "id": "SELECTOR",  "addr": "%I3", "kind": "NO", "label": "Selector / reset",       "rol": "selector" },
     { "id": "SELECTOR_2","addr": "%I4", "kind": "NO", "label": "Selector 2" },
-    { "id": "PARO_EMERG","addr": "%I8", "kind": "NC", "label": "Paro de emergencia",     "rol": "emergencia" },
+    { "id": "PARO_EMERG","addr": "%I7", "kind": "NC", "label": "Paro de emergencia",     "rol": "emergencia" },
     { "id": "AI_1", "addr": "%AI1", "kind": "analog", "label": "Entrada analógica 1" },
     { "id": "AI_2", "addr": "%AI2", "kind": "analog", "label": "Entrada analógica 2" }
   ],
