@@ -170,7 +170,7 @@
     /* ══ RUNGS ════════════════════════════════════════════ */
     .rung {
       display: flex; align-items: stretch;
-      background: transparent; border: none;
+      background: #e5edf8; border: none;
       border-bottom: 1px solid rgba(46,125,225,0.06);
       margin-bottom: 0; min-height: 68px;
       cursor: pointer; position: relative; overflow: visible;
@@ -504,6 +504,9 @@
     .chat-send { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; padding: 6px; border: none; border-radius: var(--radius-sm); background: #2e6dba; color: #fff; font-size: 11px; cursor: pointer; }
     .chat-send:hover { background: #357fd4; }
     .chat-reopen { position: fixed; right: 0; top: 56px; z-index: 50; background: #2e6dba; color: #fff; border: none; border-radius: 6px 0 0 6px; padding: 9px 7px; cursor: pointer; display: none; }
+    /* ══ RIGHT-COL + EDITORS-ROW ══════════════════════════ */
+    .right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
+    .editors-row { flex: 1; display: flex; overflow: hidden; min-width: 0; }
   </style>
   <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
 
@@ -796,6 +799,8 @@
       </div><!-- /sb-scroll -->
     </aside>
 
+    <div class="right-col"><div class="editors-row">
+
     <!-- ── EDITOR ── -->
     <main class="editor" aria-label="Área de programación ladder">
       <div class="editor-toolbar">
@@ -892,6 +897,39 @@
     </aside>
     <button class="chat-reopen" id="chatReopenBtn" type="button" title="Abrir asistente"><i class="ti ti-message-chatbot"></i></button>
 
+    </div><!-- /editors-row -->
+
+    <!-- ══ BOTTOM BAR ═════════════════════════════════════ -->
+    <div class="bottombar" id="bottombar" role="complementary">
+      <div class="bb-tabs" role="tablist">
+        <button class="bb-collapse-btn" id="bb-collapse-btn" title="Colapsar / expandir panel">
+          <i class="ti ti-chevron-down"></i>
+        </button>
+        <div class="bb-tab active" role="tab" id="tab-btn-terminal" onclick="showTab('terminal',this)">
+          <i class="ti ti-terminal"></i> Terminal
+        </div>
+        <div class="bb-tab" role="tab" id="tab-btn-io" onclick="showTab('io',this)">
+          <i class="ti ti-activity"></i> Estado I/O
+        </div>
+        <div class="bb-tab" role="tab" id="tab-btn-watch" onclick="showTab('watch',this)">
+          <i class="ti ti-eye"></i> Watch table
+        </div>
+        <div class="bb-tab" role="tab" id="tab-btn-xref" onclick="showTab('xref',this)">
+          <i class="ti ti-list-search"></i> Referencias
+        </div>
+        <div class="bb-spacer"></div>
+        <div class="bb-scan">Scan: <span>— ms</span></div>
+      </div>
+      <div class="bb-content">
+        <div class="tab-panel active" id="tab-terminal" role="tabpanel"></div>
+        <div class="tab-panel"        id="tab-io"       role="tabpanel"></div>
+        <div class="tab-panel"        id="tab-watch"    role="tabpanel"></div>
+        <div class="tab-panel"        id="tab-xref"     role="tabpanel"></div>
+      </div>
+    </div>
+
+    </div><!-- /right-col -->
+
   </div><!-- /main -->
 
   <!-- ══ CONTEXT MENU (clic derecho) ══════════════════════ -->
@@ -952,34 +990,6 @@
     </div>
   </div>
 
-  <!-- ══ BOTTOM BAR ═════════════════════════════════════ -->
-  <div class="bottombar" id="bottombar" role="complementary">
-    <div class="bb-tabs" role="tablist">
-      <button class="bb-collapse-btn" id="bb-collapse-btn" title="Colapsar / expandir panel">
-        <i class="ti ti-chevron-down"></i>
-      </button>
-      <div class="bb-tab active" role="tab" id="tab-btn-terminal" onclick="showTab('terminal',this)">
-        <i class="ti ti-terminal"></i> Terminal
-      </div>
-      <div class="bb-tab" role="tab" id="tab-btn-io" onclick="showTab('io',this)">
-        <i class="ti ti-activity"></i> Estado I/O
-      </div>
-      <div class="bb-tab" role="tab" id="tab-btn-watch" onclick="showTab('watch',this)">
-        <i class="ti ti-eye"></i> Watch table
-      </div>
-      <div class="bb-tab" role="tab" id="tab-btn-xref" onclick="showTab('xref',this)">
-        <i class="ti ti-list-search"></i> Referencias
-      </div>
-      <div class="bb-spacer"></div>
-      <div class="bb-scan">Scan: <span>— ms</span></div>
-    </div>
-    <div class="bb-content">
-      <div class="tab-panel active" id="tab-terminal" role="tabpanel"></div>
-      <div class="tab-panel"        id="tab-io"       role="tabpanel"></div>
-      <div class="tab-panel"        id="tab-watch"    role="tabpanel"></div>
-      <div class="tab-panel"        id="tab-xref"     role="tabpanel"></div>
-    </div>
-  </div>
 
 </div><!-- /app -->
 
