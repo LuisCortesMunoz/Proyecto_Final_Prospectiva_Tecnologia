@@ -13,6 +13,13 @@ import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR } 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
 
+// URL del servidor PLC (puente HTTP->Modbus). Corre LOCAL, en la maquina de la
+// misma red del PLC (no en Render, que no alcanza la LAN). Se puede cambiar con
+//   localStorage.setItem('lv_plc_bridge', 'http://localhost:8000')
+function plcBridgeUrl() {
+  return (localStorage.getItem('lv_plc_bridge') || 'http://localhost:8000').replace(/\/+$/, '');
+}
+
 // ── Store ────────────────────────────────────────────────────────
 const store = (() => {
   let _prog  = importFromURL() ?? defaultProgram();
@@ -1050,16 +1057,55 @@ function onNavBtnClick(e) {
     if (t) showTab('terminal', t);
   }
   if (txt.includes('Cargar')) {
-    const { ip, port } = store.getProgram().metadata.plc_target;
-    store.log('info', `Intentando conectar a ${ip}:${port} (stub)`);
-    store.log('warn', 'Backend Modbus no disponible');
-    showToast('Carga stub: sin backend Modbus', 'info');
-    const t = document.getElementById('tab-btn-terminal');
-    if (t) showTab('terminal', t);
+    cargarAlPLC();
   }
   if (txt.includes('Stop')) {
     store.log('warn', 'Stop enviado (stub)');
     showToast('Stop (stub)', 'info');
+  }
+}
+
+// ── Cargar al PLC (envia el engine_config por Modbus TCP via servidor local) ──
+async function cargarAlPLC() {
+  const t = document.getElementById('tab-btn-terminal');
+  if (t) showTab('terminal', t);
+
+  const prog = store.getProgram();
+  const cfg  = prog?.metadata?.engine_config;
+  if (!cfg || !Array.isArray(cfg.outputs) || !cfg.outputs.length) {
+    store.log('err', 'Este programa no tiene "engine_config". Genera el programa con el asistente IA (modo Diseñador) para poder cargarlo al PLC.');
+    showToast('Sin engine_config para el PLC', 'error');
+    return;
+  }
+
+  const url = plcBridgeUrl();
+  store.log('info', `Enviando ${cfg.outputs.length} salida(s) al PLC vía ${url}/aplicar-plc …`);
+  showToast('Cargando al PLC…', 'info');
+
+  try {
+    const res = await fetch(`${url}/aplicar-plc`, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ logic: cfg }),
+      signal:  AbortSignal.timeout(20000),
+    });
+    const d = await res.json().catch(() => null);
+
+    if (!res.ok) {
+      store.log('err', 'PLC: ' + (d?.detail || `HTTP ${res.status}`));
+      showToast('Error al cargar al PLC', 'error');
+      return;
+    }
+
+    store.log('ok', `Programa cargado al PLC ${d.plc || ''} — ${d.salidas} salida(s) escritas.`);
+    (d.plan || []).forEach(p => store.log('info', '· ' + p));
+    showToast('Programa cargado al PLC', 'success');
+  } catch (e) {
+    const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
+    store.log('err', offline
+      ? `No se pudo contactar el servidor PLC en ${url}. ¿Está corriendo el backend local (uvicorn app:app) en la red del PLC?`
+      : ('PLC: ' + e.message));
+    showToast('Sin conexión al servidor PLC', 'error');
   }
 }
 
