@@ -1308,14 +1308,15 @@ function updatePlcAddress(prog) {
     : 'Sin PLC seleccionado — clic para detectar';
 }
 
-// Prueba de comunicación TCP/Modbus a un PLC concreto vía el backend puente.
+// Prueba de comunicación a un PLC: ping ICMP (host vivo) + puerto TCP 502
+// (Modbus listo). Devuelve { ping, tcp, alcanzable }.
 async function probarPLC(ip, port) {
   const url = plcBridgeUrl();
   const res = await fetch(`${url}/plc/probar?ip=${encodeURIComponent(ip)}&port=${port}&timeout_ms=1500`,
                           { signal: AbortSignal.timeout(8000) });
   const d = await res.json().catch(() => null);
   if (!res.ok) throw new Error(d?.detail || `HTTP ${res.status}`);
-  return !!d.alcanzable;
+  return { ping: !!d.ping, tcp: !!d.tcp, alcanzable: !!d.alcanzable };
 }
 
 // Selector completo: escanea la red, lista los PLC detectados, prueba la
@@ -1391,12 +1392,20 @@ function abrirSelectorPLC() {
       selIp   = $('#lv-ip').value.trim();
       selPort = Number($('#lv-port').value) || 502;
       if (!selIp) { marcarTest('err', 'Escribe o selecciona una IP'); return; }
-      marcarTest('', 'Probando…');
+      marcarTest('', 'Probando (ping + TCP)…');
       try {
-        const ok = await probarPLC(selIp, selPort);
-        _plcStatus = { ip: selIp, ok };
-        if (ok) { marcarTest('ok', `✓ Responde ${selIp}:${selPort}`); store.log('ok', `PLC ${selIp}:${selPort} responde (Modbus TCP).`); }
-        else    { marcarTest('err', `✕ Sin respuesta de ${selIp}:${selPort}`); store.log('warn', `PLC ${selIp}:${selPort} no responde.`); }
+        const r = await probarPLC(selIp, selPort);
+        _plcStatus = { ip: selIp, ok: r.alcanzable };
+        const pingTxt = r.ping ? 'ping ✓' : 'ping ✕';
+        const tcpTxt  = r.tcp  ? `Modbus ${selPort} abierto` : `Modbus ${selPort} cerrado`;
+        if (r.alcanzable) {
+          marcarTest('ok', `✓ ${selIp} — ${pingTxt} · ${tcpTxt}`);
+          store.log('ok', `PLC ${selIp}: ${pingTxt}, ${tcpTxt}.`);
+          if (!r.tcp) store.log('warn', `El host responde al ping pero el puerto Modbus ${selPort} no escucha aún. Verás "Cargar" fallar si el PLC no tiene el servidor Modbus TCP activo.`);
+        } else {
+          marcarTest('err', `✕ ${selIp} no responde (sin ping ni TCP ${selPort})`);
+          store.log('warn', `PLC ${selIp}:${selPort} no responde a ping ni a TCP.`);
+        }
       } catch (e) {
         const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
         marcarTest('err', offline ? 'Sin conexión al backend' : ('Error: ' + e.message));
