@@ -1234,15 +1234,22 @@ async function cargarAlPLC() {
     return;
   }
 
-  const url = plcBridgeUrl();
-  store.log('info', `Enviando ${cfg.outputs.length} salida(s) al PLC vía ${url}/aplicar-plc …`);
+  const url   = plcBridgeUrl();
+  const tgt   = store.getProgram()?.metadata?.plc_target || {};
+  const ip    = (tgt.ip || '').trim();
+  const port  = Number(tgt.port) || 502;
+  store.log('info', `Enviando ${cfg.outputs.length} salida(s) al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
 
   try {
+    // Mandamos la IP/puerto del editor para que el backend conecte al PLC
+    // correcto (si no, usa su IP por defecto, 192.168.3.12).
+    const body = { logic: cfg, port };
+    if (ip) body.ip = ip;
     const res = await fetch(`${url}/aplicar-plc`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ logic: cfg }),
+      body:    JSON.stringify(body),
       signal:  AbortSignal.timeout(20000),
     });
     const d = await res.json().catch(() => null);
@@ -1250,6 +1257,11 @@ async function cargarAlPLC() {
     if (!res.ok) {
       store.log('err', 'PLC: ' + (d?.detail || `HTTP ${res.status}`));
       showToast('Error al cargar al PLC', 'error');
+      // Falla típica de conexión (503): el PLC no está en esa IP. Ofrecer detectar.
+      if (res.status === 503 && confirm('No se pudo conectar al PLC. ¿Buscar PLCs en la red y elegir la IP?')) {
+        const nuevaIp = await detectarYElegirPLC();
+        if (nuevaIp) cargarAlPLC();
+      }
       return;
     }
 
@@ -1263,6 +1275,92 @@ async function cargarAlPLC() {
       : ('PLC: ' + e.message));
     showToast('Sin conexión al servidor PLC', 'error');
   }
+}
+
+// ── Detectar PLC en la red + elegir IP ────────────────────────
+// Pregunta al backend local (puente HTTP->Modbus) qué dispositivos Modbus TCP
+// (puerto 502) hay en la red y deja al usuario elegir el PLC. El resultado se
+// guarda en metadata.plc_target.ip para que "Cargar" lo envíe.
+async function detectarYElegirPLC() {
+  const url = plcBridgeUrl();
+  showToast('Buscando PLCs en la red…', 'info');
+  store.log('info', `Escaneando la red en busca de PLCs (puerto 502) vía ${url}/plc/escanear …`);
+
+  let data = null;
+  try {
+    const res = await fetch(`${url}/plc/escanear`, { signal: AbortSignal.timeout(30000) });
+    data = await res.json().catch(() => null);
+    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
+  } catch (e) {
+    const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
+    store.log('err', offline
+      ? `No se pudo contactar el servidor PLC en ${url}. ¿Está corriendo el backend local (uvicorn app:app) en la red del PLC?`
+      : ('Escaneo: ' + e.message));
+    showToast('Sin conexión al servidor PLC', 'error');
+    // Aun así dejamos meter la IP a mano
+    return pedirIPManual();
+  }
+
+  const found = data.encontrados || [];
+  store.log(found.length ? 'ok' : 'warn',
+    found.length ? `PLCs detectados: ${found.join(', ')}` : 'No se detectó ningún PLC en la red.');
+  if (data.subredes?.length) store.log('info', `Subredes revisadas: ${data.subredes.join(', ')}`);
+
+  const ip = await elegirDeLista('Selecciona el PLC detectado', found, data.default);
+  if (ip == null) return null;            // cancelado
+  guardarIPPLC(ip, data.puerto || 502);
+  return ip;
+}
+
+function pedirIPManual() {
+  const meta = store.getProgram().metadata;
+  const ip = prompt('IP del PLC:', meta.plc_target?.ip || '192.168.3.12');
+  if (ip == null || !ip.trim()) return null;
+  guardarIPPLC(ip.trim(), meta.plc_target?.port || 502);
+  return ip.trim();
+}
+
+function guardarIPPLC(ip, port) {
+  const meta = store.getProgram().metadata;
+  store.updateMeta({ plc_target: { ...meta.plc_target, ip, port } });
+  store.log('ok', `PLC objetivo: ${ip}:${port}`);
+  showToast(`PLC objetivo: ${ip}`, 'success');
+}
+
+// Modal simple para elegir una IP de la lista detectada (o escribirla a mano).
+function elegirDeLista(titulo, ips, sugerida) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    const box = document.createElement('div');
+    box.style.cssText = 'background:#1e1e2a;color:#e6e6f0;border:1px solid #3a3a4a;border-radius:10px;min-width:300px;max-width:90vw;padding:18px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.5);';
+    const opciones = ips.map(ip =>
+      `<button data-ip="${ip}" style="display:block;width:100%;text-align:left;margin:4px 0;padding:9px 12px;border:1px solid #3a3a4a;border-radius:6px;background:#26263a;color:#e6e6f0;cursor:pointer;font-family:monospace;font-size:14px;">${ip}${ip===sugerida?'  ★':''}</button>`
+    ).join('');
+    box.innerHTML = `
+      <div style="font-weight:600;margin-bottom:10px;">${titulo}</div>
+      ${ips.length ? opciones : '<div style="opacity:.7;margin-bottom:8px;">No se detectaron PLCs. Escribe la IP manualmente:</div>'}
+      <div style="display:flex;gap:6px;margin-top:10px;">
+        <input id="lv-ip-manual" placeholder="IP manual (ej. 192.168.3.12)" value="${sugerida||''}"
+               style="flex:1;padding:8px 10px;border:1px solid #3a3a4a;border-radius:6px;background:#15151f;color:#e6e6f0;font-family:monospace;">
+        <button id="lv-ip-ok" style="padding:8px 14px;border:0;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;">Usar</button>
+      </div>
+      <div style="text-align:right;margin-top:10px;">
+        <button id="lv-ip-cancel" style="padding:6px 12px;border:0;border-radius:6px;background:transparent;color:#9aa;cursor:pointer;">Cancelar</button>
+      </div>`;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const cerrar = (val) => { overlay.remove(); resolve(val); };
+    box.querySelectorAll('button[data-ip]').forEach(b =>
+      b.addEventListener('click', () => cerrar(b.dataset.ip)));
+    box.querySelector('#lv-ip-ok').addEventListener('click', () => {
+      const v = box.querySelector('#lv-ip-manual').value.trim();
+      cerrar(v || null);
+    });
+    box.querySelector('#lv-ip-cancel').addEventListener('click', () => cerrar(null));
+    overlay.addEventListener('click', (ev) => { if (ev.target === overlay) cerrar(null); });
+  });
 }
 
 // ── Acciones del menú desplegable de la nav ───────────────────
@@ -1317,9 +1415,10 @@ function onNavDropMenuClick(e) {
       break;
     }
     case 'plc-addr': {
-      const meta = store.getProgram().metadata;
-      const ip   = prompt('IP del PLC:', meta.plc_target.ip);
-      if (ip !== null) store.updateMeta({ plc_target: { ...meta.plc_target, ip } });
+      // Detecta los PLCs en la red y deja elegir; cae a IP manual si falla.
+      const t = document.getElementById('tab-btn-terminal');
+      if (t) showTab('terminal', t);
+      detectarYElegirPLC();
       break;
     }
     case 'scan-time': {
