@@ -9,6 +9,7 @@
 import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
+import { scanCycle }                                                                          from './simulator.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -29,8 +30,30 @@ const store = (() => {
   let _log   = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v2.0' }];
   let _undoStack = [];
   let _redoStack = [];
+  let _simMode    = false;
+  let _simVars    = {};          // { address: boolean } — estado de variables en simulación
+  let _pressed    = new Set();   // entradas que el usuario mantiene presionadas
+  let _simTimer   = null;
+  const _SIM_MS   = 100;        // intervalo del scan (ms)
   const _subs = [];
   function notify() { _subs.forEach(fn => fn()); }
+  function _runScan() {
+    if (!_simMode) return;
+    const vars = { ..._simVars };
+    for (const a of _pressed) vars[a] = true;
+    const { rungStates, newVals } = scanCycle(_prog, vars);
+    _simVars = { ...newVals };
+    for (const a of _pressed) _simVars[a] = true;
+    _prog = {
+      ..._prog,
+      execution_state: {
+        ..._prog.execution_state,
+        rung_states:     rungStates,
+        variable_values: { ..._simVars },
+      },
+    };
+    notify();
+  }
   function _pushUndo() {
     _undoStack.push(JSON.parse(JSON.stringify(_prog)));
     if (_undoStack.length > 30) _undoStack.shift();
@@ -310,6 +333,44 @@ const store = (() => {
       _prog = _redoStack.pop();
       notify();
     },
+
+    // ── Simulación ────────────────────────────────────────────
+    isSimMode() { return _simMode; },
+    startSim() {
+      if (_simMode) return;
+      _simMode = true;
+      _simVars = {};
+      _pressed = new Set();
+      clearInterval(_simTimer);
+      _simTimer = setInterval(_runScan, _SIM_MS);
+      _runScan();
+    },
+    stopSim() {
+      _simMode = false;
+      clearInterval(_simTimer);
+      _simTimer = null;
+      _pressed  = new Set();
+      _simVars  = {};
+      _prog = {
+        ..._prog,
+        execution_state: {
+          ..._prog.execution_state,
+          rung_states:     {},
+          variable_values: {},
+        },
+      };
+      notify();
+    },
+    pressInput(address) {
+      if (!_simMode || !address) return;
+      _pressed.add(address);
+      _runScan();
+    },
+    releaseAllInputs() {
+      if (!_simMode || !_pressed.size) return;
+      _pressed = new Set();
+      _runScan();
+    },
   };
 })();
 
@@ -503,6 +564,8 @@ function fillPropPopup(prog, sel) {
   const rungCmt = document.getElementById('propRungComment');
   const timerPr = document.getElementById('propTimerPreset');
   const timerWr = document.getElementById('propTimerWrap');
+  const colorWr = document.getElementById('propColorWrap');
+  const colorSl = document.getElementById('propLampColor');
 
   if (!sel.rungId) { if (title) title.textContent = 'Propiedades'; return; }
   const rung = prog.rungs.find(r => r.id === sel.rungId);
@@ -515,6 +578,7 @@ function fillPropPopup(prog, sel) {
     if (sym)    sym.value   = '';
     if (comment) comment.value = '';
     if (timerWr) timerWr.style.display = 'none';
+    if (colorWr) colorWr.style.display = 'none';
     if (state) { state.textContent = rung.enabled ? 'HABILITADO' : 'DESHABILITADO'; state.className = 'pp-state-val ' + (rung.enabled ? 'on' : 'off'); }
     return;
   }
@@ -544,6 +608,16 @@ function fillPropPopup(prog, sel) {
       if (timerPr) timerPr.value = el.params.preset;
     } else {
       timerWr.style.display = 'none';
+    }
+  }
+
+  // Color de lámpara (solo para bobinas tipo coil)
+  if (colorWr && colorSl) {
+    if (el.type === 'coil') {
+      colorWr.style.display = '';
+      colorSl.value = el.params?.lamp_color || '';
+    } else {
+      colorWr.style.display = 'none';
     }
   }
 
@@ -712,8 +786,30 @@ function onCtxMenuClick(e) {
   }
 }
 
+// ── Event: rung area mousedown (simulación: activar entrada) ──
+function onRungAreaMouseDown(e) {
+  if (!store.isSimMode()) return;
+  const elHit = e.target.closest('.ladder-el');
+  if (!elHit) return;
+  const rungId = Number(elHit.dataset.rungId);
+  const elId   = elHit.dataset.elId;
+  const prog   = store.getProgram();
+  const rung   = prog.rungs.find(r => r.id === rungId);
+  if (!rung) return;
+  let el = null;
+  for (const row of rung.network) {
+    el = row.elements.find(e => e.id === elId);
+    if (el) break;
+  }
+  if (!el || isOutputType(el.type) || !el.address) return;
+  e.preventDefault();
+  store.pressInput(el.address);
+}
+
 // ── Event: rung area click ────────────────────────────────────
 function onRungAreaClick(e) {
+  // En modo simulación los clics se gestionan por mousedown/mouseup
+  if (store.isSimMode()) return;
   if (e.target.closest('#ctxMenu')) return;
   const addBtn = e.target.closest('#btn-add-rung');
   if (addBtn) {
@@ -1083,18 +1179,38 @@ function onNavBtnClick(e) {
     return;
   }
 
-  if (txt.includes('Compilar')) {
-    const errs = validateProgram(store.getProgram());
-    if (errs.length === 0) {
-      store.log('ok',   'Compilación exitosa — 0 errores, 0 advertencias');
-      store.log('info', `${store.getProgram().rungs.length} rungs · ${Object.keys(store.getProgram().symbol_table).length} variables`);
-      showToast('Compilación exitosa', 'success');
+  if (txt.includes('Compilar') || txt.includes('Detener')) {
+    const compileBtn = document.querySelector('.tnav-btn.compile');
+    if (store.isSimMode()) {
+      // Detener simulación
+      store.stopSim();
+      document.body.classList.remove('sim-mode');
+      if (compileBtn) {
+        compileBtn.classList.remove('running');
+        compileBtn.innerHTML = '<i class="ti ti-player-play"></i> Compilar';
+      }
+      store.log('info', 'Simulación detenida.');
+      showToast('Simulación detenida', 'info');
     } else {
-      errs.forEach(err => store.log('err', err));
-      showToast(`${errs.length} error(es)`, 'error');
+      // Iniciar simulación (valida primero)
+      const errs = validateProgram(store.getProgram());
+      if (errs.length > 0) {
+        errs.forEach(err => store.log('err', err));
+        showToast(`${errs.length} error(es) — corrige antes de simular`, 'error');
+        const t = document.getElementById('tab-btn-terminal');
+        if (t) showTab('terminal', t);
+        return;
+      }
+      store.startSim();
+      document.body.classList.add('sim-mode');
+      if (compileBtn) {
+        compileBtn.classList.add('running');
+        compileBtn.innerHTML = '<i class="ti ti-player-stop"></i> Detener';
+      }
+      store.log('ok', 'Simulación iniciada — haz clic en los contactos para activarlos.');
+      showToast('Simulación iniciada', 'success');
     }
-    const t = document.getElementById('tab-btn-terminal');
-    if (t) showTab('terminal', t);
+    return;
   }
   if (txt.includes('Cargar')) {
     cargarAlPLC();
@@ -1270,6 +1386,18 @@ function onPropInput(e) {
   if (id === 'propRungComment' && sel.rungId) {
     store.setRungComment(sel.rungId, e.target.value);
   }
+  if (id === 'propLampColor' && sel.elementId) {
+    const prog = store.getProgram();
+    const rung = prog.rungs.find(r => r.id === sel.rungId);
+    let el = null;
+    for (const row of rung?.network ?? []) { el = row.elements.find(e => e.id === sel.elementId); if (el) break; }
+    if (el) {
+      const newParams = { ...(el.params || {}) };
+      if (e.target.value) newParams.lamp_color = e.target.value;
+      else delete newParams.lamp_color;
+      store.updateElement(sel.rungId, sel.elementId, { params: newParams });
+    }
+  }
 }
 
 // ── Tab switcher ─────────────────────────────────────────────
@@ -1425,9 +1553,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Búsqueda sidebar
   document.querySelector('.sb-search input')?.addEventListener('input', onSidebarSearch);
 
-  // Eventos de click
+  // Eventos de click y simulación
   document.getElementById('rungArea')?.addEventListener('click',     onRungAreaClick);
+  document.getElementById('rungArea')?.addEventListener('mousedown', onRungAreaMouseDown);
   document.getElementById('rungArea')?.addEventListener('dblclick',  onRungAreaDblClick);
+  document.addEventListener('mouseup', () => { if (store.isSimMode()) store.releaseAllInputs(); });
   document.querySelector('.sidebar')?.addEventListener('click',      onSidebarClick);
   document.querySelector('.editor-toolbar')?.addEventListener('click', onToolbarClick);
   document.querySelector('.top-nav')?.addEventListener('click',      onNavBtnClick);

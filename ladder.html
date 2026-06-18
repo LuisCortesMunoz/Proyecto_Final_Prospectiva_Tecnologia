@@ -96,6 +96,10 @@
     .tnav-btn i { font-size: 14px; }
     .tnav-btn.compile { color: var(--accent-bright); font-weight: 500; }
     .tnav-btn.compile:hover { background: var(--accent-glow); }
+    .tnav-btn.compile.running { color: var(--success); background: var(--success-dim); font-weight: 600; }
+    .tnav-btn.compile.running:hover { filter: brightness(1.1); }
+    body.sim-mode .ladder-el { cursor: crosshair; }
+    body.sim-mode .rung-svg  { cursor: default; }
     .tnav-btn.upload  { color: var(--success); font-weight: 500; }
     .tnav-btn.upload:hover  { background: var(--success-dim); }
     .tnav-btn.danger  { color: var(--danger); }
@@ -994,6 +998,15 @@
       <div class="pp-field" id="propTimerWrap" style="display:none">
         <label>Preset (ms / cuentas)</label>
         <input type="number" id="propTimerPreset" placeholder="1000" min="0">
+      </div>
+      <div class="pp-field" id="propColorWrap" style="display:none">
+        <label>Color lámpara</label>
+        <select id="propLampColor">
+          <option value="">— ninguno —</option>
+          <option value="green">🟢 Verde</option>
+          <option value="yellow">🟡 Amarillo</option>
+          <option value="red">🔴 Rojo</option>
+        </select>
       </div>
       <div class="pp-sep"></div>
       <div class="pp-state">

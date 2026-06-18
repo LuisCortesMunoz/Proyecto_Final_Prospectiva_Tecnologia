@@ -44,9 +44,26 @@ function elRX(col, type) { return colCX(col) + elW(type) / 2; }
 
 const BLK = { block_ton:'TON', block_tof:'TOF', block_osc:'OSC', block_ctu:'CTU', block_ctd:'CTD', block_cmp:'CMP', block_mov:'MOV', block_add:'ADD' };
 
-function elInner(type, en) {
-  // Paleta clara y suave (sin neón): energizado azul sereno,
-  // desenergizado pizarra clara.
+// Colores de lámpara para la simulación
+const LAMP_COLOR = { green: '#22c55e', yellow: '#f59e0b', red: '#ef4444' };
+const LAMP_DIM   = { green: 'rgba(34,197,94,0.22)', yellow: 'rgba(245,158,11,0.22)', red: 'rgba(239,68,68,0.22)' };
+
+function elInner(type, en, el, varVals) {
+  // Para bobinas con color de lámpara definido, usar estado individual (variable_values)
+  if (type === 'coil' && el?.params?.lamp_color) {
+    const lc  = el.params.lamp_color;
+    const lit = !!varVals?.[el.address];
+    const fc  = lit ? LAMP_COLOR[lc] ?? '#22c55e' : '#6f8aa6';
+    const fd  = lit ? LAMP_DIM[lc]   ?? 'rgba(34,197,94,0.22)' : 'none';
+    const sw  = lit ? 2.2 : 1.6;
+    return `
+      <line x1="0" y1="12" x2="12" y2="12" stroke="${fc}" stroke-width="${sw}"/>
+      <circle cx="20" cy="12" r="8" fill="${fd}" stroke="${fc}" stroke-width="${sw}"/>
+      ${lit ? `<circle cx="20" cy="12" r="4.5" fill="${fc}" opacity="0.55"/>` : ''}
+      <line x1="28" y1="12" x2="40" y2="12" stroke="${fc}" stroke-width="${sw}"/>`;
+  }
+
+  // Paleta estándar: energizado azul sereno, desenergizado pizarra clara.
   const c  = en ? '#2f7ad6' : '#6f8aa6';
   const sw = en ? 1.8 : 1.6;
   switch (type) {
@@ -111,6 +128,7 @@ function symLabel(addr, st) {
  */
 export function renderRung(rung, program, selection) {
   const en      = !!program.execution_state?.rung_states?.[String(rung.id)];
+  const varVals = program.execution_state?.variable_values ?? {};
   const selRung = selection?.rungId === rung.id;
   const rows    = rung.network ?? [{ row: 0, elements: [] }];
 
@@ -202,7 +220,7 @@ export function renderRung(rung, program, selection) {
       } else if (inMulti) {
         elsvg += `<rect x="${ex-4}" y="${ey-2}" width="${ew+8}" height="${GR.EL_H+4}" rx="3" fill="rgba(77,158,247,0.12)" stroke="#4d9ef7" stroke-width="1" stroke-dasharray="3 2"/>`;
       }
-      elsvg += `<g transform="translate(${ex},${ey})">${elInner(el.type, en)}</g>`;
+      elsvg += `<g transform="translate(${ex},${ey})">${elInner(el.type, en, el, varVals)}</g>`;
 
       // Etiqueta dirección (encima)
       elsvg += `<text x="${colCX(el.pos.col)}" y="${ey-3}" text-anchor="middle" font-size="10" font-weight="600" fill="${addrC}" font-family="DM Mono,monospace">${esc(el.address)}</text>`;
