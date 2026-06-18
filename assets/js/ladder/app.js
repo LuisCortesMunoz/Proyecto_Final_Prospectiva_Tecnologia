@@ -524,6 +524,7 @@ function render() {
   renderActiveTab(prog);
   updateSidebarArmed();
   updateEtLabel(prog);
+  updatePlcAddress(prog);
 }
 
 store.subscribe(render);
@@ -1164,6 +1165,8 @@ function onToolbarClick(e) {
 
 // ── Nav top menu: Compilar / Cargar / Stop ────────────────────
 function onNavBtnClick(e) {
+  // Pastilla del PLC (IP:puerto): abre el detector/selector con prueba TCP.
+  if (e.target.closest('.tnav-plc')) { abrirSelectorPLC(); return; }
   const btn = e.target.closest('.tnav-btn, .tnav-menu-btn');
   if (!btn) return;
   const txt = btn.textContent.trim();
@@ -1259,8 +1262,7 @@ async function cargarAlPLC() {
       showToast('Error al cargar al PLC', 'error');
       // Falla típica de conexión (503): el PLC no está en esa IP. Ofrecer detectar.
       if (res.status === 503 && confirm('No se pudo conectar al PLC. ¿Buscar PLCs en la red y elegir la IP?')) {
-        const nuevaIp = await detectarYElegirPLC();
-        if (nuevaIp) cargarAlPLC();
+        abrirSelectorPLC();   // el botón "Cargar ahora (TCP)" del selector reintenta
       }
       return;
     }
@@ -1277,89 +1279,187 @@ async function cargarAlPLC() {
   }
 }
 
-// ── Detectar PLC en la red + elegir IP ────────────────────────
-// Pregunta al backend local (puente HTTP->Modbus) qué dispositivos Modbus TCP
-// (puerto 502) hay en la red y deja al usuario elegir el PLC. El resultado se
-// guarda en metadata.plc_target.ip para que "Cargar" lo envíe.
-async function detectarYElegirPLC() {
-  const url = plcBridgeUrl();
-  showToast('Buscando PLCs en la red…', 'info');
-  store.log('info', `Escaneando la red en busca de PLCs (puerto 502) vía ${url}/plc/escanear …`);
-
-  let data = null;
-  try {
-    const res = await fetch(`${url}/plc/escanear`, { signal: AbortSignal.timeout(30000) });
-    data = await res.json().catch(() => null);
-    if (!res.ok) throw new Error(data?.detail || `HTTP ${res.status}`);
-  } catch (e) {
-    const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
-    store.log('err', offline
-      ? `No se pudo contactar el servidor PLC en ${url}. ¿Está corriendo el backend local (uvicorn app:app) en la red del PLC?`
-      : ('Escaneo: ' + e.message));
-    showToast('Sin conexión al servidor PLC', 'error');
-    // Aun así dejamos meter la IP a mano
-    return pedirIPManual();
-  }
-
-  const found = data.encontrados || [];
-  store.log(found.length ? 'ok' : 'warn',
-    found.length ? `PLCs detectados: ${found.join(', ')}` : 'No se detectó ningún PLC en la red.');
-  if (data.subredes?.length) store.log('info', `Subredes revisadas: ${data.subredes.join(', ')}`);
-
-  const ip = await elegirDeLista('Selecciona el PLC detectado', found, data.default);
-  if (ip == null) return null;            // cancelado
-  guardarIPPLC(ip, data.puerto || 502);
-  return ip;
-}
-
-function pedirIPManual() {
-  const meta = store.getProgram().metadata;
-  const ip = prompt('IP del PLC:', meta.plc_target?.ip || '192.168.3.12');
-  if (ip == null || !ip.trim()) return null;
-  guardarIPPLC(ip.trim(), meta.plc_target?.port || 502);
-  return ip.trim();
-}
+// ── Detectar PLC + probar comunicación + elegir IP ────────────
+// Estado de la última prueba de comunicación, para pintar la pastilla del PLC.
+let _plcStatus = { ip: null, ok: null };   // ok: null=sin probar, true/false
 
 function guardarIPPLC(ip, port) {
   const meta = store.getProgram().metadata;
   store.updateMeta({ plc_target: { ...meta.plc_target, ip, port } });
   store.log('ok', `PLC objetivo: ${ip}:${port}`);
-  showToast(`PLC objetivo: ${ip}`, 'success');
 }
 
-// Modal simple para elegir una IP de la lista detectada (o escribirla a mano).
-function elegirDeLista(titulo, ips, sugerida) {
+// Refresca el texto y color de la pastilla "192.168.x.x:502" de la barra.
+function updatePlcAddress(prog) {
+  const span = document.getElementById('plcAddress');
+  if (!span) return;
+  const tgt  = prog?.metadata?.plc_target || {};
+  const ip   = (tgt.ip || '').trim();
+  const port = Number(tgt.port) || 502;
+  span.textContent = (ip || '—') + ':' + port;
+  const btn = span.closest('.tnav-plc');
+  if (!btn) return;
+  const probado = ip && _plcStatus.ip === ip;
+  btn.style.borderColor = probado ? (_plcStatus.ok ? 'var(--success)' : 'var(--danger)') : '';
+  btn.style.color       = probado ? (_plcStatus.ok ? 'var(--success)' : 'var(--danger)') : '';
+  btn.title = ip
+    ? (probado ? (_plcStatus.ok ? `Comunicación OK con ${ip}:${port}` : `Sin respuesta de ${ip}:${port}`)
+               : `PLC objetivo ${ip}:${port} (sin probar) — clic para detectar/probar`)
+    : 'Sin PLC seleccionado — clic para detectar';
+}
+
+// Prueba de comunicación TCP/Modbus a un PLC concreto vía el backend puente.
+async function probarPLC(ip, port) {
+  const url = plcBridgeUrl();
+  const res = await fetch(`${url}/plc/probar?ip=${encodeURIComponent(ip)}&port=${port}&timeout_ms=1500`,
+                          { signal: AbortSignal.timeout(8000) });
+  const d = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(d?.detail || `HTTP ${res.status}`);
+  return !!d.alcanzable;
+}
+
+// Selector completo: escanea la red, lista los PLC detectados, prueba la
+// comunicación y, si está OK, deja "Usar" o "Cargar ahora". Devuelve la IP
+// elegida (ya guardada en metadata.plc_target) o null si se cancela.
+function abrirSelectorPLC() {
+  const url  = plcBridgeUrl();
+  const meta = store.getProgram().metadata;
+  const tgt  = meta.plc_target || {};
+  let selIp   = (tgt.ip || '').trim();
+  let selPort = Number(tgt.port) || 502;
+  let okTest  = false;
+
   return new Promise((resolve) => {
     const overlay = document.createElement('div');
     overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:9999;display:flex;align-items:center;justify-content:center;';
     const box = document.createElement('div');
-    box.style.cssText = 'background:#1e1e2a;color:#e6e6f0;border:1px solid #3a3a4a;border-radius:10px;min-width:300px;max-width:90vw;padding:18px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.5);';
-    const opciones = ips.map(ip =>
-      `<button data-ip="${ip}" style="display:block;width:100%;text-align:left;margin:4px 0;padding:9px 12px;border:1px solid #3a3a4a;border-radius:6px;background:#26263a;color:#e6e6f0;cursor:pointer;font-family:monospace;font-size:14px;">${ip}${ip===sugerida?'  ★':''}</button>`
-    ).join('');
+    box.style.cssText = 'background:#1e1e2a;color:#e6e6f0;border:1px solid #3a3a4a;border-radius:10px;width:380px;max-width:92vw;padding:18px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.5);';
     box.innerHTML = `
-      <div style="font-weight:600;margin-bottom:10px;">${titulo}</div>
-      ${ips.length ? opciones : '<div style="opacity:.7;margin-bottom:8px;">No se detectaron PLCs. Escribe la IP manualmente:</div>'}
-      <div style="display:flex;gap:6px;margin-top:10px;">
-        <input id="lv-ip-manual" placeholder="IP manual (ej. 192.168.3.12)" value="${sugerida||''}"
-               style="flex:1;padding:8px 10px;border:1px solid #3a3a4a;border-radius:6px;background:#15151f;color:#e6e6f0;font-family:monospace;">
-        <button id="lv-ip-ok" style="padding:8px 14px;border:0;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;">Usar</button>
+      <div style="font-weight:600;margin-bottom:4px;">Conectar al PLC (Modbus TCP)</div>
+      <div style="font-size:11px;opacity:.6;margin-bottom:12px;">Backend puente: <code>${url}</code></div>
+
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+        <button id="lv-scan" style="padding:7px 12px;border:0;border-radius:6px;background:#3b82f6;color:#fff;cursor:pointer;">🔍 Escanear red</button>
+        <span id="lv-scan-st" style="font-size:12px;opacity:.8;"></span>
       </div>
-      <div style="text-align:right;margin-top:10px;">
-        <button id="lv-ip-cancel" style="padding:6px 12px;border:0;border-radius:6px;background:transparent;color:#9aa;cursor:pointer;">Cancelar</button>
+      <div id="lv-list" style="max-height:180px;overflow:auto;margin-bottom:10px;"></div>
+
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">
+        <input id="lv-ip" placeholder="IP del PLC" value="${selIp}"
+               style="flex:1;padding:8px 10px;border:1px solid #3a3a4a;border-radius:6px;background:#15151f;color:#e6e6f0;font-family:monospace;">
+        <input id="lv-port" type="number" value="${selPort}" title="Puerto"
+               style="width:72px;padding:8px 8px;border:1px solid #3a3a4a;border-radius:6px;background:#15151f;color:#e6e6f0;font-family:monospace;">
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:14px;">
+        <button id="lv-test" style="padding:7px 12px;border:1px solid #3a3a4a;border-radius:6px;background:#26263a;color:#e6e6f0;cursor:pointer;">Probar comunicación</button>
+        <span id="lv-test-st" style="font-size:12px;">—</span>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;gap:8px;">
+        <button id="lv-cancel" style="padding:8px 12px;border:0;border-radius:6px;background:transparent;color:#9aa;cursor:pointer;">Cancelar</button>
+        <div style="display:flex;gap:6px;">
+          <button id="lv-use" disabled style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Usar este PLC</button>
+          <button id="lv-load" disabled style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Cargar ahora (TCP)</button>
+        </div>
       </div>`;
     overlay.appendChild(box);
     document.body.appendChild(overlay);
 
+    const $ = (id) => box.querySelector(id);
     const cerrar = (val) => { overlay.remove(); resolve(val); };
-    box.querySelectorAll('button[data-ip]').forEach(b =>
-      b.addEventListener('click', () => cerrar(b.dataset.ip)));
-    box.querySelector('#lv-ip-ok').addEventListener('click', () => {
-      const v = box.querySelector('#lv-ip-manual').value.trim();
-      cerrar(v || null);
-    });
-    box.querySelector('#lv-ip-cancel').addEventListener('click', () => cerrar(null));
+
+    const setConfirmEnabled = (on) => {
+      for (const id of ['#lv-use', '#lv-load']) {
+        const b = $(id);
+        b.disabled = !on;
+        b.style.cursor = on ? 'pointer' : 'not-allowed';
+        b.style.background = on ? (id === '#lv-load' ? 'var(--success)' : '#3b82f6') : '#3a3a4a';
+        b.style.color = on ? '#fff' : '#888';
+      }
+    };
+    const marcarTest = (estado, txt) => {
+      const st = $('#lv-test-st');
+      st.textContent = txt;
+      st.style.color = estado === 'ok' ? 'var(--success)'
+                     : estado === 'err' ? 'var(--danger)'
+                     : 'inherit';
+      okTest = estado === 'ok';
+      setConfirmEnabled(okTest);
+    };
+
+    async function hacerTest() {
+      selIp   = $('#lv-ip').value.trim();
+      selPort = Number($('#lv-port').value) || 502;
+      if (!selIp) { marcarTest('err', 'Escribe o selecciona una IP'); return; }
+      marcarTest('', 'Probando…');
+      try {
+        const ok = await probarPLC(selIp, selPort);
+        _plcStatus = { ip: selIp, ok };
+        if (ok) { marcarTest('ok', `✓ Responde ${selIp}:${selPort}`); store.log('ok', `PLC ${selIp}:${selPort} responde (Modbus TCP).`); }
+        else    { marcarTest('err', `✕ Sin respuesta de ${selIp}:${selPort}`); store.log('warn', `PLC ${selIp}:${selPort} no responde.`); }
+      } catch (e) {
+        const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
+        marcarTest('err', offline ? 'Sin conexión al backend' : ('Error: ' + e.message));
+        store.log('err', offline
+          ? `No se pudo contactar el backend puente en ${url}. ¿Está corriendo (uvicorn app:app) en la red del PLC?`
+          : ('Prueba PLC: ' + e.message));
+      }
+      updatePlcAddress(store.getProgram());
+    }
+
+    function pintarLista(ips, sugerida) {
+      const cont = $('#lv-list');
+      if (!ips.length) { cont.innerHTML = '<div style="opacity:.6;font-size:12px;padding:4px 0;">No se detectó ningún PLC. Escribe la IP a mano abajo.</div>'; return; }
+      cont.innerHTML = ips.map(ip =>
+        `<button data-ip="${ip}" style="display:block;width:100%;text-align:left;margin:3px 0;padding:8px 12px;border:1px solid #3a3a4a;border-radius:6px;background:#26263a;color:#e6e6f0;cursor:pointer;font-family:monospace;font-size:13px;">${ip}${ip===sugerida?'   ★':''}</button>`
+      ).join('');
+      cont.querySelectorAll('button[data-ip]').forEach(b =>
+        b.addEventListener('click', () => { $('#lv-ip').value = b.dataset.ip; hacerTest(); }));
+    }
+
+    async function escanear() {
+      const st = $('#lv-scan-st');
+      st.textContent = 'Escaneando…'; st.style.color = 'inherit';
+      $('#lv-scan').disabled = true;
+      try {
+        const res = await fetch(`${url}/plc/escanear`, { signal: AbortSignal.timeout(40000) });
+        const d = await res.json().catch(() => null);
+        if (!res.ok) throw new Error(d?.detail || `HTTP ${res.status}`);
+        const found = d.encontrados || [];
+        st.textContent = found.length ? `${found.length} PLC(s) en ${ (d.subredes||[]).join(', ') }` : 'Sin PLCs detectados';
+        store.log(found.length ? 'ok' : 'warn',
+          found.length ? `PLCs detectados: ${found.join(', ')}` : 'No se detectó ningún PLC en la red.');
+        pintarLista(found, d.default);
+      } catch (e) {
+        const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
+        st.textContent = offline ? 'Sin conexión al backend' : ('Error: ' + e.message);
+        st.style.color = 'var(--danger)';
+        store.log('err', offline
+          ? `No se pudo contactar el backend puente en ${url}. ¿Está corriendo (uvicorn app:app) en la red del PLC?`
+          : ('Escaneo: ' + e.message));
+      } finally {
+        $('#lv-scan').disabled = false;
+      }
+    }
+
+    const confirmar = (load) => {
+      guardarIPPLC(selIp, selPort);
+      updatePlcAddress(store.getProgram());
+      showToast(`PLC ${selIp} listo`, 'success');
+      cerrar(selIp);
+      if (load) cargarAlPLC();
+    };
+
+    $('#lv-scan').addEventListener('click', escanear);
+    $('#lv-test').addEventListener('click', hacerTest);
+    $('#lv-ip').addEventListener('input', () => marcarTest('', '—'));   // invalida test al editar
+    $('#lv-port').addEventListener('input', () => marcarTest('', '—'));
+    $('#lv-use').addEventListener('click',  () => { if (okTest) confirmar(false); });
+    $('#lv-load').addEventListener('click', () => { if (okTest) confirmar(true);  });
+    $('#lv-cancel').addEventListener('click', () => cerrar(null));
     overlay.addEventListener('click', (ev) => { if (ev.target === overlay) cerrar(null); });
+
+    escanear();   // arranca escaneando al abrir
   });
 }
 
@@ -1415,10 +1515,8 @@ function onNavDropMenuClick(e) {
       break;
     }
     case 'plc-addr': {
-      // Detecta los PLCs en la red y deja elegir; cae a IP manual si falla.
-      const t = document.getElementById('tab-btn-terminal');
-      if (t) showTab('terminal', t);
-      detectarYElegirPLC();
+      // Detecta los PLCs en la red, prueba la comunicación y deja elegir.
+      abrirSelectorPLC();
       break;
     }
     case 'scan-time': {
