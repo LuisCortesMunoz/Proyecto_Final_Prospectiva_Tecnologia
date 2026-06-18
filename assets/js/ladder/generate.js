@@ -19,10 +19,11 @@ import { validateLogicJson, normalizeAndValidate } from './validate.js';
  * @returns {Promise<{program, logic, warnings:string[], telemetry}>}
  * Lanza Error en fallo; si el JSON lógico no valida, el Error trae `.logicErrors`.
  */
-export async function generateProgram(text, profile, { signal, context } = {}) {
+export async function generateProgram(text, profile, { signal, context, onProgress } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let logic = null;
   let source = 'backend';
+  let ejemplo_id = '';
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
   const pasted = tryParseLogicJson(text);
@@ -30,6 +31,7 @@ export async function generateProgram(text, profile, { signal, context } = {}) {
     logic = pasted;
     source = 'json-pegado';
   } else {
+    onProgress?.('fetching');
     let res;
     try {
       res = await fetch(`${BACKEND_BASE_URL}/generar-logica`, {
@@ -48,6 +50,7 @@ export async function generateProgram(text, profile, { signal, context } = {}) {
     }
     const data = await res.json();
     logic = data?.logic || data;
+    ejemplo_id = data?.ejemplo_id || '';
   }
 
   if (!logic || typeof logic !== 'object') {
@@ -55,6 +58,7 @@ export async function generateProgram(text, profile, { signal, context } = {}) {
   }
 
   // 1) Validar el JSON lógico ANTES de compilar (no renderizar lógica falsa).
+  onProgress?.('validating');
   const lv = validateLogicJson(logic, profile);
   if (!lv.ok) {
     const err = new Error('El JSON lógico no pasó la validación: ' + lv.errors[0]);
@@ -64,6 +68,7 @@ export async function generateProgram(text, profile, { signal, context } = {}) {
   }
 
   // 2) Compilar a geometría y 3) normalizar/validar el schema.
+  onProgress?.('compiling');
   const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile);
   const nv = normalizeAndValidate(program);
 
@@ -78,6 +83,7 @@ export async function generateProgram(text, profile, { signal, context } = {}) {
       rungs: nv.program.rungs.length,
       repairs: nv.repairs.length,
     },
+    ejemplo_id,
   };
 }
 

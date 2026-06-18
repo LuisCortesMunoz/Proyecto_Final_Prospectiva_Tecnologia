@@ -27,22 +27,31 @@ const store = (() => {
   let _multi = { rungId: null, ids: new Set() };   // selección múltiple (para paralelo por rango)
   let _armed = null;
   let _log   = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v2.0' }];
+  let _undoStack = [];
+  let _redoStack = [];
   const _subs = [];
   function notify() { _subs.forEach(fn => fn()); }
+  function _pushUndo() {
+    _undoStack.push(JSON.parse(JSON.stringify(_prog)));
+    if (_undoStack.length > 30) _undoStack.shift();
+    _redoStack = [];
+  }
 
   return {
     subscribe(fn) { _subs.push(fn); },
 
     getProgram() { return _prog; },
-    setProgram(p) { _prog = p; notify(); },
+    setProgram(p) { _pushUndo(); _prog = p; notify(); },
 
     updateMeta(patch) {
+      _pushUndo();
       const p = deepClone(_prog);
       Object.assign(p.metadata, patch);
       _prog = p; notify();
     },
 
     addRung() {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = newRung(p.rungs);
       p.rungs.push(r);
@@ -52,6 +61,7 @@ const store = (() => {
 
     // Inserta un rung vacío después del rung con id dado
     addRungAfter(afterId) {
+      _pushUndo();
       const p   = deepClone(_prog);
       const idx = p.rungs.findIndex(r => r.id === afterId);
       const r   = newRung(p.rungs);
@@ -63,6 +73,7 @@ const store = (() => {
 
     // Duplica un rung (clona con nuevos IDs)
     duplicateRung(id) {
+      _pushUndo();
       const p   = deepClone(_prog);
       const idx = p.rungs.findIndex(r => r.id === id);
       if (idx < 0) return;
@@ -78,6 +89,7 @@ const store = (() => {
     },
 
     deleteRung(id) {
+      _pushUndo();
       const p = deepClone(_prog);
       p.rungs = p.rungs.filter(r => r.id !== id);
       if (_sel.rungId === id) _sel = { rungId: null, elementId: null };
@@ -85,6 +97,7 @@ const store = (() => {
     },
 
     moveRung(id, dir) {
+      _pushUndo();
       const p   = deepClone(_prog);
       const idx = p.rungs.findIndex(r => r.id === id);
       if (idx < 0) return;
@@ -95,6 +108,7 @@ const store = (() => {
     },
 
     setRungComment(id, comment) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === id);
       if (r) r.comment = comment;
@@ -102,6 +116,7 @@ const store = (() => {
     },
 
     toggleRungEnabled(id) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === id);
       if (r) r.enabled = !r.enabled;
@@ -110,6 +125,7 @@ const store = (() => {
 
     // ── Elementos ────────────────────────────────────────────
     addElement(rungId, type, atCol = null) {
+      _pushUndo();
       const p  = deepClone(_prog);
       const r  = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -150,6 +166,7 @@ const store = (() => {
     // Agrega una NUEVA rama paralela (leg) sobre la columna atCol de la fila 0.
     // Cada llamada crea una rama independiente → permite OR de N vías sin colisiones.
     addParallelElement(rungId, type, atCol) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -166,6 +183,7 @@ const store = (() => {
     // Crea una rama paralela que abarca un RANGO de columnas [fromCol..toCol]
     // de la principal (para enclavar un grupo de contactos en serie).
     addParallelRange(rungId, fromCol, toCol, type) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -185,6 +203,7 @@ const store = (() => {
     // Inserta una columna a la derecha del final de la rama y corre lo que
     // esté más a la derecha, manteniendo todo alineado con la principal.
     addSeriesToBranch(rungId, branchRowIdx, type) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -204,6 +223,7 @@ const store = (() => {
     },
 
     deleteElement(rungId, elId) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -230,6 +250,7 @@ const store = (() => {
     },
 
     updateElement(rungId, elId, patch) {
+      _pushUndo();
       const p = deepClone(_prog);
       const r = p.rungs.find(r => r.id === rungId);
       if (!r) return;
@@ -273,6 +294,22 @@ const store = (() => {
       if (_log.length > 150) _log.shift();
       notify();
     },
+
+    // ── Undo / Redo ───────────────────────────────────────────
+    canUndo() { return _undoStack.length > 0; },
+    canRedo() { return _redoStack.length > 0; },
+    undo() {
+      if (!_undoStack.length) return;
+      _redoStack.push(JSON.parse(JSON.stringify(_prog)));
+      _prog = _undoStack.pop();
+      notify();
+    },
+    redo() {
+      if (!_redoStack.length) return;
+      _undoStack.push(JSON.parse(JSON.stringify(_prog)));
+      _prog = _redoStack.pop();
+      notify();
+    },
   };
 })();
 
@@ -284,6 +321,8 @@ window.LadderEditor = {
   getProgram: () => store.getProgram(),
   selectRung: (id) => store.selectRung(id),
   log: (type, msg) => store.log(type, msg),
+  undo: () => store.undo(),
+  redo: () => store.redo(),
 };
 
 // ── Toast ──────────────────────────────────────────────────────
@@ -994,7 +1033,8 @@ function onToolbarClick(e) {
   const iconClass = icon?.className ?? '';
   const txt  = btn.textContent.trim();
 
-  if (txt.includes('Deshacer') || txt.includes('Rehacer')) { showToast('Deshacer aún no disponible', 'info'); return; }
+  if (txt.includes('Deshacer')) { if (store.canUndo()) store.undo(); else showToast('Nada que deshacer', 'info'); return; }
+  if (txt.includes('Rehacer'))  { if (store.canRedo()) store.redo(); else showToast('Nada que rehacer', 'info');  return; }
   if (txt.includes('Insertar')) {
     const armed = store.getArmed();
     if (armed && sel.rungId) { store.addElement(sel.rungId, armed); showToast(`${armed} insertado`, 'success'); }
@@ -1151,7 +1191,7 @@ function onNavDropMenuClick(e) {
       inp.click();
       break;
     }
-    case 'undo': showToast('Deshacer aún no disponible', 'info'); break;
+    case 'undo': if (store.canUndo()) store.undo(); else showToast('Nada que deshacer', 'info'); break;
     case 'copy-sel': { if (store.getSelection().elementId) copyElement(); else if (store.getSelection().rungId) copyRung(); break; }
     case 'paste-sel': pasteFromClipboard(); break;
     case 'delete-sel': {
@@ -1268,7 +1308,14 @@ function onKeyDown(e) {
     e.preventDefault(); store.deleteElement(sel.rungId, sel.elementId);
   }
   if (e.key === 'Escape') { store.clearSelection(); store.disarm(); hidePropPopup(); hideCtxMenu(); }
-  if ((e.ctrlKey || e.metaKey) && e.key === 'z') { e.preventDefault(); showToast('Undo no disponible aún', 'info'); }
+  if ((e.ctrlKey || e.metaKey) && !e.shiftKey && e.key === 'z') {
+    e.preventDefault();
+    if (store.canUndo()) store.undo(); else showToast('Nada que deshacer', 'info');
+  }
+  if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.shiftKey && e.key === 'z'))) {
+    e.preventDefault();
+    if (store.canRedo()) store.redo(); else showToast('Nada que rehacer', 'info');
+  }
   if ((e.ctrlKey || e.metaKey) && e.key === 'c') { e.preventDefault(); if (sel.elementId) copyElement(); else if (sel.rungId) copyRung(); }
   if ((e.ctrlKey || e.metaKey) && e.key === 'v') { e.preventDefault(); pasteFromClipboard(); }
   if ((e.ctrlKey || e.metaKey) && e.key === '+') { e.preventDefault(); adjustZoom(0.2); }

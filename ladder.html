@@ -498,6 +498,19 @@
     .cmsg-warn { margin-top: 6px; font-size: 10px; color: #e0b070; }
     .cmsg-warn summary { cursor: pointer; }
     .cmsg-warn ul { margin: 4px 0 0; padding-left: 16px; }
+    /* ── Logic summary ── */
+    .cmsg-logic { margin-top: 6px; font-size: 10px; color: var(--text-secondary); }
+    .cmsg-logic summary { cursor: pointer; font-weight: 600; color: var(--text-tertiary); margin-bottom: 3px; }
+    .cmsg-logic table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 9.5px; }
+    .cmsg-logic td { border-top: 1px solid var(--border); padding: 2px 4px; }
+    .cmsg-logic .cml-out  { color: var(--accent-bright); font-weight: 600; width: 30px; }
+    .cmsg-logic .cml-name { color: var(--text-secondary); width: 55px; }
+    /* ── Feedback buttons ── */
+    .cmsg-actions { display: flex; gap: 6px; margin-top: 5px; }
+    .fb-btn { background: none; border: 1px solid var(--border); border-radius: 4px; padding: 2px 7px; cursor: pointer; font-size: 13px; color: var(--text-tertiary); transition: background var(--transition), border-color var(--transition); }
+    .fb-btn:hover { background: var(--bg-hover); border-color: var(--border-light); }
+    .fb-btn[data-status="accepted"].active { background: var(--success-dim); border-color: var(--success); }
+    .fb-btn[data-status="rejected"].active { background: var(--danger-dim);  border-color: var(--danger); }
     .chat-input { border-top: 1px solid var(--border); padding: 8px; flex-shrink: 0; }
     .chat-input textarea { width: 100%; resize: vertical; background: var(--bg-base); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-family: var(--font-ui); font-size: 11.5px; padding: 7px 8px; box-sizing: border-box; }
     .chat-actions { display: flex; gap: 6px; margin-top: 6px; }

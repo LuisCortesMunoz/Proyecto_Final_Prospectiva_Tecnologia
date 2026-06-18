@@ -193,7 +193,7 @@ function counterEl(ct, addr, col) {
 function compileOutput(o, ctx, gStop) {
   const out = o.output;
   const coilAddr = ctx.resolveAddr(out);
-  const expr = (o.expr && String(o.expr).trim()) || exprFromLogic(o.logic, out);
+  const expr = exprFromLogic(o.logic, out);
 
   let ast = null;
   if (String(expr).trim()) {
