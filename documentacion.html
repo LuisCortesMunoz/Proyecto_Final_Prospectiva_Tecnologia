@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>LadderVoice — Documentación del Proyecto</title>
+
+  <link rel="stylesheet" href="assets/css/style.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+  <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
+
+  <style>
+    .doc-wrap {
+      max-width: 1080px;
+      margin: 52px auto 0;
+      padding: 4rem 1.5rem 5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .doc-hero {
+      background: linear-gradient(135deg, var(--navy), var(--blue-700));
+      border: 1px solid var(--blue-700);
+      border-radius: var(--radius);
+      padding: clamp(2rem, 5vw, 4rem);
+      color: #fff;
+      box-shadow: var(--shadow-lg);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .doc-hero::after {
+      content: "";
+      position: absolute;
+      right: -80px;
+      top: -80px;
+      width: 260px;
+      height: 260px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.16);
+    }
+
+    .doc-kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--blue-200);
+      border: 1px solid rgba(255,255,255,0.22);
+      border-radius: 999px;
+      padding: 0.25rem 0.75rem;
+      background: rgba(255,255,255,0.08);
+      margin-bottom: 1rem;
+    }
+
+    .doc-hero h1 {
+      font-family: var(--font-display);
+      font-size: clamp(2rem, 5vw, 3.4rem);
+      line-height: 1.05;
+      margin: 0 0 1rem;
+      max-width: 780px;
+      letter-spacing: -0.04em;
+    }
+
+    .doc-hero p {
+      color: rgba(255,255,255,0.76);
+      font-size: 1rem;
+      line-height: 1.75;
+      max-width: 760px;
+      margin: 0;
+    }
+
+    .doc-grid {
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.25rem;
+      align-items: start;
+    }
+
+    @media (max-width: 860px) {
+      .doc-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .doc-toc {
+      position: sticky;
+      top: 72px;
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 1.2rem;
+      box-shadow: var(--shadow-md);
+    }
+
+    @media (max-width: 860px) {
+      .doc-toc {
+        position: static;
+      }
+    }
+
+    .doc-toc-title {
+      font-family: var(--font-mono);
+      color: var(--blue-400);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      margin-bottom: 0.75rem;
+    }
+
+    .doc-toc a {
+      display: flex;
+      gap: 0.55rem;
+      align-items: center;
+      padding: 0.55rem 0;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(221,230,241,0.8);
+      font-size: 0.88rem;
+      transition: color var(--transition), transform var(--transition);
+    }
+
+    .doc-toc a:last-child {
+      border-bottom: none;
+    }
+
+    .doc-toc a:hover {
+      color: var(--blue-400);
+      transform: translateX(2px);
+    }
+
+    .doc-content {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+      min-width: 0;
+    }
+
+    .doc-card {
+      background: #ffffff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: clamp(1.25rem, 3vw, 1.9rem);
+      box-shadow: var(--shadow-md);
+    }
+
+    .doc-label {
+      font-family: var(--font-mono);
+      color: var(--blue-400);
+      font-size: 0.72rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 0.45rem;
+    }
+
+    .doc-card h2 {
+      font-family: var(--font-display);
+      font-size: 1.35rem;
+      line-height: 1.25;
+      color: var(--text-primary);
+      margin: 0 0 0.9rem;
+    }
+
+    .doc-card h3 {
+      font-size: 1rem;
+      color: var(--text-primary);
+      margin: 1.15rem 0 0.4rem;
+    }
+
+    .doc-card p {
+      color: var(--text-secondary);
+      line-height: 1.78;
+      font-size: 0.94rem;
+      margin: 0;
+    }
+
+    .doc-card p + p {
+      margin-top: 0.75rem;
+    }
+
+    .doc-list {
+      margin: 0.75rem 0 0;
+      padding-left: 1.15rem;
+      color: var(--text-secondary);
+      line-height: 1.75;
+      font-size: 0.93rem;
+    }
+
+    .doc-list li {
+      margin-bottom: 0.4rem;
+    }
+
+    .doc-mini-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 0.8rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 740px) {
+      .doc-mini-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .doc-mini {
+      border: 1px solid var(--border);
+      background: #f8fbff;
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+    }
+
+    .doc-mini i {
+      color: var(--blue-400);
+      font-size: 1.1rem;
+      margin-bottom: 0.55rem;
+    }
+
+    .doc-mini h3 {
+      margin: 0 0 0.35rem;
+      font-size: 0.92rem;
+    }
+
+    .doc-mini p {
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.55;
+    }
+
+    .doc-flow {
+      display: grid;
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    .doc-step {
+      display: grid;
+      grid-template-columns: 42px 1fr;
+      gap: 0.85rem;
+      align-items: start;
+      padding: 0.9rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #f8fbff;
+    }
+
+    .doc-step-num {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: rgba(46,125,225,0.12);
+      color: var(--blue-400);
+      border: 1px solid rgba(46,125,225,0.28);
+      font-family: var(--font-mono);
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.85rem;
+    }
+
+    .doc-step strong {
+      display: block;
+      color: var(--text-primary);
+      margin-bottom: 0.2rem;
+      font-size: 0.93rem;
+    }
+
+    .doc-step span {
+      display: block;
+      color: var(--text-secondary);
+      font-size: 0.86rem;
+      line-height: 1.55;
+    }
+
+    .doc-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1rem;
+      overflow: hidden;
+      border-radius: var(--radius-sm);
+      font-size: 0.87rem;
+    }
+
+    .doc-table th,
+    .doc-table td {
+      border: 1px solid var(--border);
+      padding: 0.75rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .doc-table th {
+      background: var(--blue-50);
+      color: var(--text-primary);
+      font-weight: 700;
+    }
+
+    .doc-table td {
+      color: var(--text-secondary);
+      background: #ffffff;
+      line-height: 1.55;
+    }
+
+    .doc-code {
+      margin-top: 0.9rem;
+      background: #0d2347;
+      color: #dbeafe;
+      border-radius: var(--radius-sm);
+      padding: 1rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.78rem;
+      line-height: 1.65;
+      border: 1px solid rgba(255,255,255,0.12);
+    }
+
+    .doc-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-top: 0.9rem;
+    }
+
+    .doc-tag {
+      font-family: var(--font-mono);
+      font-size: 0.72rem;
+      color: var(--blue-300);
+      background: rgba(46,125,225,0.08);
+      border: 1px solid rgba(46,125,225,0.26);
+      border-radius: 5px;
+      padding: 0.22rem 0.55rem;
+    }
+
+    .doc-note {
+      border-left: 4px solid var(--blue-400);
+      background: rgba(46,125,225,0.08);
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 0.9rem 1rem;
+      margin-top: 1rem;
+      color: var(--text-secondary);
+      font-size: 0.9rem;
+      line-height: 1.65;
+    }
+
+    .doc-credit {
+      display: grid;
+      grid-template-columns: 44px 1fr;
+      gap: 0.85rem;
+      align-items: start;
+      padding: 1rem;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: #f8fbff;
+      margin-top: 0.75rem;
+    }
+
+    .doc-credit-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue-400);
+      background: rgba(46,125,225,0.1);
+      border: 1px solid rgba(46,125,225,0.25);
+    }
+
+    .doc-credit strong {
+      display: block;
+      color: var(--text-primary);
+      margin-bottom: 0.2rem;
+    }
+
+    .doc-credit p {
+      font-size: 0.86rem;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+
+    .doc-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      margin-top: 1.2rem;
+    }
+
+    .doc-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      padding: 0.68rem 1rem;
+      border-radius: var(--radius-sm);
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-decoration: none;
+      transition: var(--transition);
+    }
+
+    .doc-btn-primary {
+      background: linear-gradient(135deg, var(--blue-600), var(--blue-500));
+      color: #fff;
+      border: 1px solid var(--blue-500);
+    }
+
+    .doc-btn-primary:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .doc-btn-outline {
+      background: #fff;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .doc-btn-outline:hover {
+      color: var(--blue-400);
+      border-color: var(--blue-400);
+      background: rgba(46,125,225,0.06);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+  <header class="obsidiana-nav">
+    <div class="onav-logo-wrap">
+      <button class="onav-logo-btn" id="onav-logo-btn">
+        <img src="assets/img/logo.png" alt="LadderVoice" class="onav-logo-img">
+        <svg class="onav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      <div class="onav-dropdown" id="onav-dropdown" hidden>
+        <a href="index.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Copiloto IA</span>
+          <span class="onav-dropdown-item-sub">Chat con perfiles de esfuerzo</span>
+        </a>
+
+        <a href="asistente.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Asistente de Voz</span>
+          <span class="onav-dropdown-item-sub">Control por voz para PLCs</span>
+        </a>
+
+        <a href="ladder.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Editor Ladder</span>
+          <span class="onav-dropdown-item-sub">Herramienta de programación PLC</span>
+        </a>
+
+        <a href="about.html" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Sobre el Proyecto</span>
+          <span class="onav-dropdown-item-sub">Arquitectura general</span>
+        </a>
+
+        <a href="documentacion.html" class="onav-dropdown-item active">
+          <span class="onav-dropdown-item-title">Documentación</span>
+          <span class="onav-dropdown-item-sub">Proceso, cambios y desarrollo</span>
+        </a>
+
+        <a href="https://github.com/LuisCortesMunoz" target="_blank" rel="noopener noreferrer" class="onav-dropdown-item">
+          <span class="onav-dropdown-item-title">Repositorio</span>
+          <span class="onav-dropdown-item-sub">Ver código en GitHub</span>
+        </a>
+      </div>
+    </div>
+
+    <div class="onav-spacer"></div>
+
+    <div class="onav-online">
+      <span class="onav-dot"></span>
+      <span class="onav-online-text">Documentación</span>
+    </div>
+  </header>
+
+  <main class="doc-wrap">
+
+    <!-- HERO -->
+    <section class="doc-hero">
+      <div class="doc-kicker">
+        <i class="fa-solid fa-book-open"></i>
+        Documentación técnica
+      </div>
+      <h1>Desarrollo de LadderVoice / LAVO</h1>
+      <p>
+        Esta página documenta el proceso de construcción del proyecto: la evolución de la arquitectura,
+        las decisiones técnicas, los cambios realizados, las APIs utilizadas y el papel de las herramientas
+        de IA que apoyaron el desarrollo.
+      </p>
+    </section>
+
+    <section class="doc-grid">
+
+      <!-- ÍNDICE -->
+      <aside class="doc-toc">
+        <div class="doc-toc-title">Contenido</div>
+        <a href="#resumen"><i class="fa-solid fa-circle-info"></i> Resumen</a>
+        <a href="#objetivo"><i class="fa-solid fa-bullseye"></i> Objetivo</a>
+        <a href="#arquitectura"><i class="fa-solid fa-diagram-project"></i> Arquitectura</a>
+        <a href="#flujo"><i class="fa-solid fa-route"></i> Flujo de operación</a>
+        <a href="#evolucion"><i class="fa-solid fa-timeline"></i> Cambios realizados</a>
+        <a href="#backend"><i class="fa-solid fa-server"></i> Backend y APIs</a>
+        <a href="#frontend"><i class="fa-solid fa-window-maximize"></i> Frontend</a>
+        <a href="#plc"><i class="fa-solid fa-microchip"></i> PLC y registros</a>
+        <a href="#ia"><i class="fa-solid fa-robot"></i> IA utilizada</a>
+        <a href="#creditos"><i class="fa-solid fa-handshake"></i> Créditos</a>
+      </aside>
+
+      <div class="doc-content">
+
+        <!-- RESUMEN -->
+        <section class="doc-card" id="resumen">
+          <div class="doc-label">01 · Resumen ejecutivo</div>
+          <h2>¿Qué es LadderVoice?</h2>
+          <p>
+            LadderVoice, también referido como LAVO, es un sistema web pensado para facilitar la
+            programación y operación de lógica Ladder para PLC mediante lenguaje natural y voz.
+            El usuario dicta o escribe una instrucción, el sistema la interpreta con IA, genera una
+            configuración lógica validable y la transforma en una representación Ladder visual.
+          </p>
+          <p>
+            El proyecto integra un frontend desplegable en GitHub Pages, un backend con FastAPI,
+            servicios de IA para transcripción y generación lógica, y un puente local capaz de enviar
+            configuraciones al PLC Horner XL4 / XC1E5 mediante Modbus TCP.
+          </p>
+
+          <div class="doc-tags">
+            <span class="doc-tag">LadderVoice</span>
+            <span class="doc-tag">LAVO</span>
+            <span class="doc-tag">PLC Horner XL4 / XC1E5</span>
+            <span class="doc-tag">Cscape</span>
+            <span class="doc-tag">Modbus TCP</span>
+            <span class="doc-tag">Groq</span>
+            <span class="doc-tag">Ollama</span>
+          </div>
+        </section>
+
+        <!-- OBJETIVO -->
+        <section class="doc-card" id="objetivo">
+          <div class="doc-label">02 · Objetivo del proyecto</div>
+          <h2>Programar lógica de control usando lenguaje natural</h2>
+          <p>
+            El objetivo principal fue construir una herramienta que permitiera pasar de una instrucción
+            humana, como “con el botón I1 enciende la lámpara verde y con I2 apágala”, a una lógica de
+            control estructurada, visible y eventualmente aplicable a un PLC físico.
+          </p>
+
+          <div class="doc-mini-grid">
+            <div class="doc-mini">
+              <i class="fa-solid fa-microphone"></i>
+              <h3>Entrada por voz</h3>
+              <p>El usuario puede grabar una instrucción desde el navegador y convertirla a texto.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-brain"></i>
+              <h3>Interpretación con IA</h3>
+              <p>El texto se manda a un modelo LLM para obtener una configuración lógica estructurada.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-table-cells"></i>
+              <h3>Visualización Ladder</h3>
+              <p>El frontend compila esa lógica a un programa Ladder visual, validado y entendible.</p>
+            </div>
+          </div>
+
+          <div class="doc-note">
+            Una decisión importante fue evitar que la IA dibujara directamente la geometría Ladder.
+            En su lugar, la IA solo interpreta la intención y devuelve un JSON lógico simple; después,
+            el frontend valida y compila ese JSON de manera determinista.
+          </div>
+        </section>
+
+        <!-- ARQUITECTURA -->
+        <section class="doc-card" id="arquitectura">
+          <div class="doc-label">03 · Arquitectura general</div>
+          <h2>Separación entre interfaz, IA y control físico</h2>
+          <p>
+            La arquitectura se dividió en capas para evitar que una sola parte del sistema tuviera
+            demasiada responsabilidad. El navegador se encarga de la interfaz, el backend de IA se
+            encarga de transcribir e interpretar, y el puente local se encarga de comunicarse con el PLC.
+          </p>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Capa</th>
+                <th>Responsabilidad</th>
+                <th>Archivos principales</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Frontend web</td>
+                <td>Interfaz visual, asistente, editor Ladder, validación, render y simulación.</td>
+                <td><code>index.html</code>, <code>asistente.html</code>, <code>ladder.html</code>, <code>assets/js/ladder/*</code></td>
+              </tr>
+              <tr>
+                <td>Backend IA</td>
+                <td>Transcripción de audio, generación de JSON lógico, historial y memoria por feedback.</td>
+                <td><code>app.py</code>, <code>context_json/contexto.json</code>, <code>memoria/ejemplos.json</code></td>
+              </tr>
+              <tr>
+                <td>Compilador Ladder</td>
+                <td>Transforma el JSON lógico simple en un esquema Ladder renderizable.</td>
+                <td><code>logicToSchema.js</code>, <code>validate.js</code>, <code>renderer.js</code></td>
+              </tr>
+              <tr>
+                <td>Puente PLC</td>
+                <td>Escribe registros en el PLC por Modbus TCP sin reprogramar todo el PLC desde Python.</td>
+                <td><code>plc_maestro.py</code>, endpoint <code>/aplicar-plc</code></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <pre class="doc-code"><code>Usuario
+  → Voz o texto
+  → Frontend web
+  → Backend FastAPI
+  → Groq STT / Groq LLM
+  → JSON lógico simple
+  → Validación frontend
+  → Compilación a Ladder
+  → Visualización / simulación
+  → Puente local Modbus TCP
+  → PLC Horner XL4 / XC1E5</code></pre>
+        </section>
+
+        <!-- FLUJO -->
+        <section class="doc-card" id="flujo">
+          <div class="doc-label">04 · Flujo de operación</div>
+          <h2>De una frase hablada a una lógica Ladder</h2>
+
+          <div class="doc-flow">
+            <div class="doc-step">
+              <div class="doc-step-num">1</div>
+              <div>
+                <strong>Captura de instrucción</strong>
+                <span>El usuario escribe o dicta una instrucción desde la página. En el flujo de voz, el navegador graba audio usando la interfaz web.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">2</div>
+              <div>
+                <strong>Transcripción STT</strong>
+                <span>El audio se envía al backend mediante <code>/transcribir</code>, donde se utiliza Groq con Whisper para convertir el audio a texto en español.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">3</div>
+              <div>
+                <strong>Interpretación lógica</strong>
+                <span>El texto se manda a <code>/generar-logica</code>. El modelo LLM interpreta la intención y devuelve un JSON lógico simple, no una geometría Ladder.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">4</div>
+              <div>
+                <strong>Validación</strong>
+                <span>El frontend valida que las entradas, salidas, timers, contadores y modos existan dentro del perfil del dispositivo.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">5</div>
+              <div>
+                <strong>Compilación visual</strong>
+                <span>El compilador del frontend transforma la configuración lógica en rungs, contactos, ramas, bobinas y elementos visuales.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">6</div>
+              <div>
+                <strong>Aplicación al PLC</strong>
+                <span>Cuando se requiere control físico, el backend local envía la configuración al PLC escribiendo registros mediante Modbus TCP.</span>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- EVOLUCIÓN -->
+        <section class="doc-card" id="evolucion">
+          <div class="doc-label">05 · Evolución y cambios realizados</div>
+          <h2>Cómo fue madurando el sistema</h2>
+          <p>
+            El desarrollo no nació como una arquitectura definitiva. Se fue ajustando conforme aparecieron
+            problemas reales de integración, validación, generación de código y conexión con el PLC.
+          </p>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Etapa</th>
+                <th>Cambio realizado</th>
+                <th>Motivo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Definición inicial</td>
+                <td>Se planteó un agente capaz de recibir voz y traducirla a acciones de automatización.</td>
+                <td>Reducir la fricción de programar PLCs manualmente.</td>
+              </tr>
+              <tr>
+                <td>Selección del PLC</td>
+                <td>Se definió el uso del PLC Horner XL4 / XC1E5 con Cscape.</td>
+                <td>Trabajar con el hardware real disponible en laboratorio.</td>
+              </tr>
+              <tr>
+                <td>Backend de IA</td>
+                <td>Se agregó FastAPI, endpoints de transcripción, generación Ladder y generación lógica.</td>
+                <td>Separar la interfaz web de los modelos de IA y de las claves API.</td>
+              </tr>
+              <tr>
+                <td>Groq STT</td>
+                <td>Se integró Whisper desde Groq para transcribir audio en español.</td>
+                <td>Obtener texto confiable a partir de comandos hablados.</td>
+              </tr>
+              <tr>
+                <td>Generación Ladder inicial</td>
+                <td>Se probaron respuestas tipo JSON Ladder completo con rungs, filas y elementos.</td>
+                <td>Permitió validar el concepto, pero era demasiado libre y podía generar estructuras inconsistentes.</td>
+              </tr>
+              <tr>
+                <td>Arquitectura única</td>
+                <td>Se cambió a un contrato de JSON lógico simple.</td>
+                <td>La IA solo interpreta; el frontend compila de forma determinista y evita renderizar lógica falsa.</td>
+              </tr>
+              <tr>
+                <td>Editor visual</td>
+                <td>Se consolidó el editor Ladder con render, simulador, validación y generación por chat.</td>
+                <td>Hacer que el usuario vea claramente la lógica antes de aplicarla.</td>
+              </tr>
+              <tr>
+                <td>Puente PLC</td>
+                <td>Se implementó <code>plc_maestro.py</code> para escribir registros <code>%R</code> por Modbus TCP.</td>
+                <td>No reprogramar el PLC completo desde Python, sino cambiar una configuración maestra.</td>
+              </tr>
+              <tr>
+                <td>Memoria y feedback</td>
+                <td>Se agregó almacenamiento de ejemplos aceptados, corregidos o rechazados.</td>
+                <td>Mejorar respuestas futuras con ejemplos validados por el usuario.</td>
+              </tr>
+              <tr>
+                <td>Copiloto local</td>
+                <td>Se incorporó un backend con Ollama y perfiles de esfuerzo: baja, media y alta.</td>
+                <td>Probar un asistente local para explicación, depuración y apoyo técnico.</td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+        <!-- BACKEND -->
+        <section class="doc-card" id="backend">
+          <div class="doc-label">06 · Backend y APIs</div>
+          <h2>Servicios usados para IA, voz y control</h2>
+          <p>
+            El backend principal está construido con FastAPI. Su función es recibir peticiones desde el
+            frontend, comunicarse con los modelos de IA, guardar contexto y, cuando se ejecuta localmente,
+            servir como puente hacia el PLC.
+          </p>
+
+          <h3>Endpoints principales</h3>
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Función</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>POST /transcribir</code></td>
+                <td>Recibe audio y devuelve texto usando Groq Whisper.</td>
+              </tr>
+              <tr>
+                <td><code>POST /voz-a-ladder</code></td>
+                <td>Flujo completo de audio a Ladder usado durante las primeras pruebas.</td>
+              </tr>
+              <tr>
+                <td><code>POST /generar-ladder</code></td>
+                <td>Genera una estructura Ladder más directa a partir de texto.</td>
+              </tr>
+              <tr>
+                <td><code>POST /generar-logica</code></td>
+                <td>Endpoint principal actual: texto a JSON lógico simple.</td>
+              </tr>
+              <tr>
+                <td><code>POST /aplicar-plc</code></td>
+                <td>Aplica la configuración al PLC físico mediante Modbus TCP.</td>
+              </tr>
+              <tr>
+                <td><code>GET /plc/escanear</code></td>
+                <td>Busca dispositivos Modbus TCP en la red local.</td>
+              </tr>
+              <tr>
+                <td><code>POST /feedback</code></td>
+                <td>Registra si una respuesta fue aceptada, corregida o rechazada.</td>
+              </tr>
+              <tr>
+                <td><code>GET /memoria</code></td>
+                <td>Muestra la memoria de ejemplos usados para mejorar futuras generaciones.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>APIs utilizadas</h3>
+          <ul class="doc-list">
+            <li><strong>Groq API:</strong> usada para transcripción STT con <code>whisper-large-v3</code> y para generación lógica con un modelo LLM configurado desde variables de entorno.</li>
+            <li><strong>Ollama:</strong> usado en el backend del copiloto local para responder dudas técnicas con perfiles de esfuerzo.</li>
+            <li><strong>Modbus TCP:</strong> usado para comunicar Python con el PLC Horner mediante registros.</li>
+            <li><strong>APIs del navegador:</strong> usadas para grabación de audio, interacción web y posible síntesis de voz.</li>
+          </ul>
+
+          <pre class="doc-code"><code>Variables relevantes del backend:
+
+GROQ_API_KEY       → llave para generación con LLM
+GROQ_API_KEY_stt   → llave para transcripción STT
+GROQ_MODEL         → modelo de generación lógica
+GROQ_STT_MODEL     → modelo de transcripción, por ejemplo whisper-large-v3
+ADMIN_TOKEN        → token para rutas administrativas
+CONTEXTO_JSON      → ruta del contexto de referencia
+MEMORIA_JSON       → ruta de memoria de ejemplos</code></pre>
+        </section>
+
+        <!-- FRONTEND -->
+        <section class="doc-card" id="frontend">
+          <div class="doc-label">07 · Frontend</div>
+          <h2>Interfaz web, asistente y editor Ladder</h2>
+          <p>
+            El frontend está desarrollado principalmente con HTML, CSS y JavaScript modular. Se decidió
+            mantener una arquitectura ligera para que pudiera desplegarse como sitio estático en GitHub Pages.
+          </p>
+
+          <h3>Páginas principales</h3>
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Página</th>
+                <th>Uso</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>index.html</code></td>
+                <td>Página del copiloto IA y entrada principal del proyecto.</td>
+              </tr>
+              <tr>
+                <td><code>asistente.html</code></td>
+                <td>Interfaz enfocada en el asistente de voz.</td>
+              </tr>
+              <tr>
+                <td><code>ladder.html</code></td>
+                <td>Editor visual Ladder con panel de chat, simulación y herramientas.</td>
+              </tr>
+              <tr>
+                <td><code>about.html</code></td>
+                <td>Explicación general del proyecto.</td>
+              </tr>
+              <tr>
+                <td><code>documentacion.html</code></td>
+                <td>Esta nueva página: documentación técnica, evolución y créditos.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <h3>Módulos relevantes</h3>
+          <ul class="doc-list">
+            <li><code>assets/js/ladder/generate.js</code>: punto único para generar programas Ladder desde texto o JSON lógico pegado.</li>
+            <li><code>assets/js/ladder/gen-bridge.js</code>: expone <code>window.LadderGen</code> para que páginas no modulares puedan usar el mismo flujo.</li>
+            <li><code>assets/js/ladder/validate.js</code>: valida el JSON lógico antes de renderizar.</li>
+            <li><code>assets/js/ladder/compiler/logicToSchema.js</code>: compila la lógica a un esquema Ladder visual.</li>
+            <li><code>assets/js/ladder/renderer.js</code>: dibuja los rungs en pantalla.</li>
+            <li><code>assets/js/ladder/simulator.js</code>: permite probar la lógica desde el navegador.</li>
+          </ul>
+        </section>
+
+        <!-- PLC -->
+        <section class="doc-card" id="plc">
+          <div class="doc-label">08 · PLC, Cscape y registros maestros</div>
+          <h2>Control del PLC sin reprogramarlo desde cero cada vez</h2>
+          <p>
+            Una de las decisiones más importantes fue dejar en el PLC un programa Ladder base o maestro.
+            En lugar de generar y descargar un programa nuevo en cada instrucción, Python actualiza registros
+            de configuración. El PLC lee esos registros y cambia su comportamiento lógico.
+          </p>
+
+          <h3>PLC objetivo</h3>
+          <ul class="doc-list">
+            <li><strong>PLC:</strong> Horner XL4 / XC1E5.</li>
+            <li><strong>Software:</strong> Cscape.</li>
+            <li><strong>Comunicación:</strong> Modbus TCP, puerto 502.</li>
+            <li><strong>Entradas principales:</strong> I1, I2, I3, I4 e I7.</li>
+            <li><strong>Salidas principales:</strong> Q10, Q11 y Q12.</li>
+          </ul>
+
+          <h3>Idea de registros maestros</h3>
+          <p>
+            El archivo <code>plc_maestro.py</code> traduce el JSON lógico a escrituras en registros.
+            Cada salida tiene un bloque de registros propio, por ejemplo Q10, Q11 y Q12. Ahí se guarda
+            el modo de operación, entradas asociadas, paro, habilitación, timer y contador.
+          </p>
+
+          <pre class="doc-code"><code>Ejemplo conceptual:
+
+Q10 → bloque de registros %R10..%R19
+Q11 → bloque de registros %R20..%R29
+Q12 → bloque de registros %R30..%R39
+
+Modos:
+0 → apagado
+1 → directo
+2 → enclavado
+
+Capas opcionales:
+timer   → on_delay o pulse
+counter → up o up_held
+reset   → entrada física configurable</code></pre>
+
+          <div class="doc-note">
+            Esta estrategia hizo el proyecto más viable: Python no sustituye a Cscape ni descarga
+            continuamente programas completos. Python solo modifica parámetros y el PLC ejecuta la
+            lógica maestro ya cargada.
+          </div>
+        </section>
+
+        <!-- IA -->
+        <section class="doc-card" id="ia">
+          <div class="doc-label">09 · Uso de inteligencia artificial</div>
+          <h2>IA como apoyo para voz, generación y desarrollo</h2>
+          <p>
+            La IA se usó en dos niveles: como parte funcional del sistema y como apoyo durante el desarrollo.
+            Dentro del sistema, ayuda a transcribir voz y traducir lenguaje natural a configuraciones lógicas.
+            Durante el desarrollo, diferentes asistentes ayudaron a estructurar, depurar y mejorar el proyecto.
+          </p>
+
+          <h3>IA dentro del sistema</h3>
+          <ul class="doc-list">
+            <li><strong>STT:</strong> Groq Whisper convierte audio a texto.</li>
+            <li><strong>LLM:</strong> Groq interpreta instrucciones y genera JSON lógico simple.</li>
+            <li><strong>Copiloto local:</strong> Ollama permite responder dudas o apoyar con explicación técnica desde un backend local.</li>
+          </ul>
+
+          <h3>Principio de seguridad del diseño</h3>
+          <p>
+            La IA no debe tener control absoluto sobre el PLC. Por eso se estableció un contrato de salida:
+            el modelo solo puede devolver una configuración lógica limitada a entradas, salidas, timers,
+            contadores y modos permitidos. Después, el sistema valida antes de renderizar o aplicar.
+          </p>
+
+          <pre class="doc-code"><code>Texto del usuario:
+"Con I1 prende la lámpara verde y con I2 apágala"
+
+Salida esperada de la IA:
+{
+  "name": "Enclavamiento verde",
+  "device_profile": "maletin_basico",
+  "reset_before": true,
+  "system": { "enable": true, "global_stop": null },
+  "outputs": [
+    {
+      "output": "Q10",
+      "logic": { "mode": "enclavado", "start": "I1", "stop": "I2" },
+      "timer": null,
+      "counter": null,
+      "expr": "(I1 + Q10) * !I2",
+      "comment": "I1 enciende y enclava la verde; I2 la apaga"
+    }
+  ]
+}</code></pre>
+        </section>
+
+        <!-- CRÉDITOS -->
+        <section class="doc-card" id="creditos">
+          <div class="doc-label">10 · Créditos y herramientas de apoyo</div>
+          <h2>Herramientas que apoyaron el desarrollo</h2>
+          <p>
+            Este proyecto fue desarrollado como parte de un trabajo académico de prospectiva tecnológica.
+            Su avance fue posible gracias a la combinación de conocimientos de automatización, desarrollo web,
+            programación en Python, pruebas con PLC y apoyo de herramientas de inteligencia artificial.
+          </p>
+
+          <div class="doc-credit">
+            <div class="doc-credit-icon">
+              <i class="fa-solid fa-code"></i>
+            </div>
+            <div>
+              <strong>Claude Code</strong>
+              <p>
+                Herramienta clave en el desarrollo. Fue especialmente importante para estructurar código,
+                refactorizar partes del proyecto, ordenar módulos y hacer posible la integración completa
+                entre frontend, backend y flujo de generación.
+              </p>
+            </div>
+          </div>
+
+          <div class="doc-credit">
+            <div class="doc-credit-icon">
+              <i class="fa-solid fa-comments"></i>
+            </div>
+            <div>
+              <strong>ChatGPT</strong>
+              <p>
+                Usado como apoyo para definir arquitectura, explicar conceptos de PLC, generar y revisar
+                fragmentos de código, proponer flujos de trabajo, documentar decisiones y ordenar el desarrollo
+                paso a paso.
+              </p>
+            </div>
+          </div>
+
+          <div class="doc-credit">
+            <div class="doc-credit-icon">
+              <i class="fa-solid fa-lightbulb"></i>
+            </div>
+            <div>
+              <strong>Gemini</strong>
+              <p>
+                Utilizado para resolver algunas dudas puntuales y contrastar ideas durante el proceso de diseño
+                y validación del proyecto.
+              </p>
+            </div>
+          </div>
+
+          <div class="doc-credit">
+            <div class="doc-credit-icon">
+              <i class="fa-solid fa-bolt"></i>
+            </div>
+            <div>
+              <strong>Groq</strong>
+              <p>
+                API utilizada para transcripción de voz con Whisper y para generación de respuestas estructuradas
+                mediante LLM, especialmente en el flujo de texto a JSON lógico.
+              </p>
+            </div>
+          </div>
+
+          <div class="doc-credit">
+            <div class="doc-credit-icon">
+              <i class="fa-solid fa-computer"></i>
+            </div>
+            <div>
+              <strong>Ollama</strong>
+              <p>
+                Utilizado para probar un copiloto local con perfiles de esfuerzo. Esto permitió experimentar
+                con asistencia técnica sin depender únicamente de servicios externos.
+              </p>
+            </div>
+          </div>
+
+          <div class="doc-note">
+            Agradecimiento especial a Claude Code: gran parte de la consolidación técnica del proyecto,
+            la organización del código y la integración práctica fueron posibles gracias a su apoyo durante
+            el desarrollo.
+          </div>
+
+          <div class="doc-actions">
+            <a href="about.html" class="doc-btn doc-btn-outline">
+              <i class="fa-solid fa-arrow-left"></i>
+              Volver a Sobre el Proyecto
+            </a>
+
+            <a href="ladder.html" class="doc-btn doc-btn-primary">
+              <i class="fa-solid fa-microchip"></i>
+              Abrir Editor Ladder
+            </a>
+
+            <a href="asistente.html" class="doc-btn doc-btn-outline">
+              <i class="fa-solid fa-microphone"></i>
+              Abrir Asistente de Voz
+            </a>
+          </div>
+        </section>
+
+      </div>
+    </section>
+  </main>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-logo">
+        <i class="fa-solid fa-microphone-lines"></i> LadderVoice
+      </div>
+      <p>Proyecto Final &mdash; Prospectiva de la Tecnología</p>
+      <a href="https://github.com/LuisCortesMunoz" target="_blank" class="footer-gh">
+        <i class="fab fa-github"></i> Ver en GitHub
+      </a>
+    </div>
+  </footer>
+
+  <script>
+    (function() {
+      const btn  = document.getElementById('onav-logo-btn');
+      const dd   = document.getElementById('onav-dropdown');
+      const wrap = btn.closest('.onav-logo-wrap');
+
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        dd.hidden = !dd.hidden;
+        btn.classList.toggle('open', !dd.hidden);
+      });
+
+      wrap.addEventListener('mouseenter', () => {
+        dd.hidden = false;
+        btn.classList.add('open');
+      });
+
+      wrap.addEventListener('mouseleave', () => {
+        dd.hidden = true;
+        btn.classList.remove('open');
+      });
+
+      document.addEventListener('click', e => {
+        if (!wrap.contains(e.target)) {
+          dd.hidden = true;
+          btn.classList.remove('open');
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
