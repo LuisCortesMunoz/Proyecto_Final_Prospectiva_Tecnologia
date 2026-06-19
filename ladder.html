@@ -57,16 +57,65 @@
 
     .tnav-logo-wrap { position: relative; display: flex; align-items: center; margin-right: 16px; }
     .tnav-logo-btn {
-      display: flex; align-items: center; gap: 5px;
+      display: flex; align-items: center; gap: 6px;
       background: none; border: none; cursor: pointer;
-      font-family: var(--font-display); font-weight: 800; font-size: 14px;
-      color: var(--text-primary); padding: 4px 8px; border-radius: var(--radius-md);
-      transition: background var(--transition); letter-spacing: -0.02em;
+      padding: 4px 8px; border-radius: var(--radius-md);
+      transition: background var(--transition);
     }
     .tnav-logo-btn:hover { background: rgba(22,38,58,0.05); }
     .tnav-logo-btn.open .tnav-chevron { transform: rotate(180deg); }
-    .tnav-logo-accent { color: var(--accent-bright); }
+    .tnav-logo-img { height: 26px; display: block; filter: invert(1) brightness(0); }
     .tnav-chevron { width: 12px; height: 12px; stroke: var(--text-tertiary); flex-shrink: 0; transition: transform var(--transition); }
+
+    /* ── Chat mode toggle ── */
+    .chat-mode-pills {
+      display: flex; gap: 2px;
+      background: var(--bg-base); border-radius: 20px;
+      padding: 2px; border: 1px solid var(--border); flex-shrink: 0;
+    }
+    .chat-mode-pill {
+      display: flex; align-items: center; gap: 4px; padding: 3px 9px;
+      border-radius: 18px; border: none; background: transparent;
+      color: var(--text-tertiary); font-size: 10.5px; cursor: pointer;
+      transition: all var(--transition); font-family: var(--font-ui); white-space: nowrap;
+    }
+    .chat-mode-pill.active { background: var(--accent); color: #fff; }
+    .chat-mode-pill i { font-size: 12px; }
+
+    /* ── Audio zone ── */
+    .chat-audio-zone {
+      display: none; flex-direction: column; align-items: center;
+      gap: 10px; padding: 14px 12px;
+      border-top: 1px solid var(--border); flex-shrink: 0;
+    }
+    .chat-audio-zone.active { display: flex; }
+    .caz-hint {
+      font-size: 11px; color: var(--text-tertiary);
+      text-align: center; font-family: var(--font-ui); line-height: 1.4;
+    }
+    .caz-mic {
+      width: 54px; height: 54px; border-radius: 50%;
+      border: 2px solid var(--border); background: var(--bg-elevated);
+      color: var(--text-secondary); font-size: 20px; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s ease; flex-shrink: 0;
+    }
+    .caz-mic:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-glow); }
+    .caz-mic.recording {
+      border-color: var(--danger); color: var(--danger); background: var(--danger-dim);
+      animation: micPulse 1s ease-in-out infinite;
+    }
+    @keyframes micPulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(201,58,42,0.3); }
+      50%      { box-shadow: 0 0 0 10px rgba(201,58,42,0); }
+    }
+    .caz-transcript {
+      width: 100%; min-height: 44px; padding: 7px 10px;
+      border: 1px solid var(--border); border-radius: var(--radius-md);
+      background: var(--bg-base); font-size: 11.5px; color: var(--text-primary);
+      font-family: var(--font-ui); line-height: 1.4; word-break: break-word;
+    }
+    .caz-send { width: 100%; }
 
     .tnav-dropdown {
       position: absolute; top: calc(100% + 6px); left: 0; min-width: 220px;
@@ -537,7 +586,7 @@
 
     <div class="tnav-logo-wrap">
       <button class="tnav-logo-btn" id="tnav-logo-btn">
-        <span>Ladder<span class="tnav-logo-accent">Voice</span></span>
+        <img src="assets/img/logo.png" alt="LadderVoice" class="tnav-logo-img">
         <svg class="tnav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -867,16 +916,6 @@
         <div class="et-sep"></div>
 
         <div class="et-group">
-          <span class="et-group-label">Alinear</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Alinear a la izquierda"><i class="ti ti-align-left"></i><span>Izquierda</span></button>
-            <button class="et-btn" title="Centrar"><i class="ti ti-align-center"></i><span>Centro</span></button>
-            <button class="et-btn" title="Alinear a la derecha"><i class="ti ti-align-right"></i><span>Derecha</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
           <span class="et-group-label">Vista</span>
           <div class="et-group-btns">
             <button class="et-btn" title="Alejar" aria-label="Alejar"><i class="ti ti-zoom-out"></i></button>
@@ -901,18 +940,41 @@
     <!-- ── PANEL CHAT / ASISTENTE IA ── -->
     <aside class="chat-panel" id="chatPanel" aria-label="Asistente IA">
       <div class="chat-head">
-        <div class="chat-title"><i class="ti ti-message-chatbot"></i> Asistente IA</div>
+        <div class="chat-title"><i class="ti ti-sparkles"></i> Asistente IA</div>
+        <div class="chat-mode-pills">
+          <button class="chat-mode-pill active" id="cmPillText" title="Entrada de texto">
+            <i class="ti ti-keyboard"></i> Texto
+          </button>
+          <button class="chat-mode-pill" id="cmPillAudio" title="Entrada por voz">
+            <i class="ti ti-microphone"></i> Audio
+          </button>
+        </div>
         <button class="chat-collapse" id="chatCollapseBtn" type="button" title="Colapsar panel"><i class="ti ti-chevron-right"></i></button>
       </div>
+
       <div class="chat-messages" id="chatMessages"></div>
-      <div class="chat-input">
+
+      <!-- Modo texto -->
+      <div class="chat-input" id="chatTextZone">
         <textarea id="chatInput" rows="3" placeholder="Describe el programa en lenguaje natural..."></textarea>
         <div class="chat-actions">
           <button class="chat-send" id="chatSendBtn" type="button"><i class="ti ti-send"></i> Generar</button>
         </div>
       </div>
+
+      <!-- Modo audio -->
+      <div class="chat-audio-zone" id="chatAudioZone">
+        <p class="caz-hint" id="cazHint">Presiona el micrófono y describe el programa</p>
+        <button class="caz-mic" id="cazMicBtn" type="button" title="Clic para grabar / detener">
+          <i class="ti ti-microphone"></i>
+        </button>
+        <div class="caz-transcript" id="cazTranscript"></div>
+        <button class="chat-send caz-send" id="cazSendBtn" type="button" style="display:none">
+          <i class="ti ti-send"></i> Generar
+        </button>
+      </div>
     </aside>
-    <button class="chat-reopen" id="chatReopenBtn" type="button" title="Abrir asistente"><i class="ti ti-message-chatbot"></i></button>
+    <button class="chat-reopen" id="chatReopenBtn" type="button" title="Abrir asistente"><i class="ti ti-sparkles"></i></button>
 
     </div><!-- /editors-row -->
 
@@ -1060,5 +1122,95 @@
 
 <script type="module" src="assets/js/ladder/app.js"></script>
 <script type="module" src="assets/js/ladder/chat.js"></script>
+
+<script>
+/* ── Chat mode toggle: Texto / Audio ───────────────────── */
+(function () {
+  const pillText   = document.getElementById('cmPillText');
+  const pillAudio  = document.getElementById('cmPillAudio');
+  const txtZone    = document.getElementById('chatTextZone');
+  const audioZone  = document.getElementById('chatAudioZone');
+  const micBtn     = document.getElementById('cazMicBtn');
+  const transcript = document.getElementById('cazTranscript');
+  const cazSend    = document.getElementById('cazSendBtn');
+  const cazHint    = document.getElementById('cazHint');
+  const chatInput  = document.getElementById('chatInput');
+  const sendBtn    = document.getElementById('chatSendBtn');
+
+  if (!pillText) return;
+
+  function setMode(mode) {
+    const isAudio = mode === 'audio';
+    txtZone.style.display   = isAudio ? 'none' : '';
+    isAudio ? audioZone.classList.add('active') : audioZone.classList.remove('active');
+    pillText.classList.toggle('active', !isAudio);
+    pillAudio.classList.toggle('active', isAudio);
+  }
+
+  pillText.addEventListener('click',  () => setMode('text'));
+  pillAudio.addEventListener('click', () => setMode('audio'));
+
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    pillAudio.disabled = true;
+    pillAudio.title = 'Tu navegador no soporta reconocimiento de voz';
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'es-MX';
+  recognition.interimResults = true;
+  recognition.continuous = false;
+
+  let isRecording = false;
+
+  micBtn.addEventListener('click', () => {
+    if (isRecording) { recognition.stop(); return; }
+    transcript.textContent = '';
+    cazSend.style.display = 'none';
+    recognition.start();
+  });
+
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    cazHint.textContent = 'Escuchando…';
+  };
+
+  recognition.onresult = (e) => {
+    let interim = '', final = '';
+    for (const r of e.results) {
+      if (r.isFinal) final += r[0].transcript;
+      else interim += r[0].transcript;
+    }
+    transcript.textContent = final || interim;
+    if (final) cazSend.style.display = '';
+  };
+
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    cazHint.textContent = 'Presiona el micrófono y describe el programa';
+    if (transcript.textContent.trim()) cazSend.style.display = '';
+  };
+
+  recognition.onerror = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    cazHint.textContent = 'No se pudo escuchar. Intenta de nuevo.';
+  };
+
+  cazSend.addEventListener('click', () => {
+    const text = transcript.textContent.trim();
+    if (!text) return;
+    chatInput.value = text;
+    transcript.textContent = '';
+    cazSend.style.display = 'none';
+    cazHint.textContent = 'Presiona el micrófono y describe el programa';
+    setMode('text');
+    sendBtn?.click();
+  });
+})();
+</script>
 </body>
 </html>
