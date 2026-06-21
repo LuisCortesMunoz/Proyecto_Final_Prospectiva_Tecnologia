@@ -571,6 +571,40 @@ section { padding: 6rem 0; }
 }
 
 /* ============================
+   ICON BUTTON — navbar (index)
+   ============================ */
+.onav-icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all var(--transition);
+  flex-shrink: 0;
+}
+.onav-icon-btn:hover {
+  background: var(--accent-dim);
+  color: var(--accent);
+  border-color: var(--blue-200);
+}
+
+/* Status pill con chevron (index) */
+.onav-online {
+  cursor: pointer;
+}
+.onav-online .onav-chevron-sm {
+  width: 12px; height: 12px;
+  stroke: currentColor;
+  opacity: 0.65;
+  flex-shrink: 0;
+}
+
+/* ============================
    RESPONSIVE
    ============================ */
 @media (max-width: 768px) {

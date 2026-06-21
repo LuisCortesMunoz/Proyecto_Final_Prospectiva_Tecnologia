@@ -53,9 +53,19 @@
 
     <div class="onav-spacer"></div>
 
+    <button class="onav-icon-btn" title="Ayuda" aria-label="Ayuda">
+      <i class="fa-regular fa-circle-question"></i>
+    </button>
+    <button class="onav-icon-btn theme-toggle-btn" title="Cambiar tema" aria-label="Cambiar tema" id="onav-theme-btn">
+      <i class="fa-solid fa-sun"></i>
+    </button>
+
     <div class="onav-online" id="backendPill">
       <span class="onav-dot"></span>
       <span class="onav-online-text" id="backendPillText">Conectando…</span>
+      <svg class="onav-chevron-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="6 9 12 15 18 9"/>
+      </svg>
     </div>
   </header>
 
@@ -65,23 +75,27 @@
     <!-- Hilo de conversación -->
     <section class="cp-thread" id="cpThread" aria-live="polite" aria-label="Conversación con el copiloto"></section>
 
-    <section class="cp-hero" id="cpHero">
-      <div class="cp-hero-badge">
-        <i class="fa-solid fa-industry"></i> Automatización industrial · PLC
-      </div>
-    
-      <h1>LadderVoice <span class="cp-hero-accent">Copilot IA</span></h1>
-    
-      <p>
-        Asistente inteligente para generar, explicar y depurar lógica Ladder
-        mediante voz e inteligencia artificial.
-      </p>
-    </section>
-    <!-- Compositor -->
-    <section class="cp-composer-zone">
+    <!-- Tarjeta hero (badge + título + input) -->
+    <div class="cp-hero-card" id="cpHeroCard">
 
-      <div class="cp-composer" id="cpComposer">
-        <textarea id="cpInput" rows="1" placeholder="Pregunta lo que quieras"
+      <section class="cp-hero" id="cpHero">
+        <div class="cp-hero-badge">
+          <i class="fa-solid fa-microchip"></i>&ensp;AUTOMATIZACIÓN INDUSTRIAL · PLC
+        </div>
+
+        <h1>LadderVoice <span class="cp-hero-accent">Copilot IA</span></h1>
+
+        <p>
+          Asistente inteligente para generar, explicar y depurar lógica Ladder
+          mediante voz e inteligencia artificial.
+        </p>
+      </section>
+
+      <!-- Compositor (dentro de la tarjeta) -->
+      <section class="cp-composer-zone">
+
+        <div class="cp-composer" id="cpComposer">
+        <textarea id="cpInput" rows="1" placeholder="Pregunta un concepto de Ladder o PLCs..."
                   aria-label="Escribe tu pregunta"></textarea>
 
         <div class="cp-composer-bar">
@@ -204,7 +218,12 @@
 
       <p class="cp-mic-hint" id="cpMicHint" hidden></p>
 
-      <!-- Accesos rápidos -->
+      </section><!-- /cp-composer-zone -->
+
+    </div><!-- /cp-hero-card -->
+
+    <!-- Chips y disclaimer (fuera de la tarjeta) -->
+    <div class="cp-chips-area" id="cpChipsArea">
       <div class="cp-chips" id="cpChips">
         <button class="cp-chip" data-chip="ladder" type="button">
           <i class="fa-solid fa-diagram-project"></i> Genera lógica ladder
@@ -219,9 +238,11 @@
           <i class="fa-solid fa-pen-nib"></i> Escribe o edita
         </button>
       </div>
-
-      <p class="cp-disclaimer">El copiloto puede cometer errores. Verifica la información importante.</p>
-    </section>
+      <p class="cp-disclaimer">
+        <i class="fa-solid fa-shield-halved"></i>
+        El copiloto puede cometer errores. Verifica la información importante.
+      </p>
+    </div>
 
   </main>
 

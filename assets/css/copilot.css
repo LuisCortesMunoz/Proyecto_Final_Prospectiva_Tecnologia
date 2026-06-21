@@ -28,9 +28,12 @@
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  background:
+  /* Fondo: gradiente suave + patrón de puntos sutil */
+  background-color: var(--bg-dark);
+  background-image:
     radial-gradient(900px 420px at 50% -80px, rgba(46,125,225,0.08), transparent 70%),
-    var(--bg-dark);
+    radial-gradient(circle, rgba(22,38,58,0.055) 1px, transparent 1px);
+  background-size: auto, 22px 22px;
   color: var(--text-primary);
 }
 
@@ -876,11 +879,75 @@
 .cp-thread::-webkit-scrollbar-track,
 .cp-drawer-body::-webkit-scrollbar-track { background: transparent; }
 
+/* ── Hero card wrapper ────────────────────────────────────── */
+.cp-hero-card {
+  flex-shrink: 0;
+  width: 100%;
+}
+
+/* Estado vacío: card visual blanca */
+.cp-main.is-empty .cp-hero-card {
+  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow:
+    0 2px 8px rgba(22,38,58,0.06),
+    0 12px 40px rgba(22,38,58,0.08);
+  max-width: 800px;
+  width: calc(100% - 3rem);
+  margin: 0 auto;
+  padding: 2rem 2rem 0.5rem;
+  overflow: hidden;
+}
+
+/* Hero dentro de la card: sin max-width propio */
+.cp-main.is-empty .cp-hero-card .cp-hero {
+  max-width: none;
+  margin: 0;
+  padding: 0 0 0.5rem;
+}
+
+/* Composer dentro de la card: sin padding lateral extra */
+.cp-main.is-empty .cp-hero-card .cp-composer-zone {
+  max-width: none;
+  margin: 0;
+  padding: 0.15rem 0 0.75rem;
+}
+
+/* Estado con mensajes: la card es solo un wrapper transparente */
+.cp-main:not(.is-empty) .cp-hero-card {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 0;
+  max-width: none;
+}
+.cp-main:not(.is-empty) .cp-hero { display: none; }
+/* El composer-zone recupera sus estilos normales */
+.cp-main:not(.is-empty) .cp-hero-card .cp-composer-zone {
+  max-width: 840px;
+  margin: 0 auto;
+  padding: 0.5rem 1rem 1.2rem;
+}
+
+/* Chips y disclaimer fuera de la card */
+.cp-chips-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 1rem;
+  margin-top: 0.75rem;
+}
+.cp-main:not(.is-empty) .cp-chips-area { display: none; }
+
 /* ── Responsive ───────────────────────────────────────────── */
 @media (max-width: 760px) {
   .cp-mode-cards { grid-template-columns: 1fr; }
   .cp-effort-cards { grid-template-columns: 1fr; }
   .cp-hero { padding-top: 0.5rem; }
+  .cp-main.is-empty .cp-hero-card { width: calc(100% - 2rem); padding: 1.5rem 1.25rem 0.5rem; }
 }
 
 @media (max-width: 640px) {

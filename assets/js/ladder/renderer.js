@@ -238,7 +238,12 @@ export function renderRung(rung, program, selection) {
   return `<div class="${cls}" id="rung-${rung.id}" role="listitem" tabindex="0" data-rung-id="${rung.id}" aria-label="Rung ${rung.id}: ${esc(rung.comment)}">
     <div class="rung-num">${rung.id}</div>
     <div class="rung-inner">
-      <div class="rung-comment" data-rung-id="${rung.id}">${esc(rung.comment)}</div>
+      <div class="rung-head">
+        <div class="rung-comment" data-rung-id="${rung.id}">${esc(rung.comment)}</div>
+        <button class="rung-menu-btn" data-rung-id="${rung.id}" title="Opciones del rung" tabindex="-1">
+          <i class="ti ti-dots-vertical"></i>
+        </button>
+      </div>
       <div class="rung-svg-wrap" data-rung-id="${rung.id}">
         <svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" class="rung-svg" data-rung-id="${rung.id}" data-num-cols="${numCols}">
           ${bg}${rails}${wires}${elsvg}${juncs}${hits}
