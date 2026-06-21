@@ -127,10 +127,9 @@
 
 /* ── Logo en el hero ──────────────────────────────────────── */
 .cp-hero-logo {
-  height: 52px;
+  height: 80px;
   display: block;
-  margin: 0 auto 0.75rem;
-  filter: brightness(0);
+  margin: 0 auto 0.5rem;
   object-fit: contain;
 }
 
