@@ -1828,6 +1828,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initImportIA();
 
   render();
+  store.clearSelection(); // ningún rung seleccionado al arrancar
 
   const fromUrl = !!new URLSearchParams(window.location.search).get('l');
   store.log('info', fromUrl ? 'Programa cargado desde URL.' : 'Programa de ejemplo cargado.');

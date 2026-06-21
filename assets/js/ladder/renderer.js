@@ -106,7 +106,7 @@ function elInner(type, en, el, varVals) {
       <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
     default:
       if (BLK[type]) return `
-        <rect x="0" y="0" width="54" height="24" rx="3" fill="${en ? 'rgba(47,122,214,0.10)' : 'rgba(99,122,150,0.06)'}" stroke="${c}" stroke-width="1.4"/>
+        <rect x="0" y="0" width="54" height="24" rx="3" fill="${en ? 'rgba(46,125,225,0.08)' : 'none'}" stroke="${c}" stroke-width="1.4"/>
         <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">${BLK[type]}</text>`;
       return `<text x="20" y="16" text-anchor="middle" font-size="9" fill="${c}">?</text>`;
   }

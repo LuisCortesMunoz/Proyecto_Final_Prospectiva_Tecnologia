@@ -68,7 +68,7 @@ body {
 }
 .tnav-logo-btn:hover { background: rgba(22,38,58,0.05); }
 .tnav-logo-btn.open .tnav-chevron { transform: rotate(180deg); }
-.tnav-logo-img { height: 22px; display: block; filter: brightness(0); }
+.tnav-logo-img { height: 28px; display: block; filter: brightness(0); }
 .tnav-chevron { width: 12px; height: 12px; stroke: var(--text-tertiary); flex-shrink: 0; transition: transform var(--transition); }
 
 /* ── PLC / Connected pill (izquierda del nav, tras el logo) ── */
