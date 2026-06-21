@@ -143,17 +143,10 @@
       <i class="ti ti-arrow-back-up"></i> Volver al chat
     </button>
 
-    <!-- Etiqueta del programa (nombre — N rungs) -->
-    <span class="et-label tnav-prog-label" id="tnav-prog-label"></span>
-
-    <!-- Zoom actual -->
+    <!-- Zoom actual — actualizado por JS via #etZoomVal -->
     <span class="tnav-zoom-val" id="etZoomVal">100%</span>
-
-    <div class="tnav-sep"></div>
-
-    <!-- Iconos derecha -->
-    <button class="tnav-icon" title="Ayuda"><i class="ti ti-help-circle"></i></button>
-    <div class="tnav-avatar" title="Perfil">AU</div>
+    <!-- et-label oculto: JS lo actualiza pero no se muestra -->
+    <span class="et-label" id="tnav-prog-label" style="display:none"></span>
 
   </nav>
 
@@ -164,7 +157,6 @@
     <aside class="sidebar" aria-label="Paleta de componentes ladder">
       <div class="sb-search">
         <input type="search" placeholder="Buscar componente..." aria-label="Buscar componente">
-        <button class="sb-filter-btn" title="Filtrar por tipo"><i class="ti ti-layout-grid"></i></button>
       </div>
       <div class="sb-scroll">
 

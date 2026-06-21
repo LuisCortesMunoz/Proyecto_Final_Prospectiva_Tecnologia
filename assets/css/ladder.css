@@ -226,7 +226,7 @@ body {
   display: flex; align-items: center; gap: 5px; padding: 5px 10px;
   border-radius: var(--radius-md); border: none; background: transparent;
   cursor: pointer; font-family: var(--font-ui); font-size: 12px;
-  color: var(--text-secondary); white-space: nowrap;
+  color: var(--text-primary); white-space: nowrap;
   transition: background var(--transition), color var(--transition);
 }
 .tnav-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
@@ -251,10 +251,10 @@ body.sim-mode .rung-svg  { cursor: default; }
   display: flex; align-items: center; gap: 5px; padding: 5px 10px;
   border-radius: var(--radius-md); border: none; background: transparent;
   cursor: pointer; font-family: var(--font-ui); font-size: 12px;
-  color: var(--text-secondary); white-space: nowrap;
+  color: var(--text-primary); white-space: nowrap;
   transition: background var(--transition), color var(--transition);
 }
-.tnav-menu-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+.tnav-menu-btn:hover { background: var(--bg-hover); }
 .tnav-menu-btn i { font-size: 13px; }
 .tnav-dropmenu {
   position: absolute; top: calc(100% + 4px); left: 0; min-width: 200px;
@@ -278,24 +278,30 @@ body.sim-mode .rung-svg  { cursor: default; }
   color: var(--text-tertiary); background: var(--bg-base);
 }
 
-/* ══ MAIN ══════════════════════════════════════════════════════ */
-.main { display: flex; flex: 1; overflow: hidden; }
+/* ══ MAIN — fondo gris, paneles como islas ════════════════════ */
+.main {
+  display: flex; flex: 1; overflow: hidden;
+  background: #e8e8ea;
+  gap: 8px;
+  padding: 8px;
+}
 
-/* ══ SIDEBAR ══════════════════════════════════════════════════ */
+/* ══ SIDEBAR — isla izquierda ═════════════════════════════════ */
 .sidebar {
   width: 185px; flex-shrink: 0;
   background: var(--bg-surface);
-  border-right: 1px solid var(--border);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
   display: flex; flex-direction: column; overflow: hidden;
 }
 
 .sb-search {
   padding: 8px 10px;
   border-bottom: 1px solid var(--border);
-  display: flex; align-items: center; gap: 5px;
 }
 .sb-search input {
-  flex: 1; padding: 5px 9px;
+  width: 100%; padding: 5px 9px;
   border: 1px solid var(--border); border-radius: var(--radius-md);
   background: var(--bg-base); color: var(--text-primary);
   font-family: var(--font-ui); font-size: 12px;
@@ -303,19 +309,6 @@ body.sim-mode .rung-svg  { cursor: default; }
 }
 .sb-search input::placeholder { color: var(--text-tertiary); }
 .sb-search input:focus { border-color: var(--accent); }
-
-.sb-filter-btn {
-  width: 26px; height: 26px;
-  border: 1px solid var(--border); border-radius: var(--radius-md);
-  background: var(--bg-base); color: var(--text-tertiary);
-  cursor: pointer; display: flex; align-items: center; justify-content: center;
-  font-size: 12px; flex-shrink: 0;
-  transition: all var(--transition);
-}
-.sb-filter-btn:hover {
-  background: var(--bg-hover); color: var(--text-secondary);
-  border-color: var(--border-light);
-}
 
 .sb-scroll { overflow-y: auto; flex: 1; }
 .sb-scroll::-webkit-scrollbar { width: 4px; }
@@ -352,8 +345,14 @@ body.sim-mode .rung-svg  { cursor: default; }
 .comp-label strong { display: block; font-size: 12px; font-weight: 500; color: var(--text-primary); line-height: 1.2; }
 .comp-label span { font-size: 10px; color: var(--text-tertiary); font-family: var(--font-mono); }
 
-/* ══ EDITOR ════════════════════════════════════════════════════ */
-.editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-base); }
+/* ══ EDITOR — isla central ════════════════════════════════════ */
+.editor {
+  flex: 1; display: flex; flex-direction: column;
+  overflow: hidden;
+  background: var(--bg-base);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
 
 /* El editor-toolbar se eliminó — las herramientas están en los dropdowns del nav */
 /* Se mantienen las clases et-label y et-label-check para compatibilidad con JS */
@@ -387,66 +386,47 @@ body.sim-mode .rung-svg  { cursor: default; }
   transition: box-shadow var(--transition), border-color var(--transition);
 }
 .rung:hover {
-  box-shadow: 0 3px 12px rgba(22,38,58,0.10);
-  border-color: var(--border-light);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.10);
+  border-color: #d4d4d8;
 }
+/* Selección: SOLO el borde cambia a azul, nada más */
 .rung.selected {
   border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(46,125,225,0.14), 0 3px 12px rgba(22,38,58,0.10);
+  box-shadow: 0 0 0 1.5px var(--accent), 0 2px 8px rgba(0,0,0,0.08);
 }
 .rung.energized {
-  border-color: rgba(46,125,225,0.5);
-  box-shadow: 0 0 0 2px rgba(46,125,225,0.18), 0 3px 12px rgba(22,38,58,0.10);
+  border-color: rgba(46,125,225,0.45);
+  box-shadow: 0 0 0 1.5px rgba(46,125,225,0.45), 0 2px 8px rgba(0,0,0,0.08);
 }
 
-/* Barra de acento izquierda (indicador de selección) */
-.rung::before {
-  content: ''; position: absolute;
-  left: 0; top: 10px; bottom: 10px;
-  width: 3px; border-radius: 2px;
-  background: transparent;
-  transition: background var(--transition);
-}
-.rung:hover::before    { background: rgba(46,125,225,0.20); }
-.rung.selected::before { background: var(--accent); }
-.rung.energized::before{ background: var(--accent); }
+/* Sin barra de acento lateral — la selección usa solo el borde del card */
 
-/* Número de rung — Badge circular oscuro */
+/* Número de rung — badge discreto */
 .rung-num {
-  width: 24px; height: 24px;
+  width: 22px; height: 22px;
   border-radius: 50%;
-  background: #1e2a3b;
-  color: #ffffff;
+  background: #e4e4e7;
+  color: #71717a;
   font-family: var(--font-mono);
-  font-size: 10px; font-weight: 700;
+  font-size: 9.5px; font-weight: 500;
   display: flex; align-items: center; justify-content: center;
   flex-shrink: 0;
   align-self: flex-start;
-  margin: 10px 6px 0 14px;
-  transition: background var(--transition);
+  margin: 10px 6px 0 10px;
 }
-.rung.selected  .rung-num { background: var(--accent); }
-.rung.energized .rung-num { background: var(--accent); }
 
 /* Inner del rung */
 .rung-inner { flex: 1; display: flex; flex-direction: column; padding: 6px 10px 8px 4px; min-width: 0; }
 .rung-network { display: flex; flex-direction: column; flex: 1; }
 
-/* Cabecera del rung: comentario + botón menú */
+/* Cabecera del rung — solo el botón ⋮, sin título */
 .rung-head {
-  display: flex; align-items: center; justify-content: space-between;
-  min-height: 18px; margin-bottom: 4px; gap: 6px;
+  display: flex; align-items: center; justify-content: flex-end;
+  min-height: 0; margin-bottom: 2px;
 }
 
-.rung-comment {
-  font-size: 9px; color: rgba(63,92,122,0.45);
-  font-family: var(--font-mono); padding-left: 2px; cursor: text;
-  flex: 1; line-height: 1.4; min-width: 0;
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-}
-.rung-comment::before { content: '// '; color: rgba(46,125,225,0.25); }
-.rung.selected  .rung-comment { color: rgba(63,92,122,0.65); }
-.rung.energized .rung-comment { color: rgba(46,125,225,0.4); }
+/* Título del rung oculto */
+.rung-comment { display: none; }
 
 /* Botón ⋮ del rung */
 .rung-menu-btn {
@@ -490,15 +470,14 @@ body.sim-mode .rung-svg  { cursor: default; }
 
 .el-addr {
   font-family: var(--font-mono); font-size: 9px; font-weight: 600;
-  color: rgba(77,158,247,0.65); line-height: 1;
+  color: var(--text-secondary); line-height: 1;
 }
 .el-sym {
-  font-family: var(--font-mono); font-size: 8px; color: rgba(63,92,122,0.6);
+  font-family: var(--font-mono); font-size: 8px; color: var(--text-tertiary);
   line-height: 1; max-width: 64px; text-align: center;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.rung.energized .el-addr { color: var(--accent-bright); }
-.rung.energized .el-sym  { color: rgba(77,158,247,0.7); }
+/* Energized: el texto se mantiene oscuro — solo rieles y wires cambian de color */
 
 /* ══ RAMA PARALELA ════════════════════════════════════════════ */
 .rung-canvas.branch-row { min-height: 40px; margin-top: 0; }
@@ -594,10 +573,13 @@ body.sim-mode .rung-svg  { cursor: default; }
 .pp-state-val.on  { color: var(--success); }
 .pp-state-val.off { color: var(--text-tertiary); }
 
-/* ══ BOTTOM BAR ═══════════════════════════════════════════════ */
+/* ══ BOTTOM BAR — isla inferior ════════════════════════════════ */
 .bottombar {
   height: 210px; flex-shrink: 0; overflow: hidden;
-  background: var(--bg-surface); border-top: 1px solid var(--border);
+  background: var(--bg-surface);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
   display: flex; flex-direction: column;
   transition: height 0.2s cubic-bezier(0.4,0,0.2,1);
 }
@@ -718,15 +700,17 @@ body.sim-mode .rung-svg  { cursor: default; }
 .tab-panel { display: none; }
 .tab-panel.active { display: block; }
 
-/* ══ CHAT PANEL / ASISTENTE IA ════════════════════════════════ */
+/* ══ CHAT PANEL — isla derecha ════════════════════════════════ */
 .chat-panel {
   width: 300px; flex-shrink: 0;
   background: var(--bg-surface);
-  border-left: 1px solid var(--border);
+  border: none;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
   display: flex; flex-direction: column; overflow: hidden;
   transition: width var(--transition);
 }
-.chat-panel.collapsed { width: 0; border-left: 0; }
+.chat-panel.collapsed { width: 0; box-shadow: none; }
 
 .chat-head {
   display: flex; align-items: center; justify-content: space-between;
@@ -853,8 +837,8 @@ body.sim-mode .rung-svg  { cursor: default; }
 }
 
 /* ══ LAYOUT: right-col + editors-row ═════════════════════════ */
-.right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; }
-.editors-row { flex: 1; display: flex; overflow: hidden; min-width: 0; }
+.right-col { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 0; gap: 8px; }
+.editors-row { flex: 1; display: flex; overflow: hidden; min-width: 0; gap: 8px; }
 
 /* ══ CONTEXT MENU ═════════════════════════════════════════════ */
 .ctx-menu {
