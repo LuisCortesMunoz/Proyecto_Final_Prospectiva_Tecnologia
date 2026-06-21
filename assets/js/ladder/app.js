@@ -1741,11 +1741,7 @@ function initImportIA() {
 
         // Cargar en el store — esto dispara render() automaticamente
         store.setProgram(programa);
-
-        // Resetear seleccion al primer rung
-        if (programa.rungs.length > 0) {
-          store.selectRung(programa.rungs[0].id);
-        }
+        store.clearSelection();
 
         // Log en terminal
         store.log('ok',   `Importado: "${programa.metadata.name}" — ${programa.rungs.length} rungs`);

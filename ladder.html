@@ -354,65 +354,41 @@
     <aside class="chat-panel" id="chatPanel" aria-label="Asistente IA">
       <div class="chat-head">
         <div class="chat-title"><i class="ti ti-sparkles"></i> Asistente IA</div>
-        <div class="chat-mode-pills">
-          <button class="chat-mode-pill active" id="cmPillText" title="Entrada de texto">
-            <i class="ti ti-keyboard"></i> Texto
-          </button>
-          <button class="chat-mode-pill" id="cmPillAudio" title="Entrada por voz">
-            <i class="ti ti-microphone"></i> Audio
-          </button>
-        </div>
         <button class="chat-collapse" id="chatCollapseBtn" type="button" title="Colapsar panel">
           <i class="ti ti-chevron-right"></i>
         </button>
       </div>
 
-      <!-- Intro del asistente (visible cuando no hay mensajes) -->
-      <div class="chat-intro" id="chatIntro">
-        <div class="chat-intro-icon"><i class="ti ti-robot"></i></div>
-        <div class="chat-intro-bubble">
-          Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector y se apaga con el paro de emergencia").
-        </div>
-      </div>
-
-      <!-- Sugerencias rápidas (visibles cuando no hay mensajes) -->
+      <!-- Sugerencias — botones clicables visibles cuando no hay mensajes -->
       <div class="chat-suggestions" id="chatSuggestions">
-        <div class="chat-sugg-item" data-sugg="Crear control de motor con paro de emergencia">
+        <button class="chat-sugg-item" type="button" data-sugg="Crear control de motor con paro de emergencia">
           <i class="ti ti-settings-2"></i>
           Crear control de motor con paro de emergencia
-        </div>
-        <div class="chat-sugg-item" data-sugg="Temporizador TON de 5 segundos">
+        </button>
+        <button class="chat-sugg-item" type="button" data-sugg="Temporizador TON de 5 segundos">
           <i class="ti ti-clock"></i>
           Temporizador TON de 5 segundos
-        </div>
-        <div class="chat-sugg-item" data-sugg="Contador de piezas con reset">
+        </button>
+        <button class="chat-sugg-item" type="button" data-sugg="Contador de piezas con reset">
           <i class="ti ti-list-numbers"></i>
           Contador de piezas con reset
-        </div>
+        </button>
       </div>
 
       <div class="chat-messages" id="chatMessages"></div>
 
-      <!-- Modo texto -->
+      <!-- Input mini-chat: textarea + mic + generar -->
       <div class="chat-input" id="chatTextZone">
-        <textarea id="chatInput" rows="3" placeholder="Describe el programa en lenguaje natural..."></textarea>
+        <textarea id="chatInput" rows="2" placeholder="Describe tu programa"></textarea>
         <div class="chat-actions">
+          <button class="chat-mic-btn" id="cazMicBtn" type="button" title="Grabar por voz">
+            <i class="ti ti-microphone"></i>
+          </button>
+          <div class="caz-transcript" id="cazTranscript" style="display:none"></div>
           <button class="chat-send" id="chatSendBtn" type="button">
             <i class="ti ti-sparkles"></i> Generar
           </button>
         </div>
-      </div>
-
-      <!-- Modo audio -->
-      <div class="chat-audio-zone" id="chatAudioZone">
-        <p class="caz-hint" id="cazHint">Presiona el micrófono y describe el programa</p>
-        <button class="caz-mic" id="cazMicBtn" type="button" title="Clic para grabar / detener">
-          <i class="ti ti-microphone"></i>
-        </button>
-        <div class="caz-transcript" id="cazTranscript"></div>
-        <button class="chat-send caz-send" id="cazSendBtn" type="button" style="display:none">
-          <i class="ti ti-send"></i> Generar
-        </button>
       </div>
     </aside>
     <button class="chat-reopen" id="chatReopenBtn" type="button" title="Abrir asistente">
@@ -589,70 +565,52 @@ if (chatSendBtn) {
 }
 </script>
 
-<!-- Chat mode toggle: Texto / Audio -->
+<!-- Micrófono integrado en el input del chat -->
 <script>
 (function () {
-  const pillText   = document.getElementById('cmPillText');
-  const pillAudio  = document.getElementById('cmPillAudio');
-  const txtZone    = document.getElementById('chatTextZone');
-  const audioZone  = document.getElementById('chatAudioZone');
-  const micBtn     = document.getElementById('cazMicBtn');
+  const micBtn    = document.getElementById('cazMicBtn');
   const transcript = document.getElementById('cazTranscript');
-  const cazSend    = document.getElementById('cazSendBtn');
-  const cazHint    = document.getElementById('cazHint');
-  const chatInput  = document.getElementById('chatInput');
-  const sendBtn    = document.getElementById('chatSendBtn');
-
-  if (!pillText) return;
-
-  function setMode(mode) {
-    const isAudio = mode === 'audio';
-    txtZone.style.display   = isAudio ? 'none' : '';
-    isAudio ? audioZone.classList.add('active') : audioZone.classList.remove('active');
-    pillText.classList.toggle('active', !isAudio);
-    pillAudio.classList.toggle('active', isAudio);
-  }
-
-  pillText.addEventListener('click',  () => setMode('text'));
-  pillAudio.addEventListener('click', () => setMode('audio'));
+  const chatInput = document.getElementById('chatInput');
+  const sendBtn   = document.getElementById('chatSendBtn');
+  if (!micBtn) return;
 
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-  if (!SpeechRecognition) { pillAudio.disabled = true; pillAudio.title = 'Tu navegador no soporta reconocimiento de voz'; return; }
+  if (!SpeechRecognition) { micBtn.style.display = 'none'; return; }
 
   const recognition = new SpeechRecognition();
   recognition.lang = 'es-MX';
   recognition.interimResults = true;
   recognition.continuous = false;
-
   let isRecording = false;
 
   micBtn.addEventListener('click', () => {
     if (isRecording) { recognition.stop(); return; }
+    chatInput.value = '';
     transcript.textContent = '';
-    cazSend.style.display = 'none';
     recognition.start();
   });
 
-  recognition.onstart = () => { isRecording = true; micBtn.classList.add('recording'); cazHint.textContent = 'Escuchando…'; };
+  recognition.onstart = () => {
+    isRecording = true;
+    micBtn.classList.add('recording');
+    micBtn.title = 'Escuchando... clic para detener';
+  };
   recognition.onresult = (e) => {
     let interim = '', final = '';
     for (const r of e.results) { if (r.isFinal) final += r[0].transcript; else interim += r[0].transcript; }
-    transcript.textContent = final || interim;
-    if (final) cazSend.style.display = '';
+    chatInput.value = final || interim;
   };
-  recognition.onend = () => { isRecording = false; micBtn.classList.remove('recording'); cazHint.textContent = 'Presiona el micrófono y describe el programa'; if (transcript.textContent.trim()) cazSend.style.display = ''; };
-  recognition.onerror = () => { isRecording = false; micBtn.classList.remove('recording'); cazHint.textContent = 'No se pudo escuchar. Intenta de nuevo.'; };
-
-  cazSend.addEventListener('click', () => {
-    const text = transcript.textContent.trim();
-    if (!text) return;
-    chatInput.value = text;
-    transcript.textContent = '';
-    cazSend.style.display = 'none';
-    cazHint.textContent = 'Presiona el micrófono y describe el programa';
-    setMode('text');
-    sendBtn?.click();
-  });
+  recognition.onend = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micBtn.title = 'Grabar por voz';
+    if (chatInput.value.trim()) sendBtn?.click();
+  };
+  recognition.onerror = () => {
+    isRecording = false;
+    micBtn.classList.remove('recording');
+    micBtn.title = 'Error de micrófono — intenta de nuevo';
+  };
 })();
 </script>
 

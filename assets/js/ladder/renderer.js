@@ -63,8 +63,8 @@ function elInner(type, en, el, varVals) {
       <line x1="28" y1="12" x2="40" y2="12" stroke="${fc}" stroke-width="${sw}"/>`;
   }
 
-  // Paleta estándar: energizado azul sereno, desenergizado pizarra clara.
-  const c  = en ? '#2f7ad6' : '#6f8aa6';
+  // Desenergizado: gris oscuro neutro. Energizado: azul.
+  const c  = en ? '#2e7de1' : '#3f3f46';
   const sw = en ? 1.8 : 1.6;
   switch (type) {
     case 'contact_no': return `
