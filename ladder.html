@@ -66,28 +66,32 @@
     <div class="tnav-group">
       <button class="tnav-btn compile"><i class="ti ti-player-play"></i> Compilar</button>
       <button class="tnav-btn upload"><i class="ti ti-upload"></i> Cargar</button>
-      <button class="tnav-btn danger"><i class="ti ti-player-stop"></i> Parar</button>
-      <button class="tnav-btn copy-link" onclick="copyLink()" title="Copiar link con el programa codificado">
+      <button class="tnav-btn copy-link" onclick="copyLink()">
         <i class="ti ti-share"></i> Compartir
       </button>
     </div>
 
     <div class="tnav-sep"></div>
 
-    <!-- Menús de edición -->
+    <!-- Editar — incluye deshacer/rehacer, portapapeles, mover rung -->
     <div class="tnav-menu-wrap">
-      <button class="tnav-menu-btn" data-menu="tnd-editar"><i class="ti ti-edit"></i> Editar</button>
+      <button class="tnav-menu-btn" data-menu="tnd-editar">Editar</button>
       <div class="tnav-dropmenu" id="tnd-editar" hidden>
         <div class="tnd-item" data-nav-action="undo"><i class="ti ti-arrow-back-up"></i> Deshacer</div>
+        <div class="tnd-item" data-nav-action="redo"><i class="ti ti-arrow-forward-up"></i> Rehacer</div>
         <div class="tnd-sep"></div>
         <div class="tnd-item" data-nav-action="copy-sel"><i class="ti ti-copy"></i> Copiar selección</div>
         <div class="tnd-item" data-nav-action="paste-sel"><i class="ti ti-clipboard"></i> Pegar</div>
-        <div class="tnd-item" data-nav-action="delete-sel"><i class="ti ti-trash"></i> Eliminar selección</div>
+        <div class="tnd-item" data-nav-action="delete-sel"><i class="ti ti-trash"></i> Eliminar</div>
+        <div class="tnd-sep"></div>
+        <div class="tnd-item" data-nav-action="rung-up"><i class="ti ti-arrow-up"></i> Subir rung</div>
+        <div class="tnd-item" data-nav-action="rung-down"><i class="ti ti-arrow-down"></i> Bajar rung</div>
       </div>
     </div>
 
+    <!-- Insertar — elemento, rung, paralelo -->
     <div class="tnav-menu-wrap">
-      <button class="tnav-menu-btn" data-menu="tnd-insertar"><i class="ti ti-cursor-text"></i> Insertar</button>
+      <button class="tnav-menu-btn" data-menu="tnd-insertar">Insertar</button>
       <div class="tnav-dropmenu" id="tnd-insertar" hidden>
         <div class="tnd-item" data-nav-action="insert-el"><i class="ti ti-cursor-text"></i> Insertar elemento</div>
         <div class="tnd-item" data-nav-action="add-rung"><i class="ti ti-row-insert-bottom"></i> Agregar rung</div>
@@ -95,8 +99,9 @@
       </div>
     </div>
 
+    <!-- Herramientas — archivo, exportar, proyecto -->
     <div class="tnav-menu-wrap">
-      <button class="tnav-menu-btn" data-menu="tnd-herramientas"><i class="ti ti-tool"></i> Herramientas</button>
+      <button class="tnav-menu-btn" data-menu="tnd-herramientas">Herramientas</button>
       <div class="tnav-dropmenu" id="tnd-herramientas" hidden>
         <div class="tnd-item" data-nav-action="new"><i class="ti ti-file-plus"></i> Nuevo programa</div>
         <div class="tnd-sep"></div>
@@ -109,19 +114,21 @@
       </div>
     </div>
 
+    <!-- Ver — zoom + panel IA -->
     <div class="tnav-menu-wrap">
-      <button class="tnav-menu-btn" data-menu="tnd-ver"><i class="ti ti-layout"></i> Ver</button>
+      <button class="tnav-menu-btn" data-menu="tnd-ver">Ver</button>
       <div class="tnav-dropmenu" id="tnd-ver" hidden>
-        <div class="tnd-item" data-nav-action="zoom-in"><i class="ti ti-zoom-in"></i> Acercar</div>
-        <div class="tnd-item" data-nav-action="zoom-out"><i class="ti ti-zoom-out"></i> Alejar</div>
-        <div class="tnd-item" data-nav-action="zoom-reset"><i class="ti ti-maximize"></i> Restablecer zoom</div>
+        <div class="tnd-item" data-nav-action="zoom-in"><i class="ti ti-zoom-in"></i> Acercar  <kbd>+</kbd></div>
+        <div class="tnd-item" data-nav-action="zoom-out"><i class="ti ti-zoom-out"></i> Alejar  <kbd>−</kbd></div>
+        <div class="tnd-item" data-nav-action="zoom-reset"><i class="ti ti-maximize"></i> Restablecer 100%</div>
         <div class="tnd-sep"></div>
-        <div class="tnd-item" id="tnd-toggle-ai"><i class="ti ti-layout-sidebar-right"></i> Panel IA</div>
+        <div class="tnd-item" data-nav-action="open-chat"><i class="ti ti-layout-sidebar-right"></i> Panel IA</div>
       </div>
     </div>
 
+    <!-- IA — importar + asistente -->
     <div class="tnav-menu-wrap">
-      <button class="tnav-menu-btn" data-menu="tnd-ia"><i class="ti ti-sparkles"></i> IA</button>
+      <button class="tnav-menu-btn" data-menu="tnd-ia">IA</button>
       <div class="tnav-dropmenu" id="tnd-ia" hidden>
         <input type="file" id="input-import-ia" accept=".js" style="display:none" aria-hidden="true"/>
         <div class="tnd-item" id="btn-import-ia"><i class="ti ti-sparkles"></i> Importar programa IA</div>
@@ -131,13 +138,21 @@
 
     <div class="tnav-spacer"></div>
 
-    <!-- Iconos de la derecha: tema + ayuda + avatar -->
-    <button class="tnav-icon" title="Cambiar tema" id="themeToggleBtn">
-      <i class="ti ti-sun"></i>
+    <!-- Botón "Volver al chat" — solo aparece cuando se llega desde index.html -->
+    <button class="tnav-btn tnav-back-btn" id="btnBackToChat" hidden title="Volver a la conversación del Copiloto">
+      <i class="ti ti-arrow-back-up"></i> Volver al chat
     </button>
-    <button class="tnav-icon" title="Ayuda">
-      <i class="ti ti-help-circle"></i>
-    </button>
+
+    <!-- Etiqueta del programa (nombre — N rungs) -->
+    <span class="et-label tnav-prog-label" id="tnav-prog-label"></span>
+
+    <!-- Zoom actual -->
+    <span class="tnav-zoom-val" id="etZoomVal">100%</span>
+
+    <div class="tnav-sep"></div>
+
+    <!-- Iconos derecha -->
+    <button class="tnav-icon" title="Ayuda"><i class="ti ti-help-circle"></i></button>
     <div class="tnav-avatar" title="Perfil">AU</div>
 
   </nav>
@@ -340,71 +355,6 @@
 
     <!-- ── EDITOR ── -->
     <main class="editor" aria-label="Área de programación ladder">
-      <div class="editor-toolbar">
-
-        <div class="et-group">
-          <span class="et-group-label">Edición</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Deshacer"><i class="ti ti-arrow-back-up"></i><span>Deshacer</span></button>
-            <button class="et-btn is-disabled" title="Rehacer" aria-disabled="true"><i class="ti ti-arrow-forward-up"></i><span>Rehacer</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
-          <span class="et-group-label">Insertar</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Insertar el componente seleccionado"><i class="ti ti-cursor-text"></i><span>Insertar</span></button>
-            <button class="et-btn" title="Eliminar elemento o rung seleccionado"><i class="ti ti-trash"></i><span>Eliminar</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
-          <span class="et-group-label">Mover</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Subir rung"><i class="ti ti-arrow-up"></i><span>Subir</span></button>
-            <button class="et-btn" title="Bajar rung"><i class="ti ti-arrow-down"></i><span>Bajar</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
-          <span class="et-group-label">Portapapeles</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Copiar"><i class="ti ti-copy"></i><span>Copiar</span></button>
-            <button class="et-btn" title="Pegar"><i class="ti ti-clipboard"></i><span>Pegar</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
-          <span class="et-group-label">Rama</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Agrupar elementos seleccionados en rama paralela"><i class="ti ti-arrows-join"></i><span>Paralelo</span></button>
-          </div>
-        </div>
-        <div class="et-sep"></div>
-
-        <div class="et-group">
-          <span class="et-group-label">Vista</span>
-          <div class="et-group-btns">
-            <button class="et-btn" title="Alejar" aria-label="Alejar"><i class="ti ti-zoom-out"></i></button>
-            <span class="et-zoom-val" id="etZoomVal">100%</span>
-            <button class="et-btn" title="Acercar" aria-label="Acercar"><i class="ti ti-zoom-in"></i></button>
-          </div>
-        </div>
-
-        <div class="et-spacer"></div>
-
-        <button class="et-btn et-back" id="btnBackToChat" hidden
-                title="Regresar a la conversación del Copiloto">
-          <i class="ti ti-arrow-back-up"></i> Volver al chat
-        </button>
-        <span class="et-label">Cargando...</span>
-        <i class="ti ti-circle-check et-label-check" aria-hidden="true"></i>
-      </div>
-
       <div class="rung-area" id="rungArea" role="list" aria-label="Rungs del programa ladder"></div>
     </main>
 

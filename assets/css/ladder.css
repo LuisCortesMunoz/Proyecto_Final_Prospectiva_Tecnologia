@@ -3,33 +3,33 @@
    Extraído del <style> inline de ladder.html + mejoras visuales
    ================================================================ */
 
-/* ── Design tokens ── */
+/* ── Design tokens — tema blanco / negro / azul ── */
 :root {
-  --bg-base:        #f2f6fb;
-  --bg-surface:     #ffffff;
-  --bg-elevated:    #f7fafd;
-  --bg-hover:       #eaf1f9;
-  --bg-active:      #dcebfb;
-  --border:         #dbe5f0;
-  --border-light:   #c7d6e8;
-  --text-primary:   #16263a;
-  --text-secondary: #44607c;
-  --text-tertiary:  #7e93aa;
-  --text-mono:      #1f6fd6;
+  --bg-base:        #f5f5f7;   /* gris muy claro para el área del canvas */
+  --bg-surface:     #ffffff;   /* blanco para paneles, sidebar, cards */
+  --bg-elevated:    #fafafa;
+  --bg-hover:       #f0f0f0;
+  --bg-active:      #e8f0fe;   /* selección: tinte azul suave */
+  --border:         #e4e4e7;
+  --border-light:   #ededf0;
+  --text-primary:   #09090b;   /* negro */
+  --text-secondary: #3f3f46;
+  --text-tertiary:  #71717a;
+  --text-mono:      #2e7de1;   /* azul para direcciones I/O */
   --accent:         #2e7de1;
-  --accent-bright:  #1f6fd6;
-  --accent-dim:     #dcebfb;
-  --accent-glow:    rgba(46,125,225,0.12);
-  --success:        #1e8e46;
-  --success-dim:    rgba(30,142,70,0.12);
-  --warning:        #b97a14;
-  --warning-dim:    rgba(185,122,20,0.12);
-  --danger:         #c93a2a;
-  --danger-dim:     rgba(201,58,42,0.10);
-  --info:           #1c7f9e;
-  --rail-color:     #2a4e80;
+  --accent-bright:  #1d6fd4;
+  --accent-dim:     #e8f0fe;
+  --accent-glow:    rgba(46,125,225,0.10);
+  --success:        #16a34a;
+  --success-dim:    rgba(22,163,74,0.10);
+  --warning:        #d97706;
+  --warning-dim:    rgba(217,119,6,0.10);
+  --danger:         #dc2626;
+  --danger-dim:     rgba(220,38,38,0.08);
+  --info:           #0284c7;
+  --rail-color:     #18181b;   /* negro para rieles de potencia */
   --wire-active:    #2e7de1;
-  --wire-inactive:  #9fb4cc;
+  --wire-inactive:  #a1a1aa;
   --font-ui:        'DM Sans', sans-serif;
   --font-mono:      'DM Mono', monospace;
   --font-display:   'Syne', sans-serif;
@@ -68,7 +68,7 @@ body {
 }
 .tnav-logo-btn:hover { background: rgba(22,38,58,0.05); }
 .tnav-logo-btn.open .tnav-chevron { transform: rotate(180deg); }
-.tnav-logo-img { height: 22px; display: block; filter: invert(1) brightness(0); }
+.tnav-logo-img { height: 22px; display: block; filter: brightness(0); }
 .tnav-chevron { width: 12px; height: 12px; stroke: var(--text-tertiary); flex-shrink: 0; transition: transform var(--transition); }
 
 /* ── PLC / Connected pill (izquierda del nav, tras el logo) ── */
@@ -112,6 +112,28 @@ body {
   flex-shrink: 0;
 }
 .tnav-icon:hover { background: var(--bg-hover); color: var(--text-secondary); border-color: var(--border-light); }
+
+/* ── Zoom display en navbar ── */
+.tnav-zoom-val {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  min-width: 38px;
+  text-align: center;
+  flex-shrink: 0;
+  cursor: default;
+}
+
+/* ── Etiqueta de programa (nombre/rungs) en navbar ── */
+.tnav-prog-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+}
 
 /* ── Avatar circle (AU) ── */
 .tnav-avatar {
@@ -249,6 +271,12 @@ body.sim-mode .rung-svg  { cursor: default; }
 .tnd-item:hover { background: rgba(46,125,225,0.1); color: var(--text-primary); }
 .tnd-item i { font-size: 13px; width: 16px; text-align: center; }
 .tnd-sep { height: 1px; background: var(--border); margin: 3px 6px; }
+.tnd-item kbd {
+  margin-left: auto; padding: 1px 5px;
+  border: 1px solid var(--border); border-radius: 3px;
+  font-family: var(--font-mono); font-size: 9px;
+  color: var(--text-tertiary); background: var(--bg-base);
+}
 
 /* ══ MAIN ══════════════════════════════════════════════════════ */
 .main { display: flex; flex: 1; overflow: hidden; }
@@ -327,45 +355,20 @@ body.sim-mode .rung-svg  { cursor: default; }
 /* ══ EDITOR ════════════════════════════════════════════════════ */
 .editor { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg-base); }
 
-.editor-toolbar {
-  display: flex; align-items: stretch; gap: 0; padding: 5px 12px;
-  background: var(--bg-surface); border-bottom: 1px solid var(--border);
-  flex-shrink: 0; min-height: 58px;
-}
-.et-group { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 3px 6px; }
-.et-group-label {
-  font-size: 8.5px; font-weight: 600; font-family: var(--font-mono);
-  color: var(--text-tertiary); letter-spacing: 0.9px; text-transform: uppercase; line-height: 1;
-}
-.et-group-btns { display: flex; align-items: stretch; gap: 2px; }
-.et-btn {
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 3px; min-width: 48px; padding: 4px 7px;
-  border-radius: var(--radius-md); border: 1px solid transparent;
-  background: transparent; color: var(--text-secondary);
-  font-family: var(--font-ui); font-size: 10px; line-height: 1;
+/* El editor-toolbar se eliminó — las herramientas están en los dropdowns del nav */
+/* Se mantienen las clases et-label y et-label-check para compatibilidad con JS */
+.et-label { font-size: 11px; color: var(--text-tertiary); font-family: var(--font-mono); }
+
+/* Botón "Volver al chat" en navbar */
+.tnav-back-btn {
+  display: flex; align-items: center; gap: 5px;
+  padding: 4px 10px; border-radius: var(--radius-md);
+  border: 1px solid var(--accent-dim); background: transparent;
+  color: var(--accent-bright); font-family: var(--font-ui); font-size: 12px;
   cursor: pointer; transition: all var(--transition);
 }
-.et-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
-.et-btn i { font-size: 17px; }
-.et-btn.is-disabled { opacity: 0.4; pointer-events: none; }
-.et-sep { width: 1px; align-self: center; height: 34px; background: var(--border); margin: 0 5px; }
-.et-zoom-val {
-  display: flex; align-items: center; justify-content: center;
-  min-width: 40px; padding: 0 4px;
-  font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary);
-}
-.et-spacer { flex: 1; }
-.et-back {
-  flex-direction: row; min-width: 0; gap: 5px; padding: 6px 10px;
-  font-size: 11px; align-self: center;
-  color: var(--accent-bright); border-color: var(--accent-dim);
-}
-.et-back i { font-size: 14px; }
-.et-back:hover { background: var(--accent-dim); color: var(--accent-bright); }
-.et-back[hidden] { display: none; }
-.et-label { display: flex; align-items: center; font-size: 11px; color: var(--text-secondary); font-family: var(--font-mono); align-self: center; }
-.et-label-check { font-size: 15px; color: var(--success); margin-left: 6px; align-self: center; }
+.tnav-back-btn:hover { background: var(--accent-dim); }
+.tnav-back-btn[hidden] { display: none; }
 
 /* ══ RUNG AREA ═════════════════════════════════════════════════ */
 .rung-area { flex: 1; overflow-y: auto; padding: 10px 14px 16px; background: var(--bg-base); }

@@ -6,24 +6,24 @@
    ============================================================ */
 
 .cp-page {
-  /* tokens re-mapeados a paleta clara */
-  --bg-dark: #f4f7fb;
+  /* tokens — blanco / negro / azul */
+  --bg-dark: #f8f8f8;
   --bg-card: #ffffff;
-  --bg-card2: #e9f1fc;
-  --border: #dfe7f2;
+  --bg-card2: #f0f4ff;
+  --border: #e4e4e7;
 
-  --text-primary: #16263a;
-  --text-secondary: #51677f;
-  --text-muted: #8c9cb2;
+  --text-primary: #09090b;
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
 
   --accent: #2e7de1;
   --accent-dim: rgba(46, 125, 225, 0.10);
-  --blue-300: #2e7de1;
+  --blue-300: #5b9ef5;
   --blue-400: #2e7de1;
 
-  --cp-shadow-sm: 0 1px 3px rgba(22, 38, 58, 0.06);
-  --cp-shadow-md: 0 6px 24px rgba(22, 38, 58, 0.08);
-  --cp-shadow-lg: 0 16px 48px rgba(22, 38, 58, 0.14);
+  --cp-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05);
+  --cp-shadow-md: 0 6px 24px rgba(0, 0, 0, 0.07);
+  --cp-shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.10);
 
   display: flex;
   flex-direction: column;

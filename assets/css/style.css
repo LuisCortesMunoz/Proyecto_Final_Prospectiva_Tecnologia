@@ -4,36 +4,36 @@
    azul marino + azul eléctrico
    ============================ */
 :root {
-  /* rampa de azules: marino → eléctrico → claro */
+  /* azul: único color de acento */
   --blue-900: #0a1f3c;
   --blue-800: #0d2a52;
   --blue-700: #11407f;
   --blue-600: #1a5fbe;
   --blue-500: #1f6fd6;
   --blue-400: #2e7de1;
-  --blue-300: #2e7de1;
-  --blue-200: #7db4ef;
-  --blue-100: #e3eefb;
-  --blue-50:  #eef5fd;
+  --blue-300: #5b9ef5;
+  --blue-200: #93c4f8;
+  --blue-100: #dbeafe;
+  --blue-50:  #eff6ff;
 
   --accent: #2e7de1;
   --accent-dim: rgba(46, 125, 225, 0.10);
 
-  /* superficies claras */
-  --bg-dark: #f3f6fb;          /* fondo de página */
+  /* superficies — blanco y grises muy suaves */
+  --bg-dark: #f8f8f8;          /* fondo de página */
   --bg-card: #ffffff;          /* tarjetas */
-  --bg-card2: #eaf2fc;         /* tarjetas secundarias / burbujas */
-  --border: #dde6f1;
+  --bg-card2: #f0f4ff;         /* burbujas usuario */
+  --border: #e4e4e7;
 
-  --text-primary: #16263a;
-  --text-secondary: #4d6379;
-  --text-muted: #8195ab;
+  --text-primary: #09090b;     /* negro */
+  --text-secondary: #3f3f46;
+  --text-muted: #71717a;
 
-  --navy: #0d2347;             /* azul marino para footer / acentos formales */
+  --navy: #09090b;
 
-  --shadow-sm: 0 1px 3px rgba(22, 38, 58, 0.06);
-  --shadow-md: 0 6px 24px rgba(22, 38, 58, 0.08);
-  --shadow-lg: 0 16px 48px rgba(22, 38, 58, 0.14);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
 
   --font-display: 'Syne', sans-serif;
   --font-body: 'DM Sans', sans-serif;
@@ -41,7 +41,7 @@
 
   --radius: 16px;
   --radius-sm: 10px;
-  --transition: 0.3s cubic-bezier(0.4,0,0.2,1);
+  --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -102,7 +102,7 @@ a { color: inherit; text-decoration: none; }
 .onav-logo-btn.open .onav-chevron { transform: rotate(180deg); }
 
 .onav-logo-accent { color: var(--accent); }
-.onav-logo-img { height: 26px; display: block; filter: brightness(0) invert(1); }
+.onav-logo-img { height: 26px; display: block; filter: brightness(0); }
 
 .onav-chevron {
   width: 14px; height: 14px;

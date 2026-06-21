@@ -470,8 +470,8 @@ function groupSelectionParallel() {
 
 // ── Zoom ──────────────────────────────────────────────────────
 let _zoom = 1.0;
-function adjustZoom(delta) {
-  _zoom = Math.max(0.4, Math.min(2.5, _zoom + delta));
+function adjustZoom(delta, reset = false) {
+  _zoom = reset ? 1.0 : Math.max(0.4, Math.min(2.5, _zoom + delta));
   const ra = document.getElementById('rungArea');
   if (ra) { ra.style.transform = `scale(${_zoom})`; ra.style.transformOrigin = 'top left'; }
   const zv = document.getElementById('etZoomVal');
@@ -1515,12 +1515,38 @@ function onNavDropMenuClick(e) {
       break;
     }
     case 'undo': if (store.canUndo()) store.undo(); else showToast('Nada que deshacer', 'info'); break;
+    case 'redo': if (store.canRedo()) store.redo(); else showToast('Nada que rehacer', 'info'); break;
     case 'copy-sel': { if (store.getSelection().elementId) copyElement(); else if (store.getSelection().rungId) copyRung(); break; }
     case 'paste-sel': pasteFromClipboard(); break;
     case 'delete-sel': {
       const sel = store.getSelection();
       if (sel.elementId) store.deleteElement(sel.rungId, sel.elementId);
       else if (sel.rungId) store.deleteRung(sel.rungId);
+      break;
+    }
+    case 'rung-up': { const s = store.getSelection(); if (s.rungId) store.moveRung(s.rungId, -1); break; }
+    case 'rung-down': { const s2 = store.getSelection(); if (s2.rungId) store.moveRung(s2.rungId, 1); break; }
+    case 'insert-el': {
+      const armed = store.getArmed(); const sel2 = store.getSelection();
+      if (armed && sel2.rungId) { store.addElement(sel2.rungId, armed); showToast(`${armed} insertado`, 'success'); }
+      else showToast('Selecciona un rung y un componente del panel', 'info');
+      break;
+    }
+    case 'add-rung': {
+      const sel3 = store.getSelection();
+      if (sel3.rungId) store.addRungAfter(sel3.rungId);
+      else store.addRung();
+      break;
+    }
+    case 'parallel': groupSelectionParallel(); break;
+    case 'zoom-in':    adjustZoom(0.2);  break;
+    case 'zoom-out':   adjustZoom(-0.2); break;
+    case 'zoom-reset': adjustZoom(0, true); break;
+    case 'open-chat': {
+      const panel = document.getElementById('chatPanel');
+      if (panel) panel.classList.remove('collapsed');
+      const reopen = document.getElementById('chatReopenBtn');
+      if (reopen) reopen.style.display = 'none';
       break;
     }
     case 'plc-addr': {
