@@ -97,11 +97,33 @@
   position: relative;
 }
 
+/* ── Animaciones de entrada de página ── */
+@keyframes lv-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 /* Estados: vacío vs con mensajes */
 .cp-main.is-empty { justify-content: center; }
-.cp-main.is-empty .cp-thread { display: none; }
+.cp-main.is-empty .cp-thread {
+  opacity: 0;
+  height: 0;
+  overflow: hidden;
+  padding: 0;
+  pointer-events: none;
+}
 .cp-main:not(.is-empty) .cp-hero { display: none; }
 .cp-main:not(.is-empty) .cp-chips { display: none; }
+
+/* Transición suave al primer envío */
+.cp-hero-card {
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.cp-main:not(.is-empty) .cp-thread {
+  opacity: 1;
+  height: auto;
+  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
+}
 
 /* ── Logo en el hero ──────────────────────────────────────── */
 .cp-hero-logo {
@@ -892,6 +914,14 @@
 .cp-hero-card {
   flex-shrink: 0;
   width: 100%;
+}
+
+/* Animación de carga de la página */
+.cp-main.is-empty .cp-hero-card {
+  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.05s both;
+}
+.cp-chips-area {
+  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
 }
 
 /* Estado vacío: card visual blanca */

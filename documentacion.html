@@ -11,6 +11,11 @@
   <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
 
   <style>
+    @keyframes lv-fade-up {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
     .doc-wrap {
       max-width: 1080px;
       margin: 52px auto 0;
@@ -18,6 +23,13 @@
       display: flex;
       flex-direction: column;
       gap: 1.25rem;
+    }
+
+    .doc-hero {
+      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.05s both;
+    }
+    .doc-grid {
+      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
     }
 
     .doc-hero {
@@ -455,7 +467,7 @@
   <header class="obsidiana-nav">
     <div class="onav-logo-wrap">
       <button class="onav-logo-btn" id="onav-logo-btn">
-        <img src="assets/img/logo.png" alt="LadderVoice" class="onav-logo-img">
+        <img src="assets/img/logo_icono.png" alt="LAVO" class="onav-logo-img">
         <svg class="onav-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="6 9 12 15 18 9"/>
         </svg>
@@ -474,7 +486,7 @@
           <span class="onav-dropdown-item-title">Documentación</span>
           <span class="onav-dropdown-item-sub">Proceso y arquitectura del proyecto</span>
         </a>
-        <a href="https://github.com/LuisCortesMunoz" target="_blank" rel="noopener noreferrer" class="onav-dropdown-item">
+        <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="onav-dropdown-item">
           <span class="onav-dropdown-item-title">Repositorio</span>
           <span class="onav-dropdown-item-sub">Ver código en GitHub</span>
         </a>
@@ -503,7 +515,7 @@
         las decisiones técnicas, los cambios realizados, las APIs utilizadas y el papel de las herramientas
         de IA que apoyaron el desarrollo.
       </p>
-      <a href="https://github.com/LuisCortesMunoz" target="_blank" rel="noopener noreferrer" class="doc-gh-btn">
+      <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="doc-gh-btn">
         <i class="fa-brands fa-github"></i>
         Ver repositorio en GitHub
       </a>
@@ -1107,7 +1119,7 @@ Salida esperada de la IA:
         <i class="fa-solid fa-microphone-lines"></i> LadderVoice
       </div>
       <p>Proyecto Final &mdash; Prospectiva de la Tecnología</p>
-      <a href="https://github.com/LuisCortesMunoz" target="_blank" class="footer-gh">
+      <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" class="footer-gh">
         <i class="fab fa-github"></i> Ver en GitHub
       </a>
     </div>

@@ -558,6 +558,27 @@ section { padding: 6rem 0; }
 }
 
 /* ============================
+   ANIMACIONES DE ENTRADA
+   ============================ */
+@keyframes lv-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes lv-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes lv-fade-down {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Navbar: desliza desde arriba */
+.obsidiana-nav {
+  animation: lv-fade-down 0.35s cubic-bezier(0.4,0,0.2,1) both;
+}
+
+/* ============================
    SCROLL REVEAL
    ============================ */
 .reveal {
