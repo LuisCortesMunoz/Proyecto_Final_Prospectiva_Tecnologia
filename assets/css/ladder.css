@@ -381,6 +381,7 @@ body.sim-mode .rung-svg  { cursor: default; }
   border: 1px solid var(--border);
   border-radius: 8px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  outline: none; /* sin ring de foco del browser */
   margin-bottom: 6px; min-height: 70px;
   cursor: pointer; position: relative; overflow: visible;
   transition: box-shadow var(--transition), border-color var(--transition);

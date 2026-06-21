@@ -103,6 +103,15 @@
 .cp-main:not(.is-empty) .cp-hero { display: none; }
 .cp-main:not(.is-empty) .cp-chips { display: none; }
 
+/* ── Logo en el hero ──────────────────────────────────────── */
+.cp-hero-logo {
+  height: 52px;
+  display: block;
+  margin: 0 auto 0.75rem;
+  filter: brightness(0);
+  object-fit: contain;
+}
+
 /* ── Hero ─────────────────────────────────────────────────── */
 .cp-main.is-empty {
   overflow-y: auto;
@@ -893,10 +902,10 @@
   box-shadow:
     0 2px 8px rgba(22,38,58,0.06),
     0 12px 40px rgba(22,38,58,0.08);
-  max-width: 800px;
+  max-width: 780px;
   width: calc(100% - 3rem);
   margin: 0 auto;
-  padding: 2rem 2rem 0.5rem;
+  padding: 2.25rem 2rem 0.25rem;
   overflow: hidden;
 }
 
