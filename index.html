@@ -67,19 +67,17 @@
     <!-- Hilo de conversación -->
     <section class="cp-thread" id="cpThread" aria-live="polite" aria-label="Conversación con el copiloto"></section>
 
-    <!-- Tarjeta hero (badge + título + input) -->
-    <div class="cp-hero-card" id="cpHeroCard">
+    <!-- Logo + texto centrado (marca de agua, desaparece al enviar primer mensaje) -->
+    <div class="cp-hero-center" id="cpHeroCenter">
+      <img src="assets/img/logo_icono.png" alt="LAVO" class="cp-hero-logo">
+      <p class="cp-hero-text">
+        Asistente inteligente para generar, explicar y depurar lógica Ladder
+        mediante voz e inteligencia artificial.
+      </p>
+    </div>
 
-      <section class="cp-hero" id="cpHero">
-        <img src="assets/img/logo_icono.png" alt="LAVO" class="cp-hero-logo">
-        <p>
-          Asistente inteligente para generar, explicar y depurar lógica Ladder
-          mediante voz e inteligencia artificial.
-        </p>
-      </section>
-
-      <!-- Compositor (dentro de la tarjeta) -->
-      <section class="cp-composer-zone">
+    <!-- Compositor (siempre en la parte inferior) -->
+    <section class="cp-composer-zone">
 
         <div class="cp-composer" id="cpComposer">
         <textarea id="cpInput" rows="1" placeholder="Pregunta un concepto de Ladder o PLCs..."

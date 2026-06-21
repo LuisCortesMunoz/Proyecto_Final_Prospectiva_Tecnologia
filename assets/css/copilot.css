@@ -87,6 +87,16 @@
 }
 .cp-page .cp-status-error .onav-dot { background: #c93a2a; animation: none; }
 
+/* ── Animaciones de entrada de página ── */
+@keyframes lv-fade-up {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes lv-fade-out {
+  from { opacity: 1; }
+  to   { opacity: 0; }
+}
+
 /* ── Layout principal ─────────────────────────────────────── */
 .cp-main {
   display: flex;
@@ -97,57 +107,61 @@
   position: relative;
 }
 
-/* ── Animaciones de entrada de página ── */
-@keyframes lv-fade-up {
-  from { opacity: 0; transform: translateY(12px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* Estados: vacío vs con mensajes */
-.cp-main.is-empty { justify-content: center; }
-.cp-main.is-empty .cp-thread {
-  opacity: 0;
-  height: 0;
-  overflow: hidden;
-  padding: 0;
-  pointer-events: none;
-}
-.cp-main:not(.is-empty) .cp-hero { display: none; }
-.cp-main:not(.is-empty) .cp-chips { display: none; }
-
-/* Transición suave al primer envío */
-.cp-hero-card {
-  transition: opacity 0.3s ease, transform 0.3s ease;
-}
-.cp-main:not(.is-empty) .cp-thread {
-  opacity: 1;
-  height: auto;
-  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
-}
-
-/* ── Logo en el hero ──────────────────────────────────────── */
-.cp-hero-logo {
-  height: 80px;
-  display: block;
-  margin: 0 auto 0.5rem;
-  object-fit: contain;
-}
-
-/* ── Hero ─────────────────────────────────────────────────── */
-.cp-main.is-empty {
+/* Thread (conversación) — crece para llenar el espacio disponible */
+.cp-thread {
+  flex: 1;
   overflow-y: auto;
-  /* "safe" evita que el contenido centrado se recorte por arriba
-     cuando el hero es más alto que la ventana */
-  justify-content: safe center;
+  padding: 1.8rem 1rem 1rem;
+  scroll-behavior: smooth;
 }
 
-.cp-hero {
+/* Logo + texto centrado (marca de agua, visible cuando está vacío) */
+.cp-hero-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem 1.5rem;
   text-align: center;
-  padding: 1.5rem 1.5rem 1.5rem;
-  max-width: 880px;
-  margin: 0 auto;
-  width: 100%;
+  position: absolute;
+  top: 52px;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+  z-index: 1;
 }
+
+.cp-hero-logo {
+  height: 120px;
+  width: auto;
+  object-fit: contain;
+  display: block;
+}
+
+.cp-hero-text {
+  font-size: 1rem;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  max-width: 500px;
+  margin: 0;
+}
+
+/* Al tener mensajes: hero-center desaparece */
+.cp-main:not(.is-empty) .cp-hero-center {
+  opacity: 0;
+  pointer-events: none;
+  animation: lv-fade-out 0.25s ease forwards;
+}
+
+/* Composer siempre en la parte inferior */
+.cp-composer-zone {
+  flex-shrink: 0;
+}
+
 
 .cp-hero-badge {
   display: inline-flex;
@@ -909,62 +923,10 @@
 .cp-thread::-webkit-scrollbar-track,
 .cp-drawer-body::-webkit-scrollbar-track { background: transparent; }
 
-/* ── Hero card wrapper ────────────────────────────────────── */
-.cp-hero-card {
-  flex-shrink: 0;
-  width: 100%;
-}
-
-/* Animación de carga de la página */
-.cp-main.is-empty .cp-hero-card {
-  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.05s both;
-}
-.cp-chips-area {
-  animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
-}
-
-/* Estado vacío: card visual blanca */
-.cp-main.is-empty .cp-hero-card {
-  background: #ffffff;
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  box-shadow:
-    0 2px 8px rgba(22,38,58,0.06),
-    0 12px 40px rgba(22,38,58,0.08);
-  max-width: 780px;
-  width: calc(100% - 3rem);
-  margin: 0 auto;
-  padding: 2.25rem 2rem 0.25rem;
-  overflow: hidden;
-}
-
-/* Hero dentro de la card: sin max-width propio */
-.cp-main.is-empty .cp-hero-card .cp-hero {
-  max-width: none;
-  margin: 0;
-  padding: 0 0 0.5rem;
-}
-
-/* Composer dentro de la card: sin padding lateral extra */
-.cp-main.is-empty .cp-hero-card .cp-composer-zone {
-  max-width: none;
-  margin: 0;
-  padding: 0.15rem 0 0.75rem;
-}
-
-/* Estado con mensajes: la card es solo un wrapper transparente */
-.cp-main:not(.is-empty) .cp-hero-card {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-  padding: 0;
-  max-width: none;
-}
-.cp-main:not(.is-empty) .cp-hero { display: none; }
-/* El composer-zone recupera sus estilos normales */
-.cp-main:not(.is-empty) .cp-hero-card .cp-composer-zone {
+/* Composer siempre centrado con ancho fijo */
+.cp-composer-zone {
   max-width: 840px;
+  width: calc(100% - 2rem);
   margin: 0 auto;
   padding: 0.5rem 1rem 1.2rem;
 }
