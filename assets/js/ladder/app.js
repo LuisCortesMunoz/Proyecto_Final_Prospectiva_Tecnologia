@@ -9,7 +9,7 @@
 import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
-import { scanCycle }                                                                          from './simulator.js';
+import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -34,6 +34,7 @@ const store = (() => {
   let _simVars    = {};          // { address: boolean } — estado de variables en simulación
   let _pressed    = new Set();   // entradas que el usuario mantiene presionadas
   let _simTimer   = null;
+  let _seqState   = freshSeqState();  // estado del secuenciador (semáforo) en simulación
   const _SIM_MS   = 100;        // intervalo del scan (ms)
   const _subs = [];
   function notify() { _subs.forEach(fn => fn()); }
@@ -41,6 +42,9 @@ const store = (() => {
     if (!_simMode) return;
     const vars = { ..._simVars };
     for (const a of _pressed) vars[a] = true;
+    // Secuenciador (semáforo): avanza los pasos en el tiempo antes del scan,
+    // que luego propaga PASOk → salidas por los rungs generados.
+    advanceSequence(_prog?.metadata?._sequence_sim, vars, _seqState);
     const { rungStates, newVals } = scanCycle(_prog, vars);
     _simVars = { ...newVals };
     for (const a of _pressed) _simVars[a] = true;
@@ -341,6 +345,7 @@ const store = (() => {
       _simMode = true;
       _simVars = {};
       _pressed = new Set();
+      _seqState = freshSeqState();
       clearInterval(_simTimer);
       _simTimer = setInterval(_runScan, _SIM_MS);
       _runScan();

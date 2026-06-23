@@ -59,6 +59,50 @@ function evaluateRung(rung, vars) {
   return result;
 }
 
+// ── Secuenciador de pasos (semáforo) ───────────────────────────
+// El simulador genérico no mide tiempo; el secuenciador sí. Avanza los pasos
+// con el reloj real y activa los bits PASOk; los rungs [PASOk]──(Qx) que generó
+// el compilador propagan a las salidas en el scan normal. Espejo del motor en
+// Texto Estructurado del PLC (arranque por flanco, "once"/"loop").
+
+export function freshSeqState() {
+  return { active: false, step: 0, stepStart: 0, startPrev: false };
+}
+
+/**
+ * Avanza la secuencia un tick (usa reloj real, robusto a scans extra) y fija
+ * los bits PASOk en `vars`. No toca las salidas: de eso se encarga scanCycle.
+ * @param {object} sim   - metadata._sequence_sim { startAddr, mode, steps[] }
+ * @param {object} vars  - variable_values (se mutan los bits de paso)
+ * @param {object} state - estado persistente (freshSeqState)
+ */
+export function advanceSequence(sim, vars, state) {
+  if (!sim || !Array.isArray(sim.steps) || !sim.steps.length) return;
+  const now = Date.now();
+  const start = !!vars[sim.startAddr];
+
+  // Arranque por flanco positivo, solo si no esta corriendo ya.
+  if (start && !state.startPrev && !state.active) {
+    state.active = true; state.step = 0; state.stepStart = now;
+  }
+  state.startPrev = start;
+
+  if (state.active) {
+    const dur = sim.steps[state.step]?.durationMs || 0;
+    if (now - state.stepStart >= dur) {
+      state.step += 1;
+      state.stepStart = now;
+      if (state.step >= sim.steps.length) {
+        if (sim.mode === 'loop') state.step = 0;     // cíclico: vuelve al inicio
+        else { state.active = false; state.step = 0; } // una vez: termina (todo apagado)
+      }
+    }
+  }
+
+  // Activa solo el paso actual (nunca dos a la vez).
+  sim.steps.forEach((s, i) => { vars[s.stepAddr] = state.active && i === state.step; });
+}
+
 // ── Ciclo de scan completo ──────────────────────────────────────
 /**
  * Ejecuta un ciclo de scan sobre el programa y devuelve los nuevos estados.

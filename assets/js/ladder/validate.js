@@ -16,6 +16,8 @@ const ENGINE_OUTPUTS = new Set(['Q10', 'Q11', 'Q12', 'VERDE', 'AMARILLA', 'ROJA'
 const ENGINE_MODES   = new Set(['off', 'directo', 'enclavado', 'combinacional']);
 const TIMER_TYPES    = new Set(['on_delay', 'pulse']);
 const COUNTER_TYPES  = new Set(['up', 'up_held']);
+const SEQ_MODES      = new Set(['once', 'loop']);
+const SEQ_MAX_STEPS  = 8;
 
 const esEntrada = (n) => n == null || ENGINE_INPUTS.has(String(n).toUpperCase());
 const canonOut  = (s) => {
@@ -44,12 +46,15 @@ export function validateLogicJson(logic, /* profile */ _profile) {
   if (!logic || typeof logic !== 'object') {
     return { ok: false, errors: ['El JSON lógico está vacío o no es un objeto.'], warnings };
   }
-  if (!Array.isArray(logic.outputs) || logic.outputs.length === 0) {
-    return { ok: false, errors: ['Falta "outputs" o está vacío: debe haber al menos una salida.'], warnings };
+  const outputs = Array.isArray(logic.outputs) ? logic.outputs : [];
+  const seq = logic.sequence;
+  // Una config válida necesita al menos salidas O una secuencia.
+  if (outputs.length === 0 && !seq) {
+    return { ok: false, errors: ['Falta "outputs" o está vacío: debe haber al menos una salida (o una "sequence").'], warnings };
   }
 
   const vistos = new Set();
-  for (const [i, o] of logic.outputs.entries()) {
+  for (const [i, o] of outputs.entries()) {
     const tag = `salida ${i + 1} (${o?.output ?? '?'})`;
     if (!o || typeof o !== 'object') { errors.push(`${tag}: no es un objeto.`); continue; }
 
@@ -92,10 +97,31 @@ export function validateLogicJson(logic, /* profile */ _profile) {
     }
   }
 
+  if (seq != null) validarSecuencia(seq, errors);
+
   const gStop = logic.system?.global_stop;
   if (!esEntrada(gStop)) errors.push(`system.global_stop="${gStop}" no es entrada válida.`);
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+// Valida el bloque "sequence" (secuenciador de pasos). Espejo del validador
+// del backend (_validar_secuencia_cfg / _validar_secuencia).
+function validarSecuencia(seq, errors) {
+  if (typeof seq !== 'object') { errors.push('"sequence" no es un objeto.'); return; }
+  if (!seq.start || !esEntrada(seq.start)) errors.push(`sequence.start="${seq.start}" debe ser una entrada válida (I1..I7).`);
+  if (!SEQ_MODES.has(String(seq.mode || 'once').toLowerCase())) errors.push(`sequence.mode="${seq.mode}" debe ser "once" o "loop".`);
+  if (seq.reset != null && !esEntrada(seq.reset)) errors.push(`sequence.reset="${seq.reset}" no es una entrada válida.`);
+  const steps = seq.steps;
+  if (!Array.isArray(steps) || steps.length === 0) { errors.push('sequence.steps debe ser una lista con al menos un paso.'); return; }
+  if (steps.length > SEQ_MAX_STEPS) errors.push(`sequence.steps no puede tener más de ${SEQ_MAX_STEPS} pasos.`);
+  steps.forEach((st, i) => {
+    const tag = `sequence paso ${i + 1}`;
+    if (!st || typeof st !== 'object') { errors.push(`${tag}: no es un objeto.`); return; }
+    if (!Array.isArray(st.outputs) || st.outputs.length === 0) errors.push(`${tag}: "outputs" debe listar al menos una salida.`);
+    else for (const o of st.outputs) if (!ENGINE_OUTPUTS.has(String(o).toUpperCase())) errors.push(`${tag}: salida "${o}" inválida. Usa Q10, Q11 o Q12.`);
+    rangoEntero(st.duration_s, 1, 32767, tag, 'duration_s', errors);
+  });
 }
 
 export function normalizeAndValidate(programIn) {
