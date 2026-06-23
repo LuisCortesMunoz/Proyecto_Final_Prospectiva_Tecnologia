@@ -1236,7 +1236,11 @@ async function cargarAlPLC() {
 
   const prog = store.getProgram();
   const cfg  = prog?.metadata?.engine_config;
-  if (!cfg || !Array.isArray(cfg.outputs) || !cfg.outputs.length) {
+  // Un programa es cargable si tiene lógica por salida (outputs) O una secuencia
+  // temporizada (semáforo): en ese caso outputs viene vacío y todo va en sequence.
+  const tieneOutputs  = Array.isArray(cfg?.outputs) && cfg.outputs.length > 0;
+  const tieneSequence = Array.isArray(cfg?.sequence?.steps) && cfg.sequence.steps.length > 0;
+  if (!cfg || (!tieneOutputs && !tieneSequence)) {
     store.log('err', 'Este programa no tiene "engine_config". Genera el programa con el asistente IA (modo Diseñador) para poder cargarlo al PLC.');
     showToast('Sin engine_config para el PLC', 'error');
     return;
@@ -1246,7 +1250,10 @@ async function cargarAlPLC() {
   const tgt   = store.getProgram()?.metadata?.plc_target || {};
   const ip    = (tgt.ip || '').trim();
   const port  = Number(tgt.port) || 502;
-  store.log('info', `Enviando ${cfg.outputs.length} salida(s) al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
+  const resumen = tieneOutputs
+    ? `${cfg.outputs.length} salida(s)`
+    : `secuencia de ${cfg.sequence.steps.length} paso(s)`;
+  store.log('info', `Enviando ${resumen} al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
 
   try {
