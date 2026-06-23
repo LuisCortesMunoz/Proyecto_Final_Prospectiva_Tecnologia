@@ -542,6 +542,10 @@ function addLadderMessage(out) {
     // del chat (el estado de la conversación vive solo en memoria).
     // `from=chat` hace que el editor muestre su botón "Volver al chat",
     // y conservar window.opener le permite re-enfocar esta pestaña.
+    // Respaldo robusto: además de la URL (que puede truncarse en programas
+    // grandes y perder el engine_config), dejamos el programa COMPLETO en
+    // localStorage para que el editor lo recupere si la URL falla.
+    try { localStorage.setItem('lv_handoff_program', JSON.stringify(program)); } catch { /* cuota llena */ }
     window.open(`ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`, '_blank');
   });
   actions.appendChild(openBtn);

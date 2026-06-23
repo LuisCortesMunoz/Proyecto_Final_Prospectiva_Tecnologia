@@ -21,9 +21,26 @@ function plcBridgeUrl() {
   return (localStorage.getItem('lv_plc_bridge') || 'http://localhost:8000').replace(/\/+$/, '');
 }
 
+// ── Carga inicial del programa ────────────────────────────────────
+// Prioridad: URL (?l=) → respaldo del copiloto en localStorage → default.
+// La URL puede truncarse en programas grandes (y perder el engine_config);
+// en ese caso el copiloto dejó el programa COMPLETO en localStorage.
+function loadInitialProgram() {
+  const fromUrl = importFromURL();
+  if (fromUrl) return fromUrl;
+  // Si venía un ?l= pero no se pudo decodificar, recuperar el respaldo.
+  if (new URLSearchParams(window.location.search).has('l')) {
+    try {
+      const raw = localStorage.getItem('lv_handoff_program');
+      if (raw) return JSON.parse(raw);
+    } catch { /* JSON inválido o sin acceso a localStorage */ }
+  }
+  return defaultProgram();
+}
+
 // ── Store ────────────────────────────────────────────────────────
 const store = (() => {
-  let _prog  = importFromURL() ?? defaultProgram();
+  let _prog  = loadInitialProgram();
   let _sel   = { rungId: null, elementId: null };
   let _multi = { rungId: null, ids: new Set() };   // selección múltiple (para paralelo por rango)
   let _armed = null;
