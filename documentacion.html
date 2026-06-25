@@ -39,6 +39,10 @@
 
     .doc-grid {
       animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.25rem;
+      align-items: start;
     }
 
     .doc-hero::after {
@@ -119,13 +123,6 @@
 
     .doc-gh-btn i {
       font-size: 1.05rem;
-    }
-
-    .doc-grid {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 1.25rem;
-      align-items: start;
     }
 
     @media (max-width: 860px) {
@@ -488,27 +485,17 @@
       </button>
 
       <div class="onav-dropdown" id="onav-dropdown" hidden>
-        <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/index.html" class="onav-dropdown-item">
+        <a href="index.html" class="onav-dropdown-item">
           <span class="onav-dropdown-item-title">Chat IA</span>
           <span class="onav-dropdown-item-sub">Asistente para generar lógica Ladder</span>
         </a>
 
-        <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/asistente.html" class="onav-dropdown-item">
-          <span class="onav-dropdown-item-title">Asistente de Voz</span>
-          <span class="onav-dropdown-item-sub">Control por voz para PLCs</span>
-        </a>
-
-        <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/ladder.html" class="onav-dropdown-item">
+        <a href="ladder.html" class="onav-dropdown-item">
           <span class="onav-dropdown-item-title">Editor Ladder</span>
           <span class="onav-dropdown-item-sub">Herramienta de programación PLC</span>
         </a>
 
-        <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/about.html" class="onav-dropdown-item">
-          <span class="onav-dropdown-item-title">Sobre el Proyecto</span>
-          <span class="onav-dropdown-item-sub">Arquitectura general</span>
-        </a>
-
-        <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/documentacion.html" class="onav-dropdown-item active">
+        <a href="documentacion.html" class="onav-dropdown-item active">
           <span class="onav-dropdown-item-title">Documentación</span>
           <span class="onav-dropdown-item-sub">Proceso y arquitectura del proyecto</span>
         </a>
@@ -1118,19 +1105,18 @@ Salida esperada de la IA:
             el desarrollo.
           </div>
 
-          <!-- BOTONES CORREGIDOS -->
           <div class="doc-actions">
-            <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/about.html" class="doc-btn doc-btn-outline">
+            <a href="about.html" class="doc-btn doc-btn-outline">
               <i class="fa-solid fa-arrow-left"></i>
               Volver a Sobre el Proyecto
             </a>
 
-            <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/ladder.html" class="doc-btn doc-btn-primary">
+            <a href="ladder.html" class="doc-btn doc-btn-primary">
               <i class="fa-solid fa-microchip"></i>
               Abrir Editor Ladder
             </a>
 
-            <a href="https://luiscortesmunoz.github.io/Proyecto_Final_Prospectiva_Tecnologia/asistente.html" class="doc-btn doc-btn-outline">
+            <a href="asistente.html" class="doc-btn doc-btn-outline">
               <i class="fa-solid fa-microphone"></i>
               Abrir Asistente de Voz
             </a>
