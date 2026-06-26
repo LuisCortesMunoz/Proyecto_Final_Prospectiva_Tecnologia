@@ -816,3 +816,100 @@ body {
   width: 100% !important;
   max-width: none !important;
 }
+
+/* ==========================================================
+   DRIVER.JS — Tour LadderVoice (scoped via popoverClass)
+   ========================================================== */
+
+.driver-popover.lv-tour-popover {
+  font-family: 'DM Sans', sans-serif;
+  background: #ffffff;
+  border: 1px solid #e4e4e7;
+  border-radius: 16px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.12);
+  padding: 20px 22px 16px;
+  max-width: 320px;
+  min-width: 256px;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-title {
+  font-family: 'Syne', sans-serif;
+  font-weight: 700;
+  font-size: 0.97rem;
+  color: #09090b;
+  margin-bottom: 8px;
+  line-height: 1.3;
+  padding-right: 20px;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-description {
+  font-size: 0.85rem;
+  color: #3f3f46;
+  line-height: 1.65;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-footer {
+  margin-top: 18px;
+  gap: 8px;
+  align-items: center;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-progress-text {
+  font-size: 0.73rem;
+  color: #71717a;
+  flex: 1;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-close-btn {
+  color: #71717a;
+  font-size: 1.05rem;
+  line-height: 1;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-close-btn:hover {
+  color: #09090b;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-prev-btn {
+  background: transparent;
+  color: #3f3f46;
+  border: 1px solid #e4e4e7;
+  border-radius: 100px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  text-shadow: none;
+  box-shadow: none;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-prev-btn:hover {
+  border-color: #2e7de1;
+  background: rgba(46, 125, 225, 0.07);
+  color: #1f6fd6;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-next-btn {
+  background: linear-gradient(135deg, #1f6fd6, #2e7de1);
+  color: #ffffff;
+  border: none;
+  border-radius: 100px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 6px 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(46, 125, 225, 0.32);
+  transition: filter 0.15s ease;
+  text-shadow: none;
+}
+
+.driver-popover.lv-tour-popover .driver-popover-next-btn:hover {
+  filter: brightness(1.09);
+}
