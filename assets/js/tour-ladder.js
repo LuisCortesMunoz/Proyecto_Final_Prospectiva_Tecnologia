@@ -70,7 +70,7 @@
   ];
 
   function startTour() {
-    var driverObj = window.driver.driver({
+    var driverObj = window.driver.js.driver({
       animate: true,
       showProgress: true,
       progressText: 'Paso {{current}} de {{total}}',
