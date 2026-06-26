@@ -89,7 +89,7 @@
       prevBtnText: '← Anterior',
       doneBtnText: '¡Entendido!',
       popoverClass: 'lv-tour-popover',
-      onDestroyStarted: function () {
+      onDestroyed: function () {
         localStorage.setItem(LS_KEY, '1');
       },
       steps: STEPS,
