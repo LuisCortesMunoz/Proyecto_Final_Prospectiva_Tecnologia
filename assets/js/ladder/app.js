@@ -9,7 +9,7 @@
 import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
-import { scanCycle }                                                                          from './simulator.js';
+import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -21,9 +21,26 @@ function plcBridgeUrl() {
   return (localStorage.getItem('lv_plc_bridge') || 'http://localhost:8000').replace(/\/+$/, '');
 }
 
+// ── Carga inicial del programa ────────────────────────────────────
+// Prioridad: URL (?l=) → respaldo del copiloto en localStorage → default.
+// La URL puede truncarse en programas grandes (y perder el engine_config);
+// en ese caso el copiloto dejó el programa COMPLETO en localStorage.
+function loadInitialProgram() {
+  const fromUrl = importFromURL();
+  if (fromUrl) return fromUrl;
+  // Si venía un ?l= pero no se pudo decodificar, recuperar el respaldo.
+  if (new URLSearchParams(window.location.search).has('l')) {
+    try {
+      const raw = localStorage.getItem('lv_handoff_program');
+      if (raw) return JSON.parse(raw);
+    } catch { /* JSON inválido o sin acceso a localStorage */ }
+  }
+  return defaultProgram();
+}
+
 // ── Store ────────────────────────────────────────────────────────
 const store = (() => {
-  let _prog  = importFromURL() ?? defaultProgram();
+  let _prog  = loadInitialProgram();
   let _sel   = { rungId: null, elementId: null };
   let _multi = { rungId: null, ids: new Set() };   // selección múltiple (para paralelo por rango)
   let _armed = null;
@@ -34,6 +51,7 @@ const store = (() => {
   let _simVars    = {};          // { address: boolean } — estado de variables en simulación
   let _pressed    = new Set();   // entradas que el usuario mantiene presionadas
   let _simTimer   = null;
+  let _seqState   = freshSeqState();  // estado del secuenciador (semáforo) en simulación
   const _SIM_MS   = 100;        // intervalo del scan (ms)
   const _subs = [];
   function notify() { _subs.forEach(fn => fn()); }
@@ -41,6 +59,9 @@ const store = (() => {
     if (!_simMode) return;
     const vars = { ..._simVars };
     for (const a of _pressed) vars[a] = true;
+    // Secuenciador (semáforo): avanza los pasos en el tiempo antes del scan,
+    // que luego propaga PASOk → salidas por los rungs generados.
+    advanceSequence(_prog?.metadata?._sequence_sim, vars, _seqState);
     const { rungStates, newVals } = scanCycle(_prog, vars);
     _simVars = { ...newVals };
     for (const a of _pressed) _simVars[a] = true;
@@ -341,6 +362,7 @@ const store = (() => {
       _simMode = true;
       _simVars = {};
       _pressed = new Set();
+      _seqState = freshSeqState();
       clearInterval(_simTimer);
       _simTimer = setInterval(_runScan, _SIM_MS);
       _runScan();
@@ -1231,7 +1253,11 @@ async function cargarAlPLC() {
 
   const prog = store.getProgram();
   const cfg  = prog?.metadata?.engine_config;
-  if (!cfg || !Array.isArray(cfg.outputs) || !cfg.outputs.length) {
+  // Un programa es cargable si tiene lógica por salida (outputs) O una secuencia
+  // temporizada (semáforo): en ese caso outputs viene vacío y todo va en sequence.
+  const tieneOutputs  = Array.isArray(cfg?.outputs) && cfg.outputs.length > 0;
+  const tieneSequence = Array.isArray(cfg?.sequence?.steps) && cfg.sequence.steps.length > 0;
+  if (!cfg || (!tieneOutputs && !tieneSequence)) {
     store.log('err', 'Este programa no tiene "engine_config". Genera el programa con el asistente IA (modo Diseñador) para poder cargarlo al PLC.');
     showToast('Sin engine_config para el PLC', 'error');
     return;
@@ -1241,7 +1267,10 @@ async function cargarAlPLC() {
   const tgt   = store.getProgram()?.metadata?.plc_target || {};
   const ip    = (tgt.ip || '').trim();
   const port  = Number(tgt.port) || 502;
-  store.log('info', `Enviando ${cfg.outputs.length} salida(s) al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
+  const resumen = tieneOutputs
+    ? `${cfg.outputs.length} salida(s)`
+    : `secuencia de ${cfg.sequence.steps.length} paso(s)`;
+  store.log('info', `Enviando ${resumen} al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
 
   try {

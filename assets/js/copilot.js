@@ -8,7 +8,9 @@
 // ============================================================
 
 // ---------- Configuración ----------
-const DEFAULT_API_BASE = 'http://localhost:8000';
+// Backend en la nube (Render + Groq), el mismo que usa el modo Diseñador.
+// Antes apuntaba a 'http://localhost:8000' (backend local con Ollama).
+const DEFAULT_API_BASE = 'https://backend-render-prospectiva-tecnologia.onrender.com';
 const CHAT_TIMEOUT_MS = 180000;
 
 // El modo Diseñador genera el programa vía window.LadderGen (gen-bridge.js),
@@ -261,7 +263,8 @@ async function checkHealth() {
   try {
     const res = await fetch(`${apiBase()}/health`, { signal: AbortSignal.timeout(4000) });
     const data = await res.json();
-    if (data.ollama) setBackendStatus('ok', 'Backend conectado');
+    // Backend Groq (Render) responde {status:'ok'}; el viejo de Ollama, {ollama:true}.
+    if (data.status === 'ok' || data.ollama) setBackendStatus('ok', 'Backend conectado');
     else setBackendStatus('warn', 'Modelo no disponible');
   } catch (_) {
     setBackendStatus('error', 'Error de conexión');
@@ -539,6 +542,10 @@ function addLadderMessage(out) {
     // del chat (el estado de la conversación vive solo en memoria).
     // `from=chat` hace que el editor muestre su botón "Volver al chat",
     // y conservar window.opener le permite re-enfocar esta pestaña.
+    // Respaldo robusto: además de la URL (que puede truncarse en programas
+    // grandes y perder el engine_config), dejamos el programa COMPLETO en
+    // localStorage para que el editor lo recupere si la URL falla.
+    try { localStorage.setItem('lv_handoff_program', JSON.stringify(program)); } catch { /* cuota llena */ }
     window.open(`ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`, '_blank');
   });
   actions.appendChild(openBtn);
@@ -660,7 +667,8 @@ async function sendChatRequest(message) {
       hint = 'La petición tardó demasiado. Prueba el perfil Instantánea o un modelo más pequeño.';
     } else if (/Failed to fetch|NetworkError/i.test(err.message)) {
       hint = `No se pudo conectar con el backend en ${apiBase()}. ` +
-             'Verifica que estén corriendo: 1) ollama serve, 2) uvicorn main:app --reload --port 8000 (carpeta backend).';
+             'Revisa tu conexión a internet. Si el servidor de Render estaba dormido, ' +
+             'puede tardar ~1 min en despertar: vuelve a intentar.';
     }
     addErrorMessage('Error: ' + hint);
   } finally {
@@ -1017,7 +1025,9 @@ let isListening = () => false;
 // ============================================================
 (function init() {
   const savedApi = localStorage.getItem('lv_api_base');
-  if (savedApi) cfg.api.value = savedApi;
+  // Ignora URLs locales guardadas de la versión vieja (Ollama en localhost):
+  // ahora el backend vive en la nube (Render). Solo se respeta un remoto real.
+  if (savedApi && !/localhost|127\.0\.0\.1/.test(savedApi)) cfg.api.value = savedApi;
 
   populateProfileSelect();
   applyProfile(currentProfile);

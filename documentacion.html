@@ -27,12 +27,6 @@
 
     .doc-hero {
       animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.05s both;
-    }
-    .doc-grid {
-      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
-    }
-
-    .doc-hero {
       background: linear-gradient(135deg, var(--navy), var(--blue-700));
       border: 1px solid var(--blue-700);
       border-radius: var(--radius);
@@ -41,6 +35,14 @@
       box-shadow: var(--shadow-lg);
       position: relative;
       overflow: hidden;
+    }
+
+    .doc-grid {
+      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
+      display: grid;
+      grid-template-columns: 280px 1fr;
+      gap: 1.25rem;
+      align-items: start;
     }
 
     .doc-hero::after {
@@ -53,6 +55,7 @@
       border-radius: 999px;
       background: rgba(255,255,255,0.09);
       border: 1px solid rgba(255,255,255,0.16);
+      pointer-events: none;
     }
 
     .doc-kicker {
@@ -69,6 +72,8 @@
       padding: 0.25rem 0.75rem;
       background: rgba(255,255,255,0.08);
       margin-bottom: 1rem;
+      position: relative;
+      z-index: 2;
     }
 
     .doc-hero h1 {
@@ -78,6 +83,8 @@
       margin: 0 0 1rem;
       max-width: 780px;
       letter-spacing: -0.04em;
+      position: relative;
+      z-index: 2;
     }
 
     .doc-hero p {
@@ -86,6 +93,8 @@
       line-height: 1.75;
       max-width: 760px;
       margin: 0 0 1.5rem;
+      position: relative;
+      z-index: 2;
     }
 
     .doc-gh-btn {
@@ -101,19 +110,19 @@
       font-size: 0.92rem;
       font-weight: 500;
       text-decoration: none;
-      transition: background 0.15s ease, border-color 0.15s ease;
+      transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+      position: relative;
+      z-index: 2;
     }
+
     .doc-gh-btn:hover {
       background: rgba(255,255,255,0.22);
       border-color: rgba(255,255,255,0.55);
+      transform: translateY(-1px);
     }
-    .doc-gh-btn i { font-size: 1.05rem; }
 
-    .doc-grid {
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 1.25rem;
-      align-items: start;
+    .doc-gh-btn i {
+      font-size: 1.05rem;
     }
 
     @media (max-width: 860px) {
@@ -156,6 +165,7 @@
       border-bottom: 1px solid rgba(221,230,241,0.8);
       font-size: 0.88rem;
       transition: color var(--transition), transform var(--transition);
+      text-decoration: none;
     }
 
     .doc-toc a:last-child {
@@ -434,6 +444,7 @@
       font-weight: 700;
       text-decoration: none;
       transition: var(--transition);
+      cursor: pointer;
     }
 
     .doc-btn-primary {
@@ -478,14 +489,17 @@
           <span class="onav-dropdown-item-title">Chat IA</span>
           <span class="onav-dropdown-item-sub">Asistente para generar lógica Ladder</span>
         </a>
+
         <a href="ladder.html" class="onav-dropdown-item">
           <span class="onav-dropdown-item-title">Editor Ladder</span>
           <span class="onav-dropdown-item-sub">Herramienta de programación PLC</span>
         </a>
+
         <a href="documentacion.html" class="onav-dropdown-item active">
           <span class="onav-dropdown-item-title">Documentación</span>
           <span class="onav-dropdown-item-sub">Proceso y arquitectura del proyecto</span>
         </a>
+
         <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="onav-dropdown-item">
           <span class="onav-dropdown-item-title">Repositorio</span>
           <span class="onav-dropdown-item-sub">Ver código en GitHub</span>
@@ -563,7 +577,6 @@
             <span class="doc-tag">Cscape</span>
             <span class="doc-tag">Modbus TCP</span>
             <span class="doc-tag">Groq</span>
-            <span class="doc-tag">Ollama</span>
           </div>
         </section>
 
@@ -779,9 +792,9 @@
                 <td>Mejorar respuestas futuras con ejemplos validados por el usuario.</td>
               </tr>
               <tr>
-                <td>Copiloto local</td>
-                <td>Se incorporó un backend con Ollama y perfiles de esfuerzo: baja, media y alta.</td>
-                <td>Probar un asistente local para explicación, depuración y apoyo técnico.</td>
+                <td>Copiloto de chat</td>
+                <td>Se incorporó un copiloto de chat con perfiles de esfuerzo: genérico, instantánea, media y alta.</td>
+                <td>Ofrecer un asistente para explicación, depuración y apoyo técnico.</td>
               </tr>
             </tbody>
           </table>
@@ -844,7 +857,8 @@
           <h3>APIs utilizadas</h3>
           <ul class="doc-list">
             <li><strong>Groq API:</strong> usada para transcripción STT con <code>whisper-large-v3</code> y para generación lógica con un modelo LLM configurado desde variables de entorno.</li>
-            <li><strong>Ollama:</strong> usado en el backend del copiloto local para responder dudas técnicas con perfiles de esfuerzo.</li>
+            <li><strong>Groq para copiloto de chat:</strong> usado para responder dudas técnicas mediante perfiles de esfuerzo.</li>
+            <li><strong>Ollama:</strong> considerado y probado como alternativa local para asistencia técnica y modelos locales.</li>
             <li><strong>Modbus TCP:</strong> usado para comunicar Python con el PLC Horner mediante registros.</li>
             <li><strong>APIs del navegador:</strong> usadas para grabación de audio, interacción web y posible síntesis de voz.</li>
           </ul>
@@ -975,7 +989,8 @@ reset   → entrada física configurable</code></pre>
           <ul class="doc-list">
             <li><strong>STT:</strong> Groq Whisper convierte audio a texto.</li>
             <li><strong>LLM:</strong> Groq interpreta instrucciones y genera JSON lógico simple.</li>
-            <li><strong>Copiloto local:</strong> Ollama permite responder dudas o apoyar con explicación técnica desde un backend local.</li>
+            <li><strong>Copiloto de chat:</strong> Groq responde dudas y apoya con explicación técnica mediante perfiles de esfuerzo.</li>
+            <li><strong>Ollama:</strong> explorado como alternativa para correr modelos locales y comparar enfoques.</li>
           </ul>
 
           <h3>Principio de seguridad del diseño</h3>
@@ -1078,8 +1093,8 @@ Salida esperada de la IA:
             <div>
               <strong>Ollama</strong>
               <p>
-                Utilizado para probar un copiloto local con perfiles de esfuerzo. Esto permitió experimentar
-                con asistencia técnica sin depender únicamente de servicios externos.
+                Herramienta considerada y probada como alternativa para ejecutar modelos locales y explorar
+                asistencia técnica sin depender completamente de servicios externos.
               </p>
             </div>
           </div>
@@ -1119,7 +1134,7 @@ Salida esperada de la IA:
         <i class="fa-solid fa-microphone-lines"></i> LadderVoice
       </div>
       <p>Proyecto Final &mdash; Prospectiva de la Tecnología</p>
-      <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" class="footer-gh">
+      <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="footer-gh">
         <i class="fab fa-github"></i> Ver en GitHub
       </a>
     </div>
@@ -1129,6 +1144,9 @@ Salida esperada de la IA:
     (function() {
       const btn  = document.getElementById('onav-logo-btn');
       const dd   = document.getElementById('onav-dropdown');
+
+      if (!btn || !dd) return;
+
       const wrap = btn.closest('.onav-logo-wrap');
 
       btn.addEventListener('click', e => {

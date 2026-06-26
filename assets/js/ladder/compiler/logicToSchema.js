@@ -243,6 +243,55 @@ function compileOutput(o, ctx, gStop) {
   return rungs;
 }
 
+// ── Secuenciador de pasos (semáforo) → rungs + datos de simulación ──
+// La capa "sequence" del engine-config no se puede expresar con la lógica por
+// salida (una salida no dispara a otra). Aquí se dibuja como rungs reales
+// [PASOk]──(Qx) y se emiten los datos que el simulador usa para avanzar los
+// pasos en el tiempo (metadata._sequence_sim). El motor del PLC (Texto
+// Estructurado) hace lo mismo de forma autónoma.
+function compileSequence(seq, ctx) {
+  const rungs = [];
+  const startAddr = ctx.resolveAddr(seq.start);
+  ctx.useAddr(startAddr);
+  const runAddr = 'SEQ_RUN';
+  ctx.useAddr(runAddr);
+  const mode = String(seq.mode || 'once').toLowerCase();
+
+  // Rung informativo: arranque de la secuencia.
+  rungs.push({
+    id: ctx.nextId(), enabled: true,
+    comment: `Secuencia: arranca con ${seq.start} (${mode === 'loop' ? 'cíclica' : 'una vez'})`,
+    network: [{ row: 0, elements: [
+      { id: eid(), type: 'contact_no', address: startAddr, pos: { col: 0 } },
+      { id: eid(), type: 'coil', address: runAddr, pos: { col: 1 }, coil_type: 'output' },
+    ]}],
+  });
+
+  const simSteps = [];
+  (seq.steps || []).forEach((st, k) => {
+    const stepAddr = `PASO${k + 1}`;
+    ctx.useAddr(stepAddr);
+    const outAddrs = (st.outputs || []).map(o => ctx.resolveAddr(o));
+    outAddrs.forEach(a => ctx.useAddr(a));
+    const dur = Number(st.duration_s || 0);
+    const etiqueta = (st.outputs || []).join(', ');
+    // Un rung por salida del paso: [PASOk]──(Qx)
+    outAddrs.forEach((a) => {
+      rungs.push({
+        id: ctx.nextId(), enabled: true,
+        comment: `Paso ${k + 1}: ${etiqueta} durante ${dur} s`,
+        network: [{ row: 0, elements: [
+          { id: eid(), type: 'contact_no', address: stepAddr, pos: { col: 0 } },
+          { id: eid(), type: 'coil', address: a, pos: { col: 1 }, coil_type: 'output' },
+        ]}],
+      });
+    });
+    simSteps.push({ stepAddr, outAddrs, durationMs: dur * 1000 });
+  });
+
+  return { rungs, sim: { startAddr, runAddr, mode, steps: simSteps } };
+}
+
 // ── Símbolos y direcciones ─────────────────────────────────────
 // El programa usa NOMBRES LÓGICOS como dirección (I1, Q10, M1, T1, T1.DN),
 // igual que el contrato. El símbolo/comentario amigable viene del perfil.
@@ -315,7 +364,17 @@ export function compileLogicToSchema(logic, profile) {
     rungs.push(...compileOutput(o, ctx, gStop));
   }
 
-  if (!rungs.length) warnings.push('El JSON engine-config no produjo ningún rung (sin "outputs").');
+  // Secuenciador de pasos (semáforo): se dibuja como rungs propios y emite los
+  // datos que el simulador usa para avanzar los pasos en el tiempo.
+  let sequenceSim = null;
+  const seq = logic?.sequence;
+  if (seq && Array.isArray(seq.steps) && seq.steps.length) {
+    const { rungs: seqRungs, sim } = compileSequence(seq, ctx);
+    rungs.push(...seqRungs);
+    sequenceSim = sim;
+  }
+
+  if (!rungs.length) warnings.push('El JSON engine-config no produjo ningún rung (sin "outputs" ni "sequence").');
 
   const symbol_table = {};
   for (const [addr, entry] of used) symbol_table[addr] = entry;
@@ -328,6 +387,8 @@ export function compileLogicToSchema(logic, profile) {
       device_profile: (logic && logic.device_profile) || (profile && profile.id) || 'maletin_basico',
       // El JSON dual completo viaja en la metadata para enviarse a Python tal cual.
       engine_config: logic || null,
+      // Datos para que el simulador anime la secuencia en el tiempo (null si no hay).
+      _sequence_sim: sequenceSim,
       plc_target: (profile && profile.plc && profile.plc.modbus)
         ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
         : { ip: '192.168.1.100', port: 502, unit_id: 1 },
