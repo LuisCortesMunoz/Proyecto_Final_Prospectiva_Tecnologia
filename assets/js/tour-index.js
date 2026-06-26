@@ -2,6 +2,7 @@
   'use strict';
 
   var LS_KEY = 'lv_tour_index_seen';
+  var activeDriver = null;
 
   var STEPS = [
     {
@@ -79,22 +80,28 @@
   ];
 
   function startTour() {
-    var driverObj = window.driver.js.driver({
+    if (activeDriver) {
+      activeDriver.destroy();
+      activeDriver = null;
+    }
+
+    activeDriver = window.driver.js.driver({
       animate: true,
       showProgress: true,
       progressText: 'Paso {{current}} de {{total}}',
       allowClose: true,
-      overlayClickBehavior: 'close',
       nextBtnText: 'Siguiente →',
       prevBtnText: '← Anterior',
       doneBtnText: '¡Entendido!',
       popoverClass: 'lv-tour-popover',
       onDestroyed: function () {
         localStorage.setItem(LS_KEY, '1');
+        activeDriver = null;
       },
       steps: STEPS,
     });
-    driverObj.drive();
+
+    activeDriver.drive();
   }
 
   var tourBtn = document.getElementById('cpTourBtn');

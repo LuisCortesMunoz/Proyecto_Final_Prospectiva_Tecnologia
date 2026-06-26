@@ -2,6 +2,7 @@
   'use strict';
 
   var LS_KEY = 'lv_tour_ladder_seen';
+  var activeDriver = null;
 
   var STEPS = [
     {
@@ -70,22 +71,28 @@
   ];
 
   function startTour() {
-    var driverObj = window.driver.js.driver({
+    if (activeDriver) {
+      activeDriver.destroy();
+      activeDriver = null;
+    }
+
+    activeDriver = window.driver.js.driver({
       animate: true,
       showProgress: true,
       progressText: 'Paso {{current}} de {{total}}',
       allowClose: true,
-      overlayClickBehavior: 'close',
       nextBtnText: 'Siguiente →',
       prevBtnText: '← Anterior',
       doneBtnText: '¡Entendido!',
       popoverClass: 'lv-tour-popover',
       onDestroyed: function () {
         localStorage.setItem(LS_KEY, '1');
+        activeDriver = null;
       },
       steps: STEPS,
     });
-    driverObj.drive();
+
+    activeDriver.drive();
   }
 
   var tourBtn = document.getElementById('ladderTourBtn');
@@ -93,8 +100,7 @@
     tourBtn.addEventListener('click', startTour);
   }
 
-  // 600ms delay: app.js and chat.js are type="module" (deferred),
-  // so rungArea and chatPanel may not be fully initialized yet when this runs.
+  // 600ms delay: app.js and chat.js are type="module" (deferred).
   if (!localStorage.getItem(LS_KEY)) {
     setTimeout(startTour, 600);
   }
