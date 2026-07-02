@@ -6,9 +6,9 @@
   <title>LadderVoice — Documentación del Proyecto</title>
 
   <link rel="stylesheet" href="assets/css/style.css" />
+  <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
   <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;1,300&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet"/>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
-  <link rel="stylesheet" href="assets/css/blueprint-theme.css" />
 
   <style>
     @keyframes lv-fade-up {
@@ -16,8 +16,12 @@
       to   { opacity: 1; transform: translateY(0); }
     }
 
+    html {
+      scroll-behavior: smooth;
+    }
+
     .doc-wrap {
-      max-width: 1080px;
+      max-width: 1120px;
       margin: 52px auto 0;
       padding: 4rem 1.5rem 5rem;
       display: flex;
@@ -35,14 +39,6 @@
       box-shadow: var(--shadow-lg);
       position: relative;
       overflow: hidden;
-    }
-
-    .doc-grid {
-      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
-      display: grid;
-      grid-template-columns: 280px 1fr;
-      gap: 1.25rem;
-      align-items: start;
     }
 
     .doc-hero::after {
@@ -81,18 +77,26 @@
       font-size: clamp(2rem, 5vw, 3.4rem);
       line-height: 1.05;
       margin: 0 0 1rem;
-      max-width: 780px;
+      max-width: 820px;
       letter-spacing: -0.04em;
       position: relative;
       z-index: 2;
     }
 
     .doc-hero p {
-      color: rgba(255,255,255,0.76);
+      color: rgba(255,255,255,0.78);
       font-size: 1rem;
       line-height: 1.75;
-      max-width: 760px;
+      max-width: 820px;
       margin: 0 0 1.5rem;
+      position: relative;
+      z-index: 2;
+    }
+
+    .doc-hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
       position: relative;
       z-index: 2;
     }
@@ -101,18 +105,16 @@
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.6rem 1.4rem;
+      padding: 0.68rem 1.1rem;
       background: rgba(255,255,255,0.12);
       border: 1px solid rgba(255,255,255,0.30);
-      border-radius: 8px;
+      border-radius: 9px;
       color: #ffffff;
       font-family: var(--font-body);
-      font-size: 0.92rem;
-      font-weight: 500;
+      font-size: 0.9rem;
+      font-weight: 700;
       text-decoration: none;
       transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
-      position: relative;
-      z-index: 2;
     }
 
     .doc-gh-btn:hover {
@@ -121,11 +123,15 @@
       transform: translateY(-1px);
     }
 
-    .doc-gh-btn i {
-      font-size: 1.05rem;
+    .doc-grid {
+      animation: lv-fade-up 0.4s cubic-bezier(0.4,0,0.2,1) 0.15s both;
+      display: grid;
+      grid-template-columns: 290px 1fr;
+      gap: 1.25rem;
+      align-items: start;
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 900px) {
       .doc-grid {
         grid-template-columns: 1fr;
       }
@@ -141,7 +147,7 @@
       box-shadow: var(--shadow-md);
     }
 
-    @media (max-width: 860px) {
+    @media (max-width: 900px) {
       .doc-toc {
         position: static;
       }
@@ -203,7 +209,7 @@
 
     .doc-card h2 {
       font-family: var(--font-display);
-      font-size: 1.35rem;
+      font-size: 1.38rem;
       line-height: 1.25;
       color: var(--text-primary);
       margin: 0 0 0.9rem;
@@ -245,7 +251,7 @@
       margin-top: 1rem;
     }
 
-    @media (max-width: 740px) {
+    @media (max-width: 760px) {
       .doc-mini-grid {
         grid-template-columns: 1fr;
       }
@@ -391,6 +397,17 @@
       line-height: 1.65;
     }
 
+    .doc-warning {
+      border-left: 4px solid #e0871f;
+      background: #fff7ee;
+      border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+      padding: 0.9rem 1rem;
+      margin-top: 1rem;
+      color: #5f4630;
+      font-size: 0.9rem;
+      line-height: 1.65;
+    }
+
     .doc-credit {
       display: grid;
       grid-template-columns: 44px 1fr;
@@ -469,6 +486,53 @@
       border-color: var(--blue-400);
       background: rgba(46,125,225,0.06);
     }
+
+    .doc-metrics-card {
+      background:
+        radial-gradient(circle at top right, rgba(46,125,225,0.16), transparent 34%),
+        linear-gradient(135deg, #ffffff 0%, #f8fbff 100%);
+      border: 1px solid rgba(46,125,225,0.24);
+    }
+
+    .doc-metric-strip {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.75rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 760px) {
+      .doc-metric-strip {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+
+    @media (max-width: 520px) {
+      .doc-metric-strip {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .doc-metric {
+      border: 1px solid var(--border);
+      background: #ffffff;
+      border-radius: var(--radius-sm);
+      padding: 0.9rem;
+    }
+
+    .doc-metric strong {
+      display: block;
+      color: var(--blue-400);
+      font-family: var(--font-display);
+      font-size: 1.2rem;
+      margin-bottom: 0.2rem;
+    }
+
+    .doc-metric span {
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      line-height: 1.4;
+    }
   </style>
 </head>
 
@@ -521,18 +585,28 @@
     <section class="doc-hero">
       <div class="doc-kicker">
         <i class="fa-solid fa-book-open"></i>
-        Documentación técnica
+        Documentación técnica extendida
       </div>
+
       <h1>Desarrollo de LadderVoice / LAVO</h1>
+
       <p>
-        Esta página documenta el proceso de construcción del proyecto: la evolución de la arquitectura,
-        las decisiones técnicas, los cambios realizados, las APIs utilizadas y el papel de las herramientas
-        de IA que apoyaron el desarrollo.
+        Esta página documenta con mayor detalle el funcionamiento del proyecto LAVO: su objetivo,
+        arquitectura, flujo de uso, frontend, backend, modelo de IA, validación, editor Ladder,
+        simulación, relación con el PLC Horner XL4 / XC1E5 y las métricas evaluadas durante las pruebas.
       </p>
-      <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="doc-gh-btn">
-        <i class="fa-brands fa-github"></i>
-        Ver repositorio en GitHub
-      </a>
+
+      <div class="doc-hero-actions">
+        <a href="https://github.com/LuisCortesMunoz/Proyecto_Final_Prospectiva_Tecnologia" target="_blank" rel="noopener noreferrer" class="doc-gh-btn">
+          <i class="fa-brands fa-github"></i>
+          Ver repositorio
+        </a>
+
+        <a href="Comparacion_Prompts_Disenador.html" target="_blank" rel="noopener noreferrer" class="doc-gh-btn">
+          <i class="fa-solid fa-chart-line"></i>
+          Abrir métricas evaluadas
+        </a>
+      </div>
     </section>
 
     <section class="doc-grid">
@@ -541,14 +615,17 @@
       <aside class="doc-toc">
         <div class="doc-toc-title">Contenido</div>
         <a href="#resumen"><i class="fa-solid fa-circle-info"></i> Resumen</a>
+        <a href="#problema"><i class="fa-solid fa-triangle-exclamation"></i> Problema</a>
         <a href="#objetivo"><i class="fa-solid fa-bullseye"></i> Objetivo</a>
         <a href="#arquitectura"><i class="fa-solid fa-diagram-project"></i> Arquitectura</a>
-        <a href="#flujo"><i class="fa-solid fa-route"></i> Flujo de operación</a>
-        <a href="#evolucion"><i class="fa-solid fa-timeline"></i> Cambios realizados</a>
-        <a href="#backend"><i class="fa-solid fa-server"></i> Backend y APIs</a>
+        <a href="#flujo"><i class="fa-solid fa-route"></i> Flujo completo</a>
         <a href="#frontend"><i class="fa-solid fa-window-maximize"></i> Frontend</a>
+        <a href="#editor"><i class="fa-solid fa-table-cells"></i> Editor Ladder</a>
+        <a href="#backend"><i class="fa-solid fa-server"></i> Backend</a>
+        <a href="#contrato"><i class="fa-solid fa-code"></i> JSON lógico</a>
         <a href="#plc"><i class="fa-solid fa-microchip"></i> PLC y registros</a>
-        <a href="#ia"><i class="fa-solid fa-robot"></i> IA utilizada</a>
+        <a href="#seguridad"><i class="fa-solid fa-shield-halved"></i> Validación</a>
+        <a href="#metricas"><i class="fa-solid fa-chart-simple"></i> Métricas</a>
         <a href="#creditos"><i class="fa-solid fa-handshake"></i> Créditos</a>
       </aside>
 
@@ -558,73 +635,116 @@
         <section class="doc-card" id="resumen">
           <div class="doc-label">01 · Resumen ejecutivo</div>
           <h2>¿Qué es LadderVoice?</h2>
+
           <p>
-            LadderVoice, también referido como LAVO, es un sistema web pensado para facilitar la
-            programación y operación de lógica Ladder para PLC mediante lenguaje natural y voz.
-            El usuario dicta o escribe una instrucción, el sistema la interpreta con IA, genera una
-            configuración lógica validable y la transforma en una representación Ladder visual.
+            LadderVoice, también llamado LAVO, es un sistema web que busca facilitar la creación,
+            visualización y prueba de lógica Ladder para PLC a partir de instrucciones en lenguaje natural.
+            El usuario puede escribir o dictar una instrucción como “con I1 enciende Q10 y con I2 apágala”,
+            y el sistema la transforma en una estructura lógica que puede visualizarse como diagrama Ladder.
           </p>
+
           <p>
-            El proyecto integra un frontend desplegable en GitHub Pages, un backend con FastAPI,
-            servicios de IA para transcripción y generación lógica, y un puente local capaz de enviar
-            configuraciones al PLC Horner XL4 / XC1E5 mediante Modbus TCP.
+            La idea central del proyecto no es reemplazar por completo la programación industrial tradicional,
+            sino crear una capa asistida por inteligencia artificial que ayude a convertir necesidades humanas
+            en una lógica estructurada, validable y entendible antes de llevarla al PLC.
+          </p>
+
+          <p>
+            Para lograrlo, el proyecto separa responsabilidades: el frontend se encarga de la experiencia
+            visual, el editor Ladder, el chat y la simulación; el backend se encarga de la transcripción de voz,
+            la generación lógica con IA y la comunicación opcional con el PLC.
           </p>
 
           <div class="doc-tags">
-            <span class="doc-tag">LadderVoice</span>
             <span class="doc-tag">LAVO</span>
+            <span class="doc-tag">LadderVoice</span>
             <span class="doc-tag">PLC Horner XL4 / XC1E5</span>
             <span class="doc-tag">Cscape</span>
             <span class="doc-tag">Modbus TCP</span>
             <span class="doc-tag">Groq</span>
+            <span class="doc-tag">Whisper</span>
+            <span class="doc-tag">JSON lógico</span>
+          </div>
+        </section>
+
+        <!-- PROBLEMA -->
+        <section class="doc-card" id="problema">
+          <div class="doc-label">02 · Problema que atiende</div>
+          <h2>La programación PLC puede ser poco accesible para usuarios nuevos</h2>
+
+          <p>
+            Los PLCs se programan normalmente con herramientas especializadas como Cscape. Estas herramientas
+            son potentes, pero requieren conocer símbolos, contactos, bobinas, enclavamientos, timers,
+            contadores, direcciones de entradas y salidas, y el flujo de escaneo del PLC.
+          </p>
+
+          <p>
+            En un entorno educativo o de prototipado, muchas veces la persona sabe qué quiere que haga el
+            sistema, pero no sabe todavía cómo convertirlo en lógica Ladder. Por ejemplo, puede saber que quiere
+            “un botón de arranque, un botón de paro y una lámpara que quede encendida”, pero no necesariamente
+            sabe construir el enclavamiento con contacto de retención.
+          </p>
+
+          <div class="doc-mini-grid">
+            <div class="doc-mini">
+              <i class="fa-solid fa-keyboard"></i>
+              <h3>Barrera técnica</h3>
+              <p>El usuario debe conocer sintaxis, direcciones, estructura Ladder y lógica de control.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-bug"></i>
+              <h3>Errores comunes</h3>
+              <p>Una mala interpretación puede activar salidas incorrectas o generar lógica incompleta.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-graduation-cap"></i>
+              <h3>Uso educativo</h3>
+              <p>El proyecto ayuda a explicar cómo una instrucción humana se convierte en lógica Ladder.</p>
+            </div>
           </div>
         </section>
 
         <!-- OBJETIVO -->
         <section class="doc-card" id="objetivo">
-          <div class="doc-label">02 · Objetivo del proyecto</div>
-          <h2>Programar lógica de control usando lenguaje natural</h2>
+          <div class="doc-label">03 · Objetivo del proyecto</div>
+          <h2>Convertir lenguaje natural en lógica Ladder validable</h2>
+
           <p>
-            El objetivo principal fue construir una herramienta que permitiera pasar de una instrucción
-            humana, como “con el botón I1 enciende la lámpara verde y con I2 apágala”, a una lógica de
-            control estructurada, visible y eventualmente aplicable a un PLC físico.
+            El objetivo principal de LAVO es permitir que una instrucción escrita o hablada se convierta en una
+            lógica de control estructurada. Esa lógica debe poder revisarse visualmente, simularse y, si se cuenta
+            con el entorno físico correcto, aplicarse al PLC mediante registros de configuración.
           </p>
 
-          <div class="doc-mini-grid">
-            <div class="doc-mini">
-              <i class="fa-solid fa-microphone"></i>
-              <h3>Entrada por voz</h3>
-              <p>El usuario puede grabar una instrucción desde el navegador y convertirla a texto.</p>
-            </div>
-
-            <div class="doc-mini">
-              <i class="fa-solid fa-brain"></i>
-              <h3>Interpretación con IA</h3>
-              <p>El texto se manda a un modelo LLM para obtener una configuración lógica estructurada.</p>
-            </div>
-
-            <div class="doc-mini">
-              <i class="fa-solid fa-table-cells"></i>
-              <h3>Visualización Ladder</h3>
-              <p>El frontend compila esa lógica a un programa Ladder visual, validado y entendible.</p>
-            </div>
-          </div>
+          <h3>Objetivos específicos</h3>
+          <ul class="doc-list">
+            <li>Capturar instrucciones por texto o voz desde una página web.</li>
+            <li>Transcribir audio a texto usando un modelo de voz a texto.</li>
+            <li>Interpretar la intención del usuario con un LLM.</li>
+            <li>Generar un JSON lógico simple, limitado y validable.</li>
+            <li>Compilar ese JSON lógico a una representación Ladder visual.</li>
+            <li>Permitir simulación básica desde el navegador.</li>
+            <li>Preparar una estrategia para controlar el PLC usando registros maestros.</li>
+            <li>Documentar resultados y métricas de generación para evaluar el comportamiento del modelo.</li>
+          </ul>
 
           <div class="doc-note">
-            Una decisión importante fue evitar que la IA dibujara directamente la geometría Ladder.
-            En su lugar, la IA solo interpreta la intención y devuelve un JSON lógico simple; después,
-            el frontend valida y compila ese JSON de manera determinista.
+            La decisión más importante fue que la IA no dibuja directamente el Ladder. La IA solo interpreta
+            la intención y genera una descripción lógica. Después, el frontend valida y compila esa descripción
+            con reglas propias del proyecto.
           </div>
         </section>
 
         <!-- ARQUITECTURA -->
         <section class="doc-card" id="arquitectura">
-          <div class="doc-label">03 · Arquitectura general</div>
-          <h2>Separación entre interfaz, IA y control físico</h2>
+          <div class="doc-label">04 · Arquitectura general</div>
+          <h2>Separación entre interfaz, inteligencia artificial y control físico</h2>
+
           <p>
-            La arquitectura se dividió en capas para evitar que una sola parte del sistema tuviera
-            demasiada responsabilidad. El navegador se encarga de la interfaz, el backend de IA se
-            encarga de transcribir e interpretar, y el puente local se encarga de comunicarse con el PLC.
+            La arquitectura se diseñó por capas para que cada parte tenga una responsabilidad clara. Esto evita
+            que la IA tenga control directo sobre el PLC y permite que el frontend funcione como una herramienta
+            visual independiente, mientras el backend concentra la comunicación con los modelos y servicios externos.
           </p>
 
           <table class="doc-table">
@@ -632,404 +752,558 @@
               <tr>
                 <th>Capa</th>
                 <th>Responsabilidad</th>
-                <th>Archivos principales</th>
+                <th>Archivos o elementos relacionados</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td>Frontend web</td>
-                <td>Interfaz visual, asistente, editor Ladder, validación, render y simulación.</td>
-                <td><code>index.html</code>, <code>asistente.html</code>, <code>ladder.html</code>, <code>assets/js/ladder/*</code></td>
+                <td>Interfaz principal, chat IA, documentación, editor Ladder, render, simulación y validación visual.</td>
+                <td><code>index.html</code>, <code>ladder.html</code>, <code>documentacion.html</code>, <code>assets/js/*</code></td>
               </tr>
+
+              <tr>
+                <td>Editor Ladder</td>
+                <td>Convierte estructuras de lógica en rungs, contactos, bobinas, ramas y elementos visibles.</td>
+                <td><code>assets/js/ladder/app.js</code>, <code>renderer.js</code>, <code>simulator.js</code></td>
+              </tr>
+
+              <tr>
+                <td>Compilador lógico</td>
+                <td>Recibe JSON lógico simple y lo transforma en un esquema Ladder renderizable.</td>
+                <td><code>logicToSchema.js</code>, <code>validate.js</code>, <code>schema.js</code></td>
+              </tr>
+
               <tr>
                 <td>Backend IA</td>
-                <td>Transcripción de audio, generación de JSON lógico, historial y memoria por feedback.</td>
-                <td><code>app.py</code>, <code>context_json/contexto.json</code>, <code>memoria/ejemplos.json</code></td>
+                <td>Recibe audio o texto, llama a modelos de IA, genera respuestas estructuradas y devuelve JSON al frontend.</td>
+                <td>Backend separado desplegado en Render / FastAPI</td>
               </tr>
-              <tr>
-                <td>Compilador Ladder</td>
-                <td>Transforma el JSON lógico simple en un esquema Ladder renderizable.</td>
-                <td><code>logicToSchema.js</code>, <code>validate.js</code>, <code>renderer.js</code></td>
-              </tr>
+
               <tr>
                 <td>Puente PLC</td>
-                <td>Escribe registros en el PLC por Modbus TCP sin reprogramar todo el PLC desde Python.</td>
-                <td><code>plc_maestro.py</code>, endpoint <code>/aplicar-plc</code></td>
+                <td>Permite escribir registros en el PLC Horner mediante Modbus TCP cuando se trabaja localmente.</td>
+                <td>Script local de aplicación al PLC y endpoint de aplicación</td>
               </tr>
             </tbody>
           </table>
 
-          <pre class="doc-code"><code>Usuario
-  → Voz o texto
-  → Frontend web
-  → Backend FastAPI
-  → Groq STT / Groq LLM
-  → JSON lógico simple
-  → Validación frontend
-  → Compilación a Ladder
-  → Visualización / simulación
-  → Puente local Modbus TCP
-  → PLC Horner XL4 / XC1E5</code></pre>
+          <pre class="doc-code"><code>Flujo general:
+
+Usuario
+  → escribe o dicta una instrucción
+  → frontend captura texto/audio
+  → backend transcribe si hay audio
+  → backend interpreta con LLM
+  → LLM devuelve JSON lógico
+  → frontend valida el JSON
+  → frontend compila a Ladder
+  → frontend renderiza y simula
+  → si aplica, backend local escribe registros al PLC</code></pre>
         </section>
 
         <!-- FLUJO -->
         <section class="doc-card" id="flujo">
-          <div class="doc-label">04 · Flujo de operación</div>
-          <h2>De una frase hablada a una lógica Ladder</h2>
+          <div class="doc-label">05 · Flujo completo de operación</div>
+          <h2>De una frase hablada a un programa Ladder visual</h2>
 
           <div class="doc-flow">
             <div class="doc-step">
               <div class="doc-step-num">1</div>
               <div>
-                <strong>Captura de instrucción</strong>
-                <span>El usuario escribe o dicta una instrucción desde la página. En el flujo de voz, el navegador graba audio usando la interfaz web.</span>
+                <strong>Entrada del usuario</strong>
+                <span>El usuario escribe o dicta una instrucción desde la página web. Puede pedir una lógica directa, un enclavamiento, una salida con timer o una combinación sencilla de entradas y salidas.</span>
               </div>
             </div>
 
             <div class="doc-step">
               <div class="doc-step-num">2</div>
               <div>
-                <strong>Transcripción STT</strong>
-                <span>El audio se envía al backend mediante <code>/transcribir</code>, donde se utiliza Groq con Whisper para convertir el audio a texto en español.</span>
+                <strong>Captura y envío al backend</strong>
+                <span>El frontend toma el texto o el archivo de audio y lo manda al backend. La API key nunca debe exponerse directamente en el frontend.</span>
               </div>
             </div>
 
             <div class="doc-step">
               <div class="doc-step-num">3</div>
               <div>
-                <strong>Interpretación lógica</strong>
-                <span>El texto se manda a <code>/generar-logica</code>. El modelo LLM interpreta la intención y devuelve un JSON lógico simple, no una geometría Ladder.</span>
+                <strong>Transcripción de voz</strong>
+                <span>Si el usuario usó voz, el backend utiliza un modelo STT para convertir el audio a texto. El resultado se devuelve al frontend para que el usuario pueda ver qué entendió el sistema.</span>
               </div>
             </div>
 
             <div class="doc-step">
               <div class="doc-step-num">4</div>
               <div>
-                <strong>Validación</strong>
-                <span>El frontend valida que las entradas, salidas, timers, contadores y modos existan dentro del perfil del dispositivo.</span>
+                <strong>Generación lógica</strong>
+                <span>El texto se envía al modelo LLM, que debe responder con un JSON lógico simple. La respuesta no debe ser texto libre ni código Ladder dibujado.</span>
               </div>
             </div>
 
             <div class="doc-step">
               <div class="doc-step-num">5</div>
               <div>
-                <strong>Compilación visual</strong>
-                <span>El compilador del frontend transforma la configuración lógica en rungs, contactos, ramas, bobinas y elementos visuales.</span>
+                <strong>Validación del contrato</strong>
+                <span>El frontend revisa que el JSON tenga salidas válidas, entradas existentes, modos permitidos y estructura correcta antes de intentar dibujar algo.</span>
               </div>
             </div>
 
             <div class="doc-step">
               <div class="doc-step-num">6</div>
               <div>
+                <strong>Compilación a Ladder</strong>
+                <span>Una vez validada, la lógica se convierte en rungs, contactos, bobinas y ramas. Esta parte es determinista y no depende de que la IA invente posiciones visuales.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">7</div>
+              <div>
+                <strong>Simulación y revisión</strong>
+                <span>El usuario puede revisar el resultado, observar qué entradas controlan qué salidas y probar la lógica antes de aplicarla a un sistema físico.</span>
+              </div>
+            </div>
+
+            <div class="doc-step">
+              <div class="doc-step-num">8</div>
+              <div>
                 <strong>Aplicación al PLC</strong>
-                <span>Cuando se requiere control físico, el backend local envía la configuración al PLC escribiendo registros mediante Modbus TCP.</span>
+                <span>Cuando se usa el entorno físico, el sistema no descarga un programa nuevo cada vez. En su lugar, actualiza registros que el programa maestro del PLC interpreta.</span>
               </div>
             </div>
           </div>
         </section>
 
-        <!-- EVOLUCIÓN -->
-        <section class="doc-card" id="evolucion">
-          <div class="doc-label">05 · Evolución y cambios realizados</div>
-          <h2>Cómo fue madurando el sistema</h2>
-          <p>
-            El desarrollo no nació como una arquitectura definitiva. Se fue ajustando conforme aparecieron
-            problemas reales de integración, validación, generación de código y conexión con el PLC.
-          </p>
-
-          <table class="doc-table">
-            <thead>
-              <tr>
-                <th>Etapa</th>
-                <th>Cambio realizado</th>
-                <th>Motivo</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td>Definición inicial</td>
-                <td>Se planteó un agente capaz de recibir voz y traducirla a acciones de automatización.</td>
-                <td>Reducir la fricción de programar PLCs manualmente.</td>
-              </tr>
-              <tr>
-                <td>Selección del PLC</td>
-                <td>Se definió el uso del PLC Horner XL4 / XC1E5 con Cscape.</td>
-                <td>Trabajar con el hardware real disponible en laboratorio.</td>
-              </tr>
-              <tr>
-                <td>Backend de IA</td>
-                <td>Se agregó FastAPI, endpoints de transcripción, generación Ladder y generación lógica.</td>
-                <td>Separar la interfaz web de los modelos de IA y de las claves API.</td>
-              </tr>
-              <tr>
-                <td>Groq STT</td>
-                <td>Se integró Whisper desde Groq para transcribir audio en español.</td>
-                <td>Obtener texto confiable a partir de comandos hablados.</td>
-              </tr>
-              <tr>
-                <td>Generación Ladder inicial</td>
-                <td>Se probaron respuestas tipo JSON Ladder completo con rungs, filas y elementos.</td>
-                <td>Permitió validar el concepto, pero era demasiado libre y podía generar estructuras inconsistentes.</td>
-              </tr>
-              <tr>
-                <td>Arquitectura única</td>
-                <td>Se cambió a un contrato de JSON lógico simple.</td>
-                <td>La IA solo interpreta; el frontend compila de forma determinista y evita renderizar lógica falsa.</td>
-              </tr>
-              <tr>
-                <td>Editor visual</td>
-                <td>Se consolidó el editor Ladder con render, simulador, validación y generación por chat.</td>
-                <td>Hacer que el usuario vea claramente la lógica antes de aplicarla.</td>
-              </tr>
-              <tr>
-                <td>Puente PLC</td>
-                <td>Se implementó <code>plc_maestro.py</code> para escribir registros <code>%R</code> por Modbus TCP.</td>
-                <td>No reprogramar el PLC completo desde Python, sino cambiar una configuración maestra.</td>
-              </tr>
-              <tr>
-                <td>Memoria y feedback</td>
-                <td>Se agregó almacenamiento de ejemplos aceptados, corregidos o rechazados.</td>
-                <td>Mejorar respuestas futuras con ejemplos validados por el usuario.</td>
-              </tr>
-              <tr>
-                <td>Copiloto de chat</td>
-                <td>Se incorporó un copiloto de chat con perfiles de esfuerzo: genérico, instantánea, media y alta.</td>
-                <td>Ofrecer un asistente para explicación, depuración y apoyo técnico.</td>
-              </tr>
-            </tbody>
-          </table>
-        </section>
-
-        <!-- BACKEND -->
-        <section class="doc-card" id="backend">
-          <div class="doc-label">06 · Backend y APIs</div>
-          <h2>Servicios usados para IA, voz y control</h2>
-          <p>
-            El backend principal está construido con FastAPI. Su función es recibir peticiones desde el
-            frontend, comunicarse con los modelos de IA, guardar contexto y, cuando se ejecuta localmente,
-            servir como puente hacia el PLC.
-          </p>
-
-          <h3>Endpoints principales</h3>
-          <table class="doc-table">
-            <thead>
-              <tr>
-                <th>Endpoint</th>
-                <th>Función</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><code>POST /transcribir</code></td>
-                <td>Recibe audio y devuelve texto usando Groq Whisper.</td>
-              </tr>
-              <tr>
-                <td><code>POST /voz-a-ladder</code></td>
-                <td>Flujo completo de audio a Ladder usado durante las primeras pruebas.</td>
-              </tr>
-              <tr>
-                <td><code>POST /generar-ladder</code></td>
-                <td>Genera una estructura Ladder más directa a partir de texto.</td>
-              </tr>
-              <tr>
-                <td><code>POST /generar-logica</code></td>
-                <td>Endpoint principal actual: texto a JSON lógico simple.</td>
-              </tr>
-              <tr>
-                <td><code>POST /aplicar-plc</code></td>
-                <td>Aplica la configuración al PLC físico mediante Modbus TCP.</td>
-              </tr>
-              <tr>
-                <td><code>GET /plc/escanear</code></td>
-                <td>Busca dispositivos Modbus TCP en la red local.</td>
-              </tr>
-              <tr>
-                <td><code>POST /feedback</code></td>
-                <td>Registra si una respuesta fue aceptada, corregida o rechazada.</td>
-              </tr>
-              <tr>
-                <td><code>GET /memoria</code></td>
-                <td>Muestra la memoria de ejemplos usados para mejorar futuras generaciones.</td>
-              </tr>
-            </tbody>
-          </table>
-
-          <h3>APIs utilizadas</h3>
-          <ul class="doc-list">
-            <li><strong>Groq API:</strong> usada para transcripción STT con <code>whisper-large-v3</code> y para generación lógica con un modelo LLM configurado desde variables de entorno.</li>
-            <li><strong>Groq para copiloto de chat:</strong> usado para responder dudas técnicas mediante perfiles de esfuerzo.</li>
-            <li><strong>Ollama:</strong> considerado y probado como alternativa local para asistencia técnica y modelos locales.</li>
-            <li><strong>Modbus TCP:</strong> usado para comunicar Python con el PLC Horner mediante registros.</li>
-            <li><strong>APIs del navegador:</strong> usadas para grabación de audio, interacción web y posible síntesis de voz.</li>
-          </ul>
-
-          <pre class="doc-code"><code>Variables relevantes del backend:
-
-GROQ_API_KEY       → llave para generación con LLM
-GROQ_API_KEY_stt   → llave para transcripción STT
-GROQ_MODEL         → modelo de generación lógica
-GROQ_STT_MODEL     → modelo de transcripción, por ejemplo whisper-large-v3
-ADMIN_TOKEN        → token para rutas administrativas
-CONTEXTO_JSON      → ruta del contexto de referencia
-MEMORIA_JSON       → ruta de memoria de ejemplos</code></pre>
-        </section>
-
         <!-- FRONTEND -->
         <section class="doc-card" id="frontend">
-          <div class="doc-label">07 · Frontend</div>
-          <h2>Interfaz web, asistente y editor Ladder</h2>
+          <div class="doc-label">06 · Frontend</div>
+          <h2>La parte visual del proyecto</h2>
+
           <p>
-            El frontend está desarrollado principalmente con HTML, CSS y JavaScript modular. Se decidió
-            mantener una arquitectura ligera para que pudiera desplegarse como sitio estático en GitHub Pages.
+            El frontend es la única parte que se modifica con este cambio. Está compuesto por páginas HTML,
+            estilos CSS y módulos JavaScript. Su objetivo es que el usuario pueda interactuar con LAVO sin tener
+            que ver directamente el backend ni las llamadas a los modelos.
           </p>
 
-          <h3>Páginas principales</h3>
+          <h3>Páginas principales del frontend</h3>
+
           <table class="doc-table">
             <thead>
               <tr>
                 <th>Página</th>
-                <th>Uso</th>
+                <th>Función dentro del proyecto</th>
               </tr>
             </thead>
             <tbody>
               <tr>
                 <td><code>index.html</code></td>
-                <td>Página del copiloto IA y entrada principal del proyecto.</td>
+                <td>Entrada principal tipo Chat IA. Sirve para preguntar, explicar o pedir apoyo al asistente inteligente.</td>
               </tr>
-              <tr>
-                <td><code>asistente.html</code></td>
-                <td>Interfaz enfocada en el asistente de voz.</td>
-              </tr>
+
               <tr>
                 <td><code>ladder.html</code></td>
-                <td>Editor visual Ladder con panel de chat, simulación y herramientas.</td>
+                <td>Editor visual Ladder. Aquí se ve, genera, valida, simula y manipula la lógica de control.</td>
               </tr>
-              <tr>
-                <td><code>about.html</code></td>
-                <td>Explicación general del proyecto.</td>
-              </tr>
+
               <tr>
                 <td><code>documentacion.html</code></td>
-                <td>Esta nueva página: documentación técnica, evolución y créditos.</td>
+                <td>Página de explicación técnica del sistema, su arquitectura, flujo, decisiones y métricas.</td>
+              </tr>
+
+              <tr>
+                <td><code>Comparacion_Prompts_Disenador.html</code></td>
+                <td>Reporte externo de métricas evaluadas. Se abre desde esta documentación mediante un enlace al final.</td>
               </tr>
             </tbody>
           </table>
 
-          <h3>Módulos relevantes</h3>
+          <h3>Módulos importantes del frontend</h3>
+
           <ul class="doc-list">
-            <li><code>assets/js/ladder/generate.js</code>: punto único para generar programas Ladder desde texto o JSON lógico pegado.</li>
-            <li><code>assets/js/ladder/gen-bridge.js</code>: expone <code>window.LadderGen</code> para que páginas no modulares puedan usar el mismo flujo.</li>
-            <li><code>assets/js/ladder/validate.js</code>: valida el JSON lógico antes de renderizar.</li>
-            <li><code>assets/js/ladder/compiler/logicToSchema.js</code>: compila la lógica a un esquema Ladder visual.</li>
-            <li><code>assets/js/ladder/renderer.js</code>: dibuja los rungs en pantalla.</li>
+            <li><code>assets/js/main.js</code>: controla interacción general de la página principal.</li>
+            <li><code>assets/js/copilot.js</code>: maneja la experiencia del chat IA.</li>
+            <li><code>assets/js/ladder/app.js</code>: orquesta el editor Ladder.</li>
+            <li><code>assets/js/ladder/chat.js</code>: conecta el panel de chat con la generación de lógica.</li>
+            <li><code>assets/js/ladder/generate.js</code>: centraliza la generación desde texto o JSON lógico.</li>
+            <li><code>assets/js/ladder/gen-bridge.js</code>: expone funciones globales para conectar páginas no modulares con el generador.</li>
+            <li><code>assets/js/ladder/validate.js</code>: valida que la lógica recibida sea compatible con el contrato del proyecto.</li>
+            <li><code>assets/js/ladder/compiler/logicToSchema.js</code>: convierte JSON lógico en un esquema Ladder visual.</li>
+            <li><code>assets/js/ladder/renderer.js</code>: dibuja el Ladder en pantalla.</li>
             <li><code>assets/js/ladder/simulator.js</code>: permite probar la lógica desde el navegador.</li>
+          </ul>
+        </section>
+
+        <!-- EDITOR LADDER -->
+        <section class="doc-card" id="editor">
+          <div class="doc-label">07 · Editor Ladder</div>
+          <h2>Visualización, simulación y validación del programa</h2>
+
+          <p>
+            El editor Ladder es la parte donde la idea generada por IA se vuelve visible. En vez de mostrar solo
+            un JSON, el editor permite ver contactos, salidas, ramas y elementos de control de una forma más cercana
+            a cómo se trabaja en un entorno PLC.
+          </p>
+
+          <h3>Funciones principales</h3>
+
+          <div class="doc-mini-grid">
+            <div class="doc-mini">
+              <i class="fa-solid fa-wand-magic-sparkles"></i>
+              <h3>Generación</h3>
+              <p>Recibe instrucciones y genera lógica Ladder usando el backend de IA.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-check-double"></i>
+              <h3>Validación</h3>
+              <p>Revisa que entradas, salidas, modos, timers y contadores sean válidos.</p>
+            </div>
+
+            <div class="doc-mini">
+              <i class="fa-solid fa-play"></i>
+              <h3>Simulación</h3>
+              <p>Permite probar entradas y ver cómo deberían responder las salidas.</p>
+            </div>
+          </div>
+
+          <h3>Por qué es importante el editor</h3>
+          <p>
+            La IA puede cometer errores si se le deja generar estructuras libres. Por eso el editor funciona como
+            filtro visual y lógico: muestra lo que el sistema entendió, permite revisarlo y evita aplicar una lógica
+            confusa sin validación previa.
+          </p>
+        </section>
+
+        <!-- BACKEND -->
+        <section class="doc-card" id="backend">
+          <div class="doc-label">08 · Backend</div>
+          <h2>Servicios de IA y comunicación</h2>
+
+          <p>
+            Aunque este cambio no modifica el backend, es importante documentar su papel. El backend actúa como
+            intermediario entre el frontend y los servicios de IA. También puede servir como puente local para
+            comunicación con el PLC, dependiendo del entorno de ejecución.
+          </p>
+
+          <h3>Responsabilidades del backend</h3>
+
+          <ul class="doc-list">
+            <li>Recibir audio desde el frontend.</li>
+            <li>Convertir audio a texto mediante un modelo STT.</li>
+            <li>Enviar instrucciones de texto al modelo LLM.</li>
+            <li>Forzar que el modelo responda en formato JSON lógico.</li>
+            <li>Devolver al frontend una respuesta limpia y validable.</li>
+            <li>Guardar o consultar memoria de ejemplos cuando el flujo lo requiere.</li>
+            <li>Aplicar configuración al PLC mediante registros cuando se ejecuta localmente.</li>
+          </ul>
+
+          <h3>Endpoints documentados</h3>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Endpoint</th>
+                <th>Descripción</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>POST /transcribir</code></td>
+                <td>Recibe audio y devuelve texto transcrito.</td>
+              </tr>
+
+              <tr>
+                <td><code>POST /voz-a-ladder</code></td>
+                <td>Flujo completo de voz a una estructura Ladder. Fue útil para pruebas iniciales.</td>
+              </tr>
+
+              <tr>
+                <td><code>POST /generar-ladder</code></td>
+                <td>Genera una estructura de Ladder de forma más directa a partir de texto.</td>
+              </tr>
+
+              <tr>
+                <td><code>POST /generar-logica</code></td>
+                <td>Endpoint principal para obtener JSON lógico simple a partir de lenguaje natural.</td>
+              </tr>
+
+              <tr>
+                <td><code>POST /aplicar-plc</code></td>
+                <td>Aplica una configuración al PLC mediante escritura de registros.</td>
+              </tr>
+
+              <tr>
+                <td><code>GET /plc/escanear</code></td>
+                <td>Busca dispositivos Modbus TCP disponibles en la red local.</td>
+              </tr>
+
+              <tr>
+                <td><code>POST /feedback</code></td>
+                <td>Registra si una respuesta fue aceptada, corregida o rechazada.</td>
+              </tr>
+
+              <tr>
+                <td><code>GET /memoria</code></td>
+                <td>Consulta ejemplos guardados para mejorar generaciones futuras.</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="doc-warning">
+            Las API keys deben permanecer siempre en el backend o en variables de entorno del servicio desplegado.
+            No deben escribirse directamente en archivos HTML o JavaScript del frontend.
+          </div>
+        </section>
+
+        <!-- CONTRATO JSON -->
+        <section class="doc-card" id="contrato">
+          <div class="doc-label">09 · Contrato de JSON lógico</div>
+          <h2>La IA responde con una estructura limitada y revisable</h2>
+
+          <p>
+            El contrato de JSON lógico es la parte más importante para controlar el comportamiento de la IA. En lugar
+            de pedirle que genere un programa Ladder completo con coordenadas o elementos visuales, se le pide una
+            descripción estructurada de la intención de control.
+          </p>
+
+          <h3>Ejemplo de instrucción</h3>
+
+          <pre class="doc-code"><code>Usuario:
+"Genera una lógica de enclavamiento donde I1 sea arranque,
+I2 sea paro y Q10 quede encendida hasta presionar I2."</code></pre>
+
+          <h3>Ejemplo de salida esperada</h3>
+
+          <pre class="doc-code"><code>{
+  "name": "Enclavamiento_Inicio_Paro",
+  "device_profile": "maletin_basico",
+  "reset_before": true,
+  "system": {
+    "enable": true,
+    "global_stop": null
+  },
+  "outputs": [
+    {
+      "output": "Q10",
+      "logic": {
+        "mode": "enclavado",
+        "start": "I1",
+        "stop": "I2"
+      },
+      "timer": null,
+      "counter": null,
+      "expr": "(I1 + Q10) * !I2",
+      "comment": "I1 arranca y enclava Q10; I2 detiene la salida."
+    }
+  ]
+}</code></pre>
+
+          <h3>Ventajas de este enfoque</h3>
+
+          <ul class="doc-list">
+            <li>Reduce respuestas ambiguas del modelo.</li>
+            <li>Evita que la IA invente elementos Ladder no soportados.</li>
+            <li>Permite validar antes de renderizar.</li>
+            <li>Facilita convertir la lógica a registros del PLC.</li>
+            <li>Hace más claro qué entendió el modelo.</li>
+            <li>Permite comparar resultados en pruebas repetidas.</li>
           </ul>
         </section>
 
         <!-- PLC -->
         <section class="doc-card" id="plc">
-          <div class="doc-label">08 · PLC, Cscape y registros maestros</div>
-          <h2>Control del PLC sin reprogramarlo desde cero cada vez</h2>
+          <div class="doc-label">10 · PLC, Cscape y registros maestros</div>
+          <h2>Control físico sin descargar un programa nuevo cada vez</h2>
+
           <p>
-            Una de las decisiones más importantes fue dejar en el PLC un programa Ladder base o maestro.
-            En lugar de generar y descargar un programa nuevo en cada instrucción, Python actualiza registros
-            de configuración. El PLC lee esos registros y cambia su comportamiento lógico.
+            Para el entorno físico se considera un PLC Horner XL4 / XC1E5 usando Cscape. Una decisión clave del
+            proyecto fue no intentar reemplazar Cscape desde Python. En su lugar, se propone dejar cargado en el PLC
+            un programa Ladder maestro que lea registros de configuración.
+          </p>
+
+          <p>
+            Así, Python no tiene que generar y descargar un programa completo cada vez. Solo cambia valores en registros.
+            El PLC ya tiene una lógica base que interpreta esos valores y decide qué salida se activa, bajo qué modo
+            y con qué condiciones.
           </p>
 
           <h3>PLC objetivo</h3>
+
           <ul class="doc-list">
             <li><strong>PLC:</strong> Horner XL4 / XC1E5.</li>
             <li><strong>Software:</strong> Cscape.</li>
-            <li><strong>Comunicación:</strong> Modbus TCP, puerto 502.</li>
-            <li><strong>Entradas principales:</strong> I1, I2, I3, I4 e I7.</li>
-            <li><strong>Salidas principales:</strong> Q10, Q11 y Q12.</li>
+            <li><strong>Comunicación:</strong> Modbus TCP.</li>
+            <li><strong>Puerto típico:</strong> 502.</li>
+            <li><strong>Entradas usadas en pruebas:</strong> I1, I2, I3, I4, I7.</li>
+            <li><strong>Salidas usadas en pruebas:</strong> Q10, Q11, Q12.</li>
           </ul>
 
-          <h3>Idea de registros maestros</h3>
-          <p>
-            El archivo <code>plc_maestro.py</code> traduce el JSON lógico a escrituras en registros.
-            Cada salida tiene un bloque de registros propio, por ejemplo Q10, Q11 y Q12. Ahí se guarda
-            el modo de operación, entradas asociadas, paro, habilitación, timer y contador.
-          </p>
+          <h3>Idea conceptual de registros</h3>
 
-          <pre class="doc-code"><code>Ejemplo conceptual:
+          <pre class="doc-code"><code>Bloques conceptuales:
 
-Q10 → bloque de registros %R10..%R19
-Q11 → bloque de registros %R20..%R29
-Q12 → bloque de registros %R30..%R39
+Q10 → registros de configuración para salida 1
+Q11 → registros de configuración para salida 2
+Q12 → registros de configuración para salida 3
 
-Modos:
-0 → apagado
-1 → directo
-2 → enclavado
+Cada bloque puede guardar:
+- salida habilitada
+- modo de operación
+- entrada de arranque
+- entrada de paro
+- timer
+- contador
+- reset
+- parámetros auxiliares</code></pre>
 
-Capas opcionales:
-timer   → on_delay o pulse
-counter → up o up_held
-reset   → entrada física configurable</code></pre>
+          <h3>Modos de operación</h3>
+
+          <table class="doc-table">
+            <thead>
+              <tr>
+                <th>Modo</th>
+                <th>Descripción</th>
+                <th>Ejemplo</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>directo</code></td>
+                <td>La salida sigue directamente el estado de una entrada.</td>
+                <td>I1 activa Q10 mientras I1 esté presionada.</td>
+              </tr>
+
+              <tr>
+                <td><code>enclavado</code></td>
+                <td>La salida queda retenida después del arranque hasta recibir paro.</td>
+                <td>I1 enciende Q10; I2 apaga Q10.</td>
+              </tr>
+
+              <tr>
+                <td><code>timer</code></td>
+                <td>Agrega comportamiento temporal como retardo o pulso.</td>
+                <td>I1 activa Q10 después de cierto tiempo.</td>
+              </tr>
+
+              <tr>
+                <td><code>counter</code></td>
+                <td>Activa una salida después de cierto número de eventos.</td>
+                <td>Después de 3 pulsos en I1, se activa Q10.</td>
+              </tr>
+            </tbody>
+          </table>
 
           <div class="doc-note">
-            Esta estrategia hizo el proyecto más viable: Python no sustituye a Cscape ni descarga
-            continuamente programas completos. Python solo modifica parámetros y el PLC ejecuta la
-            lógica maestro ya cargada.
+            Esta estrategia es más realista para un proyecto académico con PLC físico: Cscape sigue siendo la
+            herramienta base de programación, y LAVO funciona como una capa inteligente que modifica parámetros
+            de operación.
           </div>
         </section>
 
-        <!-- IA -->
-        <section class="doc-card" id="ia">
-          <div class="doc-label">09 · Uso de inteligencia artificial</div>
-          <h2>IA como apoyo para voz, generación y desarrollo</h2>
+        <!-- SEGURIDAD -->
+        <section class="doc-card" id="seguridad">
+          <div class="doc-label">11 · Validación y seguridad lógica</div>
+          <h2>La IA no debe tener control directo sin revisión</h2>
+
           <p>
-            La IA se usó en dos niveles: como parte funcional del sistema y como apoyo durante el desarrollo.
-            Dentro del sistema, ayuda a transcribir voz y traducir lenguaje natural a configuraciones lógicas.
-            Durante el desarrollo, diferentes asistentes ayudaron a estructurar, depurar y mejorar el proyecto.
+            Un sistema que genera lógica para PLC debe ser cuidadoso. Aunque el proyecto funciona como prototipo,
+            la lógica de control puede representar acciones físicas reales. Por eso se usan capas de validación
+            antes de renderizar o aplicar cualquier configuración.
           </p>
 
-          <h3>IA dentro del sistema</h3>
+          <h3>Validaciones importantes</h3>
+
           <ul class="doc-list">
-            <li><strong>STT:</strong> Groq Whisper convierte audio a texto.</li>
-            <li><strong>LLM:</strong> Groq interpreta instrucciones y genera JSON lógico simple.</li>
-            <li><strong>Copiloto de chat:</strong> Groq responde dudas y apoya con explicación técnica mediante perfiles de esfuerzo.</li>
-            <li><strong>Ollama:</strong> explorado como alternativa para correr modelos locales y comparar enfoques.</li>
+            <li>Comprobar que las entradas solicitadas existan en el perfil del dispositivo.</li>
+            <li>Comprobar que las salidas solicitadas estén permitidas.</li>
+            <li>Rechazar modos de operación desconocidos.</li>
+            <li>Evitar respuestas que no sean JSON válido.</li>
+            <li>Evitar instrucciones ambiguas que no puedan convertirse de forma segura.</li>
+            <li>Separar generación lógica de aplicación física al PLC.</li>
+            <li>Mostrar al usuario lo que el modelo entendió antes de aplicar cambios.</li>
           </ul>
 
-          <h3>Principio de seguridad del diseño</h3>
-          <p>
-            La IA no debe tener control absoluto sobre el PLC. Por eso se estableció un contrato de salida:
-            el modelo solo puede devolver una configuración lógica limitada a entradas, salidas, timers,
-            contadores y modos permitidos. Después, el sistema valida antes de renderizar o aplicar.
-          </p>
+          <h3>Principio de diseño seguro</h3>
 
-          <pre class="doc-code"><code>Texto del usuario:
-"Con I1 prende la lámpara verde y con I2 apágala"
+          <pre class="doc-code"><code>La IA interpreta.
+El frontend valida.
+El compilador estructura.
+El usuario revisa.
+El PLC ejecuta solamente una lógica previamente controlada.</code></pre>
 
-Salida esperada de la IA:
-{
-  "name": "Enclavamiento verde",
-  "device_profile": "maletin_basico",
-  "reset_before": true,
-  "system": { "enable": true, "global_stop": null },
-  "outputs": [
-    {
-      "output": "Q10",
-      "logic": { "mode": "enclavado", "start": "I1", "stop": "I2" },
-      "timer": null,
-      "counter": null,
-      "expr": "(I1 + Q10) * !I2",
-      "comment": "I1 enciende y enclava la verde; I2 la apaga"
-    }
-  ]
-}</code></pre>
+          <div class="doc-warning">
+            Para un uso industrial real harían falta más capas: revisión humana obligatoria, pruebas FAT/SAT,
+            límites físicos, paro de emergencia, permisos de usuario, bitácora de cambios y validación formal
+            de seguridad. En este proyecto, LAVO se plantea como prototipo educativo y de exploración tecnológica.
+          </div>
         </section>
 
-        <!-- CRÉDITOS -->
-        <section class="doc-card" id="creditos">
-          <div class="doc-label">10 · Créditos y herramientas de apoyo</div>
-          <h2>Herramientas que apoyaron el desarrollo</h2>
+        <!-- METRICAS -->
+        <section class="doc-card doc-metrics-card" id="metricas">
+          <div class="doc-label">12 · Métricas evaluadas</div>
+          <h2>Comparación de prompts del modo Diseñador</h2>
+
           <p>
-            Este proyecto fue desarrollado como parte de un trabajo académico de prospectiva tecnológica.
-            Su avance fue posible gracias a la combinación de conocimientos de automatización, desarrollo web,
-            programación en Python, pruebas con PLC y apoyo de herramientas de inteligencia artificial.
+            Además de la documentación técnica, el proyecto incluye una evaluación de métricas sobre prompts del
+            modo Diseñador. En esa comparación se revisan pruebas automáticas del endpoint de generación lógica,
+            midiendo aspectos como ciclos completados, JSON válido, esquema válido, interpretación correcta,
+            latencia y consistencia de respuesta.
+          </p>
+
+          <p>
+            El reporte se encuentra en el archivo <code>Comparacion_Prompts_Disenador.html</code>. Para que el
+            botón funcione, ese archivo debe estar colocado en la raíz del frontend, junto a
+            <code>documentacion.html</code>.
+          </p>
+
+          <div class="doc-metric-strip">
+            <div class="doc-metric">
+              <strong>JSON</strong>
+              <span>Revisión de respuestas válidas y parseables.</span>
+            </div>
+
+            <div class="doc-metric">
+              <strong>Schema</strong>
+              <span>Validación contra la estructura esperada.</span>
+            </div>
+
+            <div class="doc-metric">
+              <strong>Latencia</strong>
+              <span>Tiempo de respuesta de cada generación.</span>
+            </div>
+
+            <div class="doc-metric">
+              <strong>Consistencia</strong>
+              <span>Estabilidad del modelo ante prompts repetidos.</span>
+            </div>
+          </div>
+
+          <div class="doc-actions">
+            <a href="Comparacion_Prompts_Disenador.html" target="_blank" rel="noopener noreferrer" class="doc-btn doc-btn-primary">
+              <i class="fa-solid fa-chart-line"></i>
+              Abrir métricas evaluadas
+            </a>
+
+            <a href="ladder.html" class="doc-btn doc-btn-outline">
+              <i class="fa-solid fa-table-cells"></i>
+              Abrir Editor Ladder
+            </a>
+
+            <a href="index.html" class="doc-btn doc-btn-outline">
+              <i class="fa-solid fa-comments"></i>
+              Abrir Chat IA
+            </a>
+          </div>
+        </section>
+
+        <!-- CREDITOS -->
+        <section class="doc-card" id="creditos">
+          <div class="doc-label">13 · Créditos y herramientas de apoyo</div>
+          <h2>Herramientas que apoyaron el desarrollo</h2>
+
+          <p>
+            LAVO fue desarrollado como proyecto académico de prospectiva tecnológica, combinando automatización,
+            desarrollo web, programación en Python, integración con IA y pruebas orientadas a PLC.
           </p>
 
           <div class="doc-credit">
@@ -1039,9 +1313,8 @@ Salida esperada de la IA:
             <div>
               <strong>Claude Code</strong>
               <p>
-                Herramienta clave en el desarrollo. Fue especialmente importante para estructurar código,
-                refactorizar partes del proyecto, ordenar módulos y hacer posible la integración completa
-                entre frontend, backend y flujo de generación.
+                Herramienta de apoyo para estructurar código, refactorizar partes del proyecto, organizar módulos
+                y acelerar la integración entre frontend, backend y generación lógica.
               </p>
             </div>
           </div>
@@ -1053,9 +1326,8 @@ Salida esperada de la IA:
             <div>
               <strong>ChatGPT</strong>
               <p>
-                Usado como apoyo para definir arquitectura, explicar conceptos de PLC, generar y revisar
-                fragmentos de código, proponer flujos de trabajo, documentar decisiones y ordenar el desarrollo
-                paso a paso.
+                Utilizado para definir arquitectura, revisar código, explicar conceptos de PLC, documentar decisiones
+                técnicas y ordenar el desarrollo paso a paso.
               </p>
             </div>
           </div>
@@ -1067,8 +1339,7 @@ Salida esperada de la IA:
             <div>
               <strong>Gemini</strong>
               <p>
-                Utilizado para resolver algunas dudas puntuales y contrastar ideas durante el proceso de diseño
-                y validación del proyecto.
+                Usado para contrastar ideas, resolver dudas puntuales y apoyar algunas decisiones de diseño.
               </p>
             </div>
           </div>
@@ -1080,8 +1351,7 @@ Salida esperada de la IA:
             <div>
               <strong>Groq</strong>
               <p>
-                API utilizada para transcripción de voz con Whisper y para generación de respuestas estructuradas
-                mediante LLM, especialmente en el flujo de texto a JSON lógico.
+                API usada para transcripción de voz con Whisper y generación de lógica estructurada con modelos LLM.
               </p>
             </div>
           </div>
@@ -1093,22 +1363,20 @@ Salida esperada de la IA:
             <div>
               <strong>Ollama</strong>
               <p>
-                Herramienta considerada y probada como alternativa para ejecutar modelos locales y explorar
-                asistencia técnica sin depender completamente de servicios externos.
+                Considerado como alternativa para ejecutar modelos locales y comparar enfoques de asistencia con IA.
               </p>
             </div>
           </div>
 
           <div class="doc-note">
-            Agradecimiento especial a Claude Code: gran parte de la consolidación técnica del proyecto,
-            la organización del código y la integración práctica fueron posibles gracias a su apoyo durante
-            el desarrollo.
+            Esta documentación se actualizó únicamente en el frontend. No es necesario modificar el repositorio del backend
+            para que esta página extendida y el enlace a métricas funcionen.
           </div>
 
           <div class="doc-actions">
-            <a href="about.html" class="doc-btn doc-btn-outline">
+            <a href="index.html" class="doc-btn doc-btn-outline">
               <i class="fa-solid fa-arrow-left"></i>
-              Volver a Sobre el Proyecto
+              Volver a Chat IA
             </a>
 
             <a href="ladder.html" class="doc-btn doc-btn-primary">
@@ -1116,9 +1384,9 @@ Salida esperada de la IA:
               Abrir Editor Ladder
             </a>
 
-            <a href="asistente.html" class="doc-btn doc-btn-outline">
-              <i class="fa-solid fa-microphone"></i>
-              Abrir Asistente de Voz
+            <a href="Comparacion_Prompts_Disenador.html" target="_blank" rel="noopener noreferrer" class="doc-btn doc-btn-outline">
+              <i class="fa-solid fa-chart-simple"></i>
+              Ver métricas
             </a>
           </div>
         </section>
