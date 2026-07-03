@@ -533,6 +533,67 @@
       font-size: 0.78rem;
       line-height: 1.4;
     }
+
+    /* ---- Resultados ---- */
+    .doc-result-group {
+      margin-top: 1.4rem;
+    }
+    .doc-result-group:first-of-type {
+      margin-top: 1rem;
+    }
+
+    .doc-result-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1rem;
+      margin-top: 0.85rem;
+    }
+
+    @media (max-width: 740px) {
+      .doc-result-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .doc-result {
+      border: 1px solid var(--border);
+      background: #f8fbff;
+      border-radius: var(--radius-sm);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .doc-result video,
+    .doc-result img {
+      width: 100%;
+      display: block;
+      background: #0d2347;
+      aspect-ratio: 16 / 9;
+      object-fit: contain;
+    }
+
+    .doc-result-body {
+      padding: 0.8rem 0.9rem 0.95rem;
+    }
+
+    .doc-result-file {
+      font-family: var(--font-mono);
+      font-size: 0.74rem;
+      color: var(--blue-400);
+      word-break: break-all;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      margin-bottom: 0.35rem;
+    }
+
+    .doc-result-body p {
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      line-height: 1.55;
+      margin: 0;
+    }
   </style>
 </head>
 
@@ -626,6 +687,7 @@
         <a href="#plc"><i class="fa-solid fa-microchip"></i> PLC y registros</a>
         <a href="#seguridad"><i class="fa-solid fa-shield-halved"></i> Validación</a>
         <a href="#metricas"><i class="fa-solid fa-chart-simple"></i> Métricas</a>
+        <a href="#resultados"><i class="fa-solid fa-flask-vial"></i> Resultados</a>
         <a href="#creditos"><i class="fa-solid fa-handshake"></i> Créditos</a>
       </aside>
 
@@ -1296,9 +1358,123 @@ El PLC ejecuta solamente una lógica previamente controlada.</code></pre>
           </div>
         </section>
 
+        <!-- RESULTADOS -->
+        <section class="doc-card" id="resultados">
+          <div class="doc-label">13 · Resultados</div>
+          <h2>Evidencia de funcionamiento en el PLC físico</h2>
+          <p>
+            Esta sección reúne los videos e imágenes obtenidos durante las pruebas del sistema sobre el
+            PLC. Cada resultado demuestra que la lógica generada y aplicada se comporta como se esperaba:
+            enclavamiento, botón de paro, temporizador y contador.
+          </p>
+
+          <!-- Enclavamiento -->
+          <div class="doc-result-group">
+            <h3>Enclavamiento</h3>
+            <div class="doc-result-grid">
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/Enclavamiento.mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> Enclavamiento.mp4</span>
+                  <p>Prueba de la lógica de enclavamiento: una entrada activa la salida y ésta se mantiene encendida (se enclava) aunque se suelte el botón.</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/Enclavamiento (1).mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> Enclavamiento (1).mp4</span>
+                  <p>Segunda toma del enclavamiento, mostrando el ciclo completo de encendido y apagado desde otra perspectiva o instrucción.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Botón de paro -->
+          <div class="doc-result-group">
+            <h3>Botón de paro</h3>
+            <div class="doc-result-grid">
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/boton de paro.mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> boton de paro.mp4</span>
+                  <p>Demostración del botón de paro: al accionarlo se corta la salida y el sistema deja de operar de forma inmediata.</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/boton de paro (1).mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> boton de paro (1).mp4</span>
+                  <p>Segunda prueba del botón de paro, verificando que el paro tiene prioridad sobre la lógica de encendido.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Temporizador -->
+          <div class="doc-result-group">
+            <h3>Temporizador (timer)</h3>
+            <div class="doc-result-grid">
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/timer.mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> timer.mp4</span>
+                  <p>Prueba del temporizador: la salida se activa o desactiva tras el retardo de tiempo configurado en la lógica.</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <img src="assets/resultados/timer.png" alt="Captura del timer" loading="lazy" />
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-image"></i> timer.png</span>
+                  <p>Captura de la configuración/estado del temporizador en la interfaz o en el PLC.</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <img src="assets/resultados/timer2.png" alt="Segunda captura del timer" loading="lazy" />
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-image"></i> timer2.png</span>
+                  <p>Segunda captura del temporizador, mostrando otra fase o parámetro del mismo comportamiento.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Contador -->
+          <div class="doc-result-group">
+            <h3>Contador</h3>
+            <div class="doc-result-grid">
+              <div class="doc-result">
+                <video controls preload="metadata" src="assets/resultados/contador.mp4"></video>
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-video"></i> contador.mp4</span>
+                  <p>Prueba del contador: la salida se activa al alcanzar el número de pulsos/eventos definido en la lógica.</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <img src="assets/resultados/contador1.png" alt="Primera captura del contador" loading="lazy" />
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-image"></i> contador1.png</span>
+                  <p>Captura del contador antes de alcanzar el valor objetivo (conteo en progreso).</p>
+                </div>
+              </div>
+              <div class="doc-result">
+                <img src="assets/resultados/contador2.png" alt="Segunda captura del contador" loading="lazy" />
+                <div class="doc-result-body">
+                  <span class="doc-result-file"><i class="fa-solid fa-image"></i> contador2.png</span>
+                  <p>Captura del contador al llegar al valor configurado y activar la salida correspondiente.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="doc-note">
+            Los archivos de esta sección se encuentran en <code>assets/resultados/</code> y conservan el
+            mismo nombre original usado en la carpeta de resultados.
+          </div>
+        </section>
+
         <!-- CREDITOS -->
         <section class="doc-card" id="creditos">
-          <div class="doc-label">13 · Créditos y herramientas de apoyo</div>
+          <div class="doc-label">14 · Créditos y herramientas de apoyo</div>
           <h2>Herramientas que apoyaron el desarrollo</h2>
 
           <p>
