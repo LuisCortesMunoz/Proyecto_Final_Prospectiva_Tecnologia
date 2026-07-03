@@ -594,6 +594,59 @@
       line-height: 1.55;
       margin: 0;
     }
+
+    .doc-result img {
+      cursor: zoom-in;
+    }
+
+    /* ---- Lightbox (imagenes en grande) ---- */
+    .doc-lightbox {
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      background: rgba(4, 15, 33, 0.88);
+      backdrop-filter: blur(3px);
+      cursor: zoom-out;
+      animation: lv-fade-up 0.2s ease both;
+    }
+
+    .doc-lightbox.open {
+      display: flex;
+    }
+
+    .doc-lightbox img {
+      max-width: 92vw;
+      max-height: 88vh;
+      border-radius: var(--radius-sm);
+      box-shadow: var(--shadow-lg);
+      border: 1px solid rgba(255,255,255,0.14);
+    }
+
+    .doc-lightbox-close {
+      position: absolute;
+      top: 1.1rem;
+      right: 1.3rem;
+      width: 42px;
+      height: 42px;
+      border-radius: 999px;
+      border: 1px solid rgba(255,255,255,0.3);
+      background: rgba(255,255,255,0.12);
+      color: #fff;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s ease;
+    }
+
+    .doc-lightbox-close:hover {
+      background: rgba(255,255,255,0.24);
+    }
   </style>
 </head>
 
@@ -1571,6 +1624,14 @@ El PLC ejecuta solamente una lógica previamente controlada.</code></pre>
     </section>
   </main>
 
+  <!-- LIGHTBOX (imagenes de Resultados en grande) -->
+  <div class="doc-lightbox" id="doc-lightbox" aria-hidden="true">
+    <button class="doc-lightbox-close" id="doc-lightbox-close" aria-label="Cerrar">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+    <img id="doc-lightbox-img" src="" alt="Imagen ampliada" />
+  </div>
+
   <!-- FOOTER -->
   <footer class="footer">
     <div class="container footer-inner">
@@ -1614,6 +1675,41 @@ El PLC ejecuta solamente una lógica previamente controlada.</code></pre>
           dd.hidden = true;
           btn.classList.remove('open');
         }
+      });
+    })();
+
+    // Lightbox: abrir las imagenes de la seccion Resultados en grande
+    (function() {
+      const lb      = document.getElementById('doc-lightbox');
+      const lbImg   = document.getElementById('doc-lightbox-img');
+      const lbClose = document.getElementById('doc-lightbox-close');
+      if (!lb || !lbImg) return;
+
+      const openLightbox = (src, alt) => {
+        lbImg.src = src;
+        lbImg.alt = alt || 'Imagen ampliada';
+        lb.classList.add('open');
+        lb.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+      };
+
+      const closeLightbox = () => {
+        lb.classList.remove('open');
+        lb.setAttribute('aria-hidden', 'true');
+        lbImg.src = '';
+        document.body.style.overflow = '';
+      };
+
+      document.querySelectorAll('#resultados .doc-result img').forEach(img => {
+        img.addEventListener('click', () => openLightbox(img.src, img.alt));
+      });
+
+      lb.addEventListener('click', e => {
+        if (e.target !== lbImg) closeLightbox();
+      });
+      lbClose.addEventListener('click', closeLightbox);
+      document.addEventListener('keydown', e => {
+        if (e.key === 'Escape' && lb.classList.contains('open')) closeLightbox();
       });
     })();
   </script>
