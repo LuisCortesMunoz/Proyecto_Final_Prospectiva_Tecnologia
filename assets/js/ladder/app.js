@@ -6,7 +6,7 @@
  * Lineas modificadas marcadas con: // ← NUEVO
  */
 
-import { defaultProgram, newRung, newElement, validateProgram, isOutputType, OUTPUT_TYPES, shiftColsFrom, compactColumns } from './schema.js';
+import { defaultProgram, newRung, newElement, validateProgram, isOutputType, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
