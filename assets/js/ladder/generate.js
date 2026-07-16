@@ -49,6 +49,20 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       throw new Error(d?.detail || `El backend respondió HTTP ${res.status} en /generar-logica.`);
     }
     const data = await res.json();
+    // Fase 1 (agente): el backend puede pedir aclaracion en vez de generar
+    // (prompt ambiguo). Se devuelve un resultado discriminado; los llamadores
+    // (chat.js / copilot.js) lo detectan por `needsClarification` y muestran las
+    // preguntas SIN intentar compilar un programa inexistente.
+    if (data && data.status === 'needs_clarification') {
+      const t1nc = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      return {
+        needsClarification: true,
+        questions: Array.isArray(data.questions) ? data.questions : [],
+        assumptions: Array.isArray(data.assumptions) ? data.assumptions : [],
+        analysis: data.analysis || {},
+        telemetry: { source: 'backend', latency_ms: Math.round(t1nc - t0) },
+      };
+    }
     logic = data?.logic || data;
     ejemplo_id = data?.ejemplo_id || '';
   }

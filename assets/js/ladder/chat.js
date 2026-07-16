@@ -44,6 +44,7 @@ function body(text, opts) {
     return html;
   }
   let html = `<div class="cmsg-text">${esc(text)}</div>`;
+  if (opts.clarify)  html += clarifyHtml(opts.clarify);
   if (opts.logic)    html += logicSummaryHtml(opts.logic);
   if (opts.telemetry) html += telemetryHtml(opts.telemetry);
   if (opts.warnings && opts.warnings.length) html += listHtml(`${opts.warnings.length} aviso(s)`, opts.warnings);
@@ -87,6 +88,27 @@ function logicSummaryHtml(logic) {
   return `<details class="cmsg-logic" open><summary>¿Qué entendió la IA?</summary><table>${rows}</table></details>`;
 }
 
+// ── Aclaración de prompts ambiguos (Fase 1 del agente) ────────
+// El backend devolvió status:needs_clarification con preguntas. Se pintan
+// como chips; al pulsar uno, su valor se agrega al input (ver el handler en
+// DOMContentLoaded) para que el usuario reenvíe una instrucción completa.
+function chipVal(opcion) {
+  // "Q10 (verde)" -> "Q10"
+  return String(opcion).split(' (')[0].trim();
+}
+
+function clarifyHtml(questions) {
+  if (!Array.isArray(questions) || !questions.length) return '';
+  return questions.map(q => `
+    <div class="cmsg-clarify">
+      <div class="cq-pregunta">${esc(q.pregunta || '')}</div>
+      <div class="cq-opciones">${(q.opciones || []).map(o =>
+        `<button type="button" class="clarify-chip" data-val="${esc(chipVal(o))}"
+           style="margin:3px;padding:4px 10px;border:1px solid var(--border,#3a3a4a);border-radius:12px;background:var(--panel,#26263a);color:inherit;cursor:pointer;font-size:12px;">${esc(o)}</button>`
+      ).join('')}</div>
+    </div>`).join('');
+}
+
 // ── Feedback (👍/👎) ──────────────────────────────────────────
 function feedbackHtml(ejemploId) {
   if (!ejemploId) return '';
@@ -117,6 +139,17 @@ async function onSend() {
       },
       onProgress: (stage) => thinking.update(STAGE_LABELS[stage] || stage),
     });
+    // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
+    // las preguntas y NO se aplica programa (aún no hay lógica). Se repone el
+    // prompt para que las respuestas del usuario se agreguen a su instrucción.
+    if (out.needsClarification) {
+      thinking.update('Necesito precisar un dato para no inventar:', {
+        clarify: out.questions, assumptions: out.assumptions,
+      });
+      input.value = prompt + ' ';
+      input.focus();
+      return;
+    }
     bridge()?.setProgram(out.program);
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
     thinking.update(
@@ -170,6 +203,19 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ ejemplo_id: ejemploId, status }),
       });
     } catch { /* feedback es best-effort */ }
+  });
+
+  // Chips de aclaración (Fase 1): al pulsar, agrega el valor al input para
+  // que el usuario complete su instrucción y la reenvíe.
+  document.addEventListener('click', (e) => {
+    const chip = e.target.closest('.clarify-chip');
+    if (!chip) return;
+    const input = $('chatInput');
+    if (!input) return;
+    const val = chip.dataset.val || '';
+    input.value = (input.value.trim() ? input.value.trimEnd() + ' ' : '') + val;
+    input.focus();
+    chip.style.opacity = '0.55';
   });
 
   addMsg('ai', 'Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector, y se apaga con el paro de emergencia").');

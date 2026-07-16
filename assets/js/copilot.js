@@ -577,6 +577,59 @@ function addLadderMessage(out) {
   scrollToBottom();
 }
 
+// Fase 1 (agente): el backend pidió precisar datos (prompt ambiguo). Se muestran
+// las preguntas con opciones; al pulsar una, su valor se agrega al input para
+// reenviar una instrucción completa. Se prellenar el input con el mensaje
+// original para conservar la intención del usuario.
+function addClarificationMessage(out, originalMessage) {
+  const row = document.createElement('div');
+  row.className = 'cp-msg-row ai';
+
+  const role = document.createElement('div');
+  role.className = 'cp-msg-role';
+  role.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+  role.appendChild(document.createTextNode('Generador Ladder'));
+  row.appendChild(role);
+
+  const msg = document.createElement('div');
+  msg.className = 'cp-msg';
+  msg.appendChild(document.createTextNode(
+    'Necesito precisar un dato para no inventar. Elige una opción o escríbela:'));
+
+  (out.questions || []).forEach(q => {
+    const qd = document.createElement('div');
+    qd.style.marginTop = '8px';
+    const qt = document.createElement('div');
+    qt.textContent = q.pregunta || '';
+    qt.style.fontSize = '13px';
+    qt.style.marginBottom = '4px';
+    qd.appendChild(qt);
+    (q.opciones || []).forEach(o => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cp-action-btn ghost';
+      b.textContent = o;
+      b.style.margin = '2px';
+      b.addEventListener('click', () => {
+        const val = String(o).split(' (')[0].trim();
+        if (inputEl) {
+          if (!inputEl.value.trim() && originalMessage) inputEl.value = originalMessage + ' ';
+          inputEl.value = (inputEl.value.trim() ? inputEl.value.trimEnd() + ' ' : '') + val;
+          inputEl.focus();
+        }
+        b.style.opacity = '0.55';
+      });
+      qd.appendChild(b);
+    });
+    msg.appendChild(qd);
+  });
+
+  row.appendChild(msg);
+  threadEl.appendChild(row);
+  setEmptyState();
+  scrollToBottom();
+}
+
 async function sendLadderRequest(message) {
   const isFollowUp = lastLadderProgram != null;
   addTypingIndicator(isFollowUp
@@ -600,6 +653,14 @@ async function sendLadderRequest(message) {
       signal: AbortSignal.timeout(LADDER_TIMEOUT_MS),
     });
     removeTypingIndicator();
+
+    // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
+    // las preguntas y NO se aplica programa (aún no hay lógica generada).
+    if (out.needsClarification) {
+      addClarificationMessage(out, message);
+      setBackendStatus('ok', 'Backend conectado');
+      return;
+    }
 
     addLadderMessage(out);
     lastLadderProgram = out.program;
