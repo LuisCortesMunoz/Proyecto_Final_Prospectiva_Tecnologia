@@ -10,7 +10,7 @@
 // ---------- Configuración ----------
 // Backend en la nube (Render + Groq), el mismo que usa el modo Diseñador.
 // Antes apuntaba a 'http://localhost:8000' (backend local con Ollama).
-const DEFAULT_API_BASE = 'https://backend-render-prospectiva-tecnologia.onrender.com';
+const DEFAULT_API_BASE = 'https://backend-render-prospectiva-tecnologia-8y7u.onrender.com';
 const CHAT_TIMEOUT_MS = 180000;
 
 // El modo Diseñador genera el programa vía window.LadderGen (gen-bridge.js),
@@ -1027,7 +1027,13 @@ let isListening = () => false;
   const savedApi = localStorage.getItem('lv_api_base');
   // Ignora URLs locales guardadas de la versión vieja (Ollama en localhost):
   // ahora el backend vive en la nube (Render). Solo se respeta un remoto real.
-  if (savedApi && !/localhost|127\.0\.0\.1/.test(savedApi)) cfg.api.value = savedApi;
+  // También ignora el backend viejo/suspendido (sin sufijo -8y7u) para que
+  // usuarios que ya lo tenían guardado caigan en DEFAULT_API_BASE (el nuevo).
+  if (savedApi
+      && !/localhost|127\.0\.0\.1/.test(savedApi)
+      && !/backend-render-prospectiva-tecnologia\.onrender\.com/.test(savedApi)) {
+    cfg.api.value = savedApi;
+  }
 
   populateProfileSelect();
   applyProfile(currentProfile);

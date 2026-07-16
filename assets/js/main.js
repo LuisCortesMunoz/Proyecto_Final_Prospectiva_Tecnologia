@@ -2,7 +2,7 @@
 // CONFIGURACION BACKEND
 // ============================
 // URL real de Render, sin slash al final.
-const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
+const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia-8y7u.onrender.com';
 // Arquitectura única (ver CONTRACT.md): la voz solo transcribe; el texto pasa
 // luego por window.LadderGen.generate (→ /generar-logica → JSON lógico →
 // compilación en el front). El backend ya NO devuelve geometría.

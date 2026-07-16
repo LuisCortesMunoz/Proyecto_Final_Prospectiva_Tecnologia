@@ -6,4 +6,4 @@
  * ver CONTRACT.md). El front valida y compila ese JSON a la geometría que
  * entiende el renderer.
  */
-export const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia.onrender.com';
+export const BACKEND_BASE_URL = 'https://backend-render-prospectiva-tecnologia-8y7u.onrender.com';
