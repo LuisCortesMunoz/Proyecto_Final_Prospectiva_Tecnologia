@@ -1,4 +1,6 @@
-# 🎙️ Agente de Voz para Control de Automatización
+# 🎙️ LAVO — Logic Automation, Validation & Operation
+
+> **AI-Assisted System for Natural Language PLC Logic Generation, Validation and Deployment**
 
 > **Proyecto Final** — Sistema que genera un agente capaz de, mediante comandos de voz, activar y desactivar diferentes elementos de automatización: encender una luz, mover una banda, controlar un robot UR3, y más.
 

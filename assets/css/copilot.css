@@ -121,8 +121,10 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 1rem;
-  padding: 2rem 1.5rem;
+  gap: 0.9rem;
+  /* el padding inferior reserva la altura del composer + chips, que viven
+     debajo de esta capa absoluta, para que el hero nunca se sobreponga */
+  padding: 2rem 1.5rem 10rem;
   text-align: center;
   position: absolute;
   top: 52px;
@@ -136,18 +138,32 @@
 }
 
 .cp-hero-logo {
-  height: 400px;
+  height: clamp(130px, 26vh, 320px);
   width: auto;
+  max-width: min(88vw, 520px);
   object-fit: contain;
   display: block;
 }
 
+.cp-hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.05rem, 2.2vw, 1.55rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.25;
+  color: var(--text-primary);
+  max-width: 640px;
+  margin: 0;
+  text-wrap: balance;
+}
+
 .cp-hero-text {
-  font-size: 1rem;
+  font-size: clamp(0.85rem, 1.6vw, 1rem);
   color: var(--text-secondary);
   line-height: 1.6;
-  max-width: 500px;
+  max-width: 520px;
   margin: 0;
+  text-wrap: balance;
 }
 
 /* Al tener mensajes: hero-center desaparece */
@@ -959,4 +975,13 @@
   .cp-menu { min-width: 240px; }
   .cp-effort-menu { left: 0; }
   .cp-mode-menu { left: 0; }
+  /* los chips envuelven en más filas: reserva algo más de alto */
+  .cp-hero-center { padding: 1.5rem 1.25rem 11.5rem; gap: 0.7rem; }
+}
+
+/* Viewports bajos (portátiles 768px de alto o menos): el logo cede
+   espacio para que el título y la descripción sigan cabiendo */
+@media (max-height: 760px) {
+  .cp-hero-logo { height: clamp(96px, 19vh, 210px); }
+  .cp-hero-center { gap: 0.65rem; }
 }

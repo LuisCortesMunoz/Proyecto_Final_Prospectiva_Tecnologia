@@ -1,5 +1,5 @@
 /* ==========================================================
-   LADDERVOICE — BLUEPRINT THEME
+   LAVO — BLUEPRINT THEME
    Capa visual únicamente. No cambia JavaScript, backend, IDs,
    eventos, rutas ni lógica del proyecto.
    ========================================================== */
@@ -848,7 +848,7 @@ body {
 }
 
 /* ==========================================================
-   DRIVER.JS — Tour LadderVoice (scoped via popoverClass)
+   DRIVER.JS — Tour LAVO (scoped via popoverClass)
    ========================================================== */
 
 .driver-popover.lv-tour-popover {
