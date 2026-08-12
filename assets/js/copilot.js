@@ -1,5 +1,5 @@
 // ============================================================
-// LADDERVOICE COPILOT — Práctica 4 (Prompting y Copilotos)
+// LAVO COPILOT — Práctica 4 (Prompting y Copilotos)
 // Frontend estilo ChatGPT sobre FastAPI + Ollama.
 // Perfiles de esfuerzo: Instantánea / Media / Alta (+ Genérico).
 // Modo Diseñador: arquitectura única (ver CONTRACT.md). El prompt
@@ -30,19 +30,19 @@ const FALLBACK_PROFILES = {
   instantanea: {
     label: 'Instantánea',
     description: 'Respuestas rápidas y breves.',
-    system_prompt: 'Eres LadderVoice Copilot en modo Instantánea. Responde en español, breve y directo.',
+    system_prompt: 'Eres LAVO Copilot en modo Instantánea. Responde en español, breve y directo.',
     params: { temperature: 0.4, top_p: 0.9, num_predict: 180, num_ctx: 2048, repeat_penalty: 1.1 },
   },
   media: {
     label: 'Media',
     description: 'Equilibrio entre rapidez y detalle.',
-    system_prompt: 'Eres LadderVoice Copilot en modo Media. Responde en español con pasos numerados.',
+    system_prompt: 'Eres LAVO Copilot en modo Media. Responde en español con pasos numerados.',
     params: { temperature: 0.7, top_p: 0.9, num_predict: 450, num_ctx: 4096, repeat_penalty: 1.1 },
   },
   alta: {
     label: 'Alta',
     description: 'Razonamiento profundo para tareas complejas.',
-    system_prompt: 'Eres LadderVoice Copilot en modo Alta. Analiza a fondo antes de responder, en español.',
+    system_prompt: 'Eres LAVO Copilot en modo Alta. Analiza a fondo antes de responder, en español.',
     params: { temperature: 0.7, top_p: 0.9, num_predict: 900, num_ctx: 8192, repeat_penalty: 1.1 },
   },
 };
@@ -1108,4 +1108,4 @@ let isListening = () => false;
   inputEl.focus();
 })();
 
-console.log('%cLadderVoice Copilot — Práctica 4', 'color:#2e7de1;font-size:1.05rem;font-weight:bold;');
+console.log('%cLAVO Copilot — Práctica 4', 'color:#2e7de1;font-size:1.05rem;font-weight:bold;');
