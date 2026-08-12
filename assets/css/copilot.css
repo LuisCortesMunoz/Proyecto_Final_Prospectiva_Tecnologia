@@ -142,17 +142,6 @@
   display: block;
 }
 
-.cp-hero-title {
-  font-family: var(--font-display);
-  font-size: clamp(1.15rem, 2.4vw, 1.6rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.2;
-  color: var(--text-primary);
-  max-width: 620px;
-  margin: 0;
-}
-
 .cp-hero-text {
   font-size: 1rem;
   color: var(--text-secondary);
