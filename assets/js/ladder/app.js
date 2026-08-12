@@ -44,7 +44,7 @@ const store = (() => {
   let _sel   = { rungId: null, elementId: null };
   let _multi = { rungId: null, ids: new Set() };   // selección múltiple (para paralelo por rango)
   let _armed = null;
-  let _log   = [{ ts: ts(), type: 'info', msg: 'LAVO editor listo — v2.0' }];
+  let _log   = [{ ts: ts(), type: 'info', msg: 'LadderVoice editor listo — v2.0' }];
   let _undoStack = [];
   let _redoStack = [];
   let _simMode    = false;

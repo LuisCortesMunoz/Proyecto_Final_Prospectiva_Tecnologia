@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title Pagina local (editor PLC) - LAVO
+title Pagina local (editor PLC) - LadderVoice
 
 rem ============================================================
 rem  Sirve el frontend en http://127.0.0.1:5500 para poder
