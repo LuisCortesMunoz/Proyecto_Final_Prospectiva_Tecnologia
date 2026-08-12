@@ -121,7 +121,9 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.9rem;
+  /* gap = separación título ↔ descripción (16px, mismo bloque visual).
+     El aire extra bajo el logo lo aporta el margin-top de .cp-hero-title */
+  gap: 1rem;
   /* el padding inferior reserva la altura del composer + chips, que viven
      debajo de esta capa absoluta, para que el hero nunca se sobreponga */
   padding: 2rem 1.5rem 10rem;
@@ -138,30 +140,33 @@
 }
 
 .cp-hero-logo {
-  height: clamp(130px, 26vh, 320px);
+  height: clamp(146px, 29vh, 360px);
   width: auto;
-  max-width: min(88vw, 520px);
+  max-width: min(88vw, 560px);
   object-fit: contain;
   display: block;
 }
 
 .cp-hero-title {
   font-family: var(--font-display);
-  font-size: clamp(1.05rem, 2.2vw, 1.55rem);
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.25;
+  /* el max-width da sitio a una sola línea en pantallas anchas; por debajo
+     parte en "…Validation" / "& Operation" gracias a los &nbsp; del HTML */
+  /* el mínimo alto evita que en tablet la fuente encoja en vez de envolver */
+  font-size: clamp(1.15rem, 1.95vw, 1.35rem);
+  font-weight: 700;
+  letter-spacing: -0.7px;
+  line-height: 1.2;
   color: var(--text-primary);
-  max-width: 640px;
-  margin: 0;
-  text-wrap: balance;
+  max-width: min(92vw, 760px);
+  margin: 1.5rem 0 0;   /* + el gap de 1rem ≈ 40px de aire bajo el logo */
 }
 
 .cp-hero-text {
   font-size: clamp(0.85rem, 1.6vw, 1rem);
+  font-weight: 400;
   color: var(--text-secondary);
-  line-height: 1.6;
-  max-width: 520px;
+  line-height: 1.5;
+  max-width: min(92vw, 680px);
   margin: 0;
   text-wrap: balance;
 }
@@ -976,12 +981,15 @@
   .cp-effort-menu { left: 0; }
   .cp-mode-menu { left: 0; }
   /* los chips envuelven en más filas: reserva algo más de alto */
-  .cp-hero-center { padding: 1.5rem 1.25rem 11.5rem; gap: 0.7rem; }
+  .cp-hero-center { padding: 1.5rem 1.25rem 11.5rem; gap: 0.9rem; }
+  /* el título parte en más líneas antes que encoger de más la fuente */
+  .cp-hero-title { margin-top: 1.25rem; font-size: clamp(1rem, 4.6vw, 1.2rem); }
 }
 
-/* Viewports bajos (portátiles 768px de alto o menos): el logo cede
+/* Viewports bajos (portátiles de 768px de alto o menos): el logo cede
    espacio para que el título y la descripción sigan cabiendo */
 @media (max-height: 760px) {
-  .cp-hero-logo { height: clamp(96px, 19vh, 210px); }
-  .cp-hero-center { gap: 0.65rem; }
+  .cp-hero-logo { height: clamp(108px, 21vh, 236px); }
+  .cp-hero-center { gap: 0.85rem; }
+  .cp-hero-title { margin-top: 1.15rem; }
 }
