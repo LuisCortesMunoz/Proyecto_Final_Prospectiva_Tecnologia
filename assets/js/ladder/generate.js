@@ -12,6 +12,7 @@
 import { BACKEND_BASE_URL } from './config.js';
 import { compileLogicToSchema } from './compiler/logicToSchema.js';
 import { validateLogicJson, normalizeAndValidate } from './validate.js';
+import { detectEquipment, equipmentQuestion, buildBandLogic } from './equipment.js';
 
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
@@ -24,6 +25,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let logic = null;
   let source = 'backend';
   let ejemplo_id = '';
+  let localWarnings = [];
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
   const pasted = tryParseLogicJson(text);
@@ -31,6 +33,39 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     logic = pasted;
     source = 'json-pegado';
   } else {
+    // ── Selección de equipo (maletín / banda transportadora) ────
+    // Hay dos entornos físicos y la instrucción tiene que decir a cuál va.
+    // El backend solo habla el vocabulario del maletín, así que aquí se
+    // decide antes de llamarlo: si es de la banda se arma el bloque "band"
+    // localmente; si es ambigua se pregunta; si es del maletín, el flujo
+    // sigue siendo EXACTAMENTE el de siempre (fetch a /generar-logica).
+    const equipo = detectEquipment(text);
+
+    if (equipo.equipment === null) {
+      // Ambigua: se devuelve por el MISMO canal `needs_clarification` que ya
+      // usan chat.js y copilot.js, así que no hace falta tocar ninguna UI.
+      const t1eq = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+      return {
+        needsClarification: true,
+        questions: [equipmentQuestion()],
+        assumptions: [],
+        analysis: { equipo: 'ambiguo', motivo: equipo.reason },
+        telemetry: { source: 'equipo', latency_ms: Math.round(t1eq - t0) },
+      };
+    }
+
+    if (equipo.equipment === 'banda') {
+      // La banda se compila con el bloque "band" que plc_maestro.py ya
+      // ejecuta; el compilador deriva de ahí los rungs y metadata._band_view
+      // que el panel visual dibuja.
+      const b = buildBandLogic(text);
+      logic = b.logic;
+      localWarnings = b.warnings;
+      source = 'banda-local';
+    }
+  }
+
+  if (logic == null) {
     onProgress?.('fetching');
     let res;
     try {
@@ -90,7 +125,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   return {
     program: nv.program,
     logic,
-    warnings: [...lv.warnings, ...compileWarnings, ...nv.warnings],
+    warnings: [...localWarnings, ...lv.warnings, ...compileWarnings, ...nv.warnings],
     telemetry: {
       source,
       latency_ms: Math.round(t1 - t0),
