@@ -89,7 +89,14 @@ export function equipmentQuestion() {
 
 const RE_IZQ  = /\bizquierda\b|\breversa\b|\binversa\b|\batras\b|\bantihorario\b|\bccw\b/;
 const RE_DER  = /\bderecha\b|\badelante\b|\bhorario\b|\bcw\b/;
-const RE_STOP = /\b(?:deten|detener|detiene|apaga|apagar|para|parar|alto|frena|frenar)\b/;
+// "para" NO entra aqui: en "dame un programa PARA mover la banda" es una
+// preposicion, no el verbo parar, y hacia que la instruccion se leyera como
+// un apagado (enable:false -> programa sin rungs). El verbo se reconoce por
+// sus formas inequivocas y por la frase "para la banda / el motor".
+const RE_STOP  = /\b(?:deten|detener|detenga|detiene|apaga|apagar|apague|parar|pare|frena|frenar|alto)\b/;
+const RE_PARAN = /\bpara\s+(?:la\s+(?:banda|cinta)|el\s+(?:motor|transportador|variador))/;
+// Si la instruccion pide movimiento o configuracion, no es un apagado.
+const RE_MOVE  = /\bmov\w*|\bgira|\barranc|\bavanz|\bcorre|\bmarcha|\bconfigur|\bvelocidad|\bfrecuencia|\bhz\b|\bderecha\b|\bizquierda\b/;
 const RE_COND = /\bcuando\b|\bsi\b|\bal\b|\bdetect/;
 
 const int = (s) => Math.round(Number(String(s).replace(',', '.')));
@@ -141,9 +148,12 @@ export function buildBandLogic(text) {
   // confunda con "35 s".
   const tt = t.replace(/\d+(?:[.,]\d+)?\s*(?:hz|hertz)/g, ' ');
 
-  // Paro explícito de la banda (sin condición ni sensor de por medio).
-  const soloParo = RE_STOP.test(t) && !RE_COND.test(t) && !/\bs\s?[12]\b|\bsensor/.test(t);
+  // Paro explícito de la banda: solo si además NO pide movimiento ni
+  // configuración, y no hay condición ni sensor de por medio.
+  const paro = RE_STOP.test(t) || RE_PARAN.test(t);
+  const soloParo = paro && !RE_MOVE.test(t) && !RE_COND.test(t) && !/\bs\s?[12]\b|\bsensor/.test(t);
   if (soloParo) {
+    warnings.push('La instrucción apaga la banda: el programa queda sin rungs.');
     return { logic: { name: nombre(text), band: { enable: false } }, warnings, hints };
   }
 
