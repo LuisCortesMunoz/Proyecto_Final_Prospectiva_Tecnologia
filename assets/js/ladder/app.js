@@ -8,7 +8,7 @@
 
 import { defaultProgram, newRung, newElement, validateProgram, isOutputType, shiftColsFrom, compactColumns } from './schema.js';
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
-import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, GR }              from './renderer.js';
+import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, renderBandPanel, GR } from './renderer.js';
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
@@ -542,6 +542,8 @@ function render() {
   const selFull = { ...sel, multiRungId: multi.rungId, multiIds: multi.ids };
   const ra   = document.getElementById('rungArea');
   if (ra) renderAllRungs(ra, prog, selFull);
+  // Panel de la banda: se dibuja solo si el programa trae _band_view.
+  renderBandPanel(document.getElementById('bandPanel'), prog);
   renderTerminal();
   renderActiveTab(prog);
   updateSidebarArmed();

@@ -292,6 +292,158 @@ function compileSequence(seq, ctx) {
   return { rungs, sim: { startAddr, runAddr, mode, steps: simSteps } };
 }
 
+// ── Banda transportadora + VFD (bloque "band") → rungs + vista ──
+// Espejo de la sección §12 del Ladder maestro y del bloque "band" que ya
+// acepta plc_maestro.py. No inventa lógica: dibuja la que el PLC ejecuta.
+//
+//   S1 = I3 (NC)   S2 = I4 (NC)   torreta = Q10 verde / Q11 amarilla / Q12 roja
+//   VFD: %R00500 → 18 derecha · 34 izquierda · 1 paro
+//
+// Etiquetas amigables para el symbol_table del dibujo.
+const BAND_SYMBOLS = {
+  BANDA_ON:     { symbol: 'BANDA_ON',      comment: 'Banda habilitada (SysMode=2)' },
+  BANDA_RUN:    { symbol: 'BANDA_RUN',     comment: 'Banda en marcha' },
+  S1_ESPERA:    { symbol: 'S1_ESPERA',     comment: 'Espera por S1: banda detenida' },
+  S2_ESPERA:    { symbol: 'S2_ESPERA',     comment: 'Espera por S2: banda detenida' },
+  S1_RETRIG:    { symbol: 'S1_RETRIG',     comment: 'Anti-retrigger de S1' },
+  S2_RETRIG:    { symbol: 'S2_RETRIG',     comment: 'Anti-retrigger de S2' },
+  VFD_MARCHA:   { symbol: 'VFD_MARCHA',    comment: 'Comando de marcha al VFD (%R00500)' },
+};
+
+const BAND_DIR_CANON = {
+  derecha: 'derecha', right: 'derecha', der: 'derecha', cw: 'derecha',
+  izquierda: 'izquierda', left: 'izquierda', izq: 'izquierda', ccw: 'izquierda',
+};
+
+function bandDir(d) { return BAND_DIR_CANON[String(d ?? 'derecha').toLowerCase()] || 'derecha'; }
+
+// I3/I4 son entradas normales del maletín; solo con la banda activa pasan a
+// mostrarse como los sensores S1/S2. Se inyecta en el mapa de símbolos para
+// no alterar el etiquetado de los programas que no usan la banda.
+function bandSensorSymbols(symbols) {
+  symbols.I3 = { addr: 'I3', symbol: 'S1', type: 'BOOL', comment: 'Sensor S1 de la banda (NC)', modbus: { fn: 'read_coil', address: null } };
+  symbols.I4 = { addr: 'I4', symbol: 'S2', type: 'BOOL', comment: 'Sensor S2 de la banda (NC)', modbus: { fn: 'read_coil', address: null } };
+}
+function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
+
+// Construye un rung a partir de una expresión y un elemento terminal.
+function bandRung(expr, mkTerminal, comment, ctx) {
+  const ast = parseExpr(tokenize(expr), ctx);
+  const { row0, branches, width } = layout(ast, ctx);
+  row0.push(mkTerminal(width));
+  const network = [{ row: 0, elements: row0 }];
+  branches.forEach((b, k) => network.push({ row: k + 1, span: b.span, elements: b.elements }));
+  return { id: ctx.nextId(), enabled: true, comment, network };
+}
+
+function coilAt(addr, ctx) {
+  ctx.useAddr(addr);
+  return (col) => ({ id: eid(), type: 'coil', address: addr, pos: { col }, coil_type: 'output' });
+}
+function tonAt(addr, seconds, ctx) {
+  ctx.useAddr(addr);
+  return (col) => ({ id: eid(), type: 'block_ton', address: addr, pos: { col }, params: { preset_ms: seconds * 1000 } });
+}
+function tofAt(addr, seconds, ctx) {
+  ctx.useAddr(addr);
+  return (col) => ({ id: eid(), type: 'block_tof', address: addr, pos: { col }, params: { preset_ms: seconds * 1000 } });
+}
+
+function compileBand(band, ctx) {
+  const rungs = [];
+  const dir     = bandDir(band.direction);
+  const freq    = num(band.freq_hz);
+  const waitS1  = num(band.wait_s1_s);
+  const waitS2  = num(band.wait_s2_s);
+  const retS1   = num(band.retrigger_s1_s);
+  const retS2   = num(band.retrigger_s2_s);
+
+  const usaS1 = waitS1 != null && waitS1 > 0;
+  const usaS2 = waitS2 != null && waitS2 > 0;
+  const retrigS1 = usaS1 && retS1 != null && retS1 > 0;
+  const retrigS2 = usaS2 && retS2 != null && retS2 > 0;
+
+  ['BANDA_ON', 'BANDA_RUN'].forEach(a => ctx.useAddr(a));
+
+  // 1) Espera por sensor: S1/S2 son NC, por eso el contacto es cerrado.
+  if (usaS1) {
+    rungs.push(bandRung('!I3', tonAt('S1_ESPERA', waitS1, ctx),
+      `S1 detecta pieza → la banda se detiene ${waitS1} s`, ctx));
+  }
+  if (usaS2) {
+    rungs.push(bandRung('!I4', tonAt('S2_ESPERA', waitS2, ctx),
+      `S2 detecta pieza → la banda se detiene ${waitS2} s`, ctx));
+  }
+
+  // 2) Anti-retrigger: bloquea una nueva detección mientras la pieza sale.
+  if (retrigS1) {
+    rungs.push(bandRung('S1_ESPERA', tofAt('S1_RETRIG', retS1, ctx),
+      `Anti-retrigger de S1: ${retS1} s tras el rearranque`, ctx));
+  }
+  if (retrigS2) {
+    rungs.push(bandRung('S2_ESPERA', tofAt('S2_RETRIG', retS2, ctx),
+      `Anti-retrigger de S2: ${retS2} s tras el rearranque`, ctx));
+  }
+
+  // 3) Marcha efectiva de la banda.
+  let exprRun = 'BANDA_ON';
+  if (usaS1) exprRun += ' * !S1_ESPERA';
+  if (usaS2) exprRun += ' * !S2_ESPERA';
+  rungs.push(bandRung(exprRun, coilAt('BANDA_RUN', ctx),
+    'Banda en marcha: habilitada y sin espera de sensor', ctx));
+
+  // 4) Comando al VFD. En el PLC es una escritura a %R00500; en ladder se
+  //    dibuja como la bobina de marcha, con el detalle en el comentario.
+  const cmd = dir === 'izquierda' ? 34 : 18;
+  rungs.push(bandRung('BANDA_RUN', coilAt('VFD_MARCHA', ctx),
+    `VFD: marcha hacia la ${dir} (%R00500 = ${cmd})`
+    + (freq != null ? ` · ${freq} Hz` : ''), ctx));
+
+  // 5) Torreta (§12.7). Verde = corriendo · Amarilla = anti-retrigger ·
+  //    Roja = detenida esperando en un sensor.
+  const retTerms  = [retrigS1 && 'S1_RETRIG', retrigS2 && 'S2_RETRIG'].filter(Boolean);
+  const waitTerms = [usaS1 && 'S1_ESPERA', usaS2 && 'S2_ESPERA'].filter(Boolean);
+
+  let exprVerde = 'BANDA_RUN';
+  retTerms.forEach(t => { exprVerde += ` * !${t}`; });
+  rungs.push(bandRung(exprVerde, coilAt('Q10', ctx), 'Torreta verde: banda corriendo', ctx));
+
+  if (retTerms.length) {
+    rungs.push(bandRung(retTerms.join(' + '), coilAt('Q11', ctx),
+      'Torreta amarilla: pieza saliendo del sensor', ctx));
+  }
+  if (waitTerms.length) {
+    rungs.push(bandRung(waitTerms.join(' + '), coilAt('Q12', ctx),
+      'Torreta roja: banda detenida esperando', ctx));
+  }
+
+  // Datos para el panel visual (solo presentación; no altera el engine_config).
+  const view = {
+    enable: true,
+    direction: dir,
+    vfd_cmd: cmd,
+    freq_hz: freq,
+    wait_s1_s: usaS1 ? waitS1 : null,
+    wait_s2_s: usaS2 ? waitS2 : null,
+    retrigger_s1_s: retrigS1 ? retS1 : null,
+    retrigger_s2_s: retrigS2 ? retS2 : null,
+    // Qué componentes participan en ESTA instrucción (el panel dibuja solo estos)
+    uses: {
+      banda: true,
+      vfd: true,
+      freq: freq != null,
+      s1: usaS1,
+      s2: usaS2,
+      torreta: true,
+      verde: true,
+      amarilla: retTerms.length > 0,
+      roja: waitTerms.length > 0,
+    },
+  };
+
+  return { rungs, view };
+}
+
 // ── Símbolos y direcciones ─────────────────────────────────────
 // El programa usa NOMBRES LÓGICOS como dirección (I1, Q10, M1, T1, T1.DN),
 // igual que el contrato. El símbolo/comentario amigable viene del perfil.
@@ -324,11 +476,13 @@ function guessModbus(a) {
 }
 function symbolEntryFor(addr, symbols) {
   const found = symbols[addr];
+  const band  = BAND_SYMBOLS[addr];
   return {
-    symbol: found ? found.symbol : String(addr).replace(/[%.]/g, '_'),
+    // Para las señales de la banda preferimos su etiqueta funcional (S1, S2…)
+    symbol: band ? band.symbol : found ? found.symbol : String(addr).replace(/[%.]/g, '_'),
     type:   found ? found.type   : guessType(addr),
     modbus: found && found.modbus ? found.modbus : guessModbus(addr),
-    comment: found ? found.comment : '',
+    comment: band ? band.comment : found ? found.comment : '',
   };
 }
 
@@ -358,6 +512,10 @@ export function compileLogicToSchema(logic, profile) {
 
   const gStop = logic?.system?.global_stop || null;
 
+  const bandCfg = logic?.band;
+  const bandOn  = !!bandCfg && (bandCfg.enable === undefined || !!bandCfg.enable);
+  if (bandOn) bandSensorSymbols(symbols);
+
   const rungs = [];
   for (const o of (logic?.outputs || [])) {
     if (!o || !o.output) continue;
@@ -374,7 +532,16 @@ export function compileLogicToSchema(logic, profile) {
     sequenceSim = sim;
   }
 
-  if (!rungs.length) warnings.push('El JSON engine-config no produjo ningún rung (sin "outputs" ni "sequence").');
+  // Banda transportadora + VFD: se dibuja como rungs propios y emite los datos
+  // que el panel visual usa para representar los elementos físicos.
+  let bandView = null;
+  if (bandOn) {
+    const { rungs: bandRungs, view } = compileBand(bandCfg, ctx);
+    rungs.push(...bandRungs);
+    bandView = view;
+  }
+
+  if (!rungs.length) warnings.push('El JSON engine-config no produjo ningún rung (sin "outputs", "sequence" ni "band").');
 
   const symbol_table = {};
   for (const [addr, entry] of used) symbol_table[addr] = entry;
@@ -389,6 +556,8 @@ export function compileLogicToSchema(logic, profile) {
       engine_config: logic || null,
       // Datos para que el simulador anime la secuencia en el tiempo (null si no hay).
       _sequence_sim: sequenceSim,
+      // Datos de PRESENTACIÓN de la banda para el panel visual (null si no hay).
+      _band_view: bandView,
       plc_target: (profile && profile.plc && profile.plc.modbus)
         ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
         : { ip: '192.168.1.100', port: 502, unit_id: 1 },

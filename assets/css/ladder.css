@@ -913,3 +913,42 @@ body.sim-mode .rung-svg  { cursor: default; }
 
 /* ══ ANIMACIONES ══════════════════════════════════════════════ */
 @keyframes sdot { 0%,100%{opacity:1} 50%{opacity:.4} }
+
+
+/* ── Panel de la banda transportadora ──────────────────────────
+   Se muestra sobre el área de rungs solo cuando el programa trae
+   metadata._band_view. Presentación pura, sin lógica propia. */
+.band-panel {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-surface);
+  flex: 0 0 auto;
+}
+.band-panel[hidden] { display: none !important; }
+
+.band-panel .bp-head {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 14px 0;
+}
+.band-panel .bp-title {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-size: 12px; font-weight: 600;
+  color: var(--text-primary); letter-spacing: 0.01em;
+}
+.band-panel .bp-title i { color: var(--accent); font-size: 15px; }
+
+.band-panel .bp-chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.band-panel .bp-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  font-family: var(--font-mono); font-size: 10px;
+  color: var(--text-secondary); white-space: nowrap;
+}
+.band-panel .bp-chip i { font-size: 12px; }
+.band-panel .bp-chip-accent {
+  border-color: var(--accent); background: var(--accent-dim); color: var(--accent);
+}
+
+.band-panel .bp-body { padding: 2px 14px 8px; overflow-x: auto; }
+.band-panel .bp-svg { width: 100%; min-width: 620px; height: auto; display: block; }

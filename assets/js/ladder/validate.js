@@ -18,6 +18,8 @@ const TIMER_TYPES    = new Set(['on_delay', 'pulse']);
 const COUNTER_TYPES  = new Set(['up', 'up_held']);
 const SEQ_MODES      = new Set(['once', 'loop']);
 const SEQ_MAX_STEPS  = 8;
+// Banda transportadora: espejo de BAND_DIR y _validar_banda en plc_maestro.py.
+const BAND_DIRS      = new Set(['derecha', 'right', 'der', 'cw', 'izquierda', 'left', 'izq', 'ccw']);
 
 const esEntrada = (n) => n == null || ENGINE_INPUTS.has(String(n).toUpperCase());
 const canonOut  = (s) => {
@@ -48,9 +50,10 @@ export function validateLogicJson(logic, /* profile */ _profile) {
   }
   const outputs = Array.isArray(logic.outputs) ? logic.outputs : [];
   const seq = logic.sequence;
-  // Una config válida necesita al menos salidas O una secuencia.
-  if (outputs.length === 0 && !seq) {
-    return { ok: false, errors: ['Falta "outputs" o está vacío: debe haber al menos una salida (o una "sequence").'], warnings };
+  const band = logic.band;
+  // Una config válida necesita al menos salidas, una secuencia O la banda.
+  if (outputs.length === 0 && !seq && !band) {
+    return { ok: false, errors: ['Falta "outputs" o está vacío: debe haber al menos una salida (o una "sequence", o un bloque "band").'], warnings };
   }
 
   const vistos = new Set();
@@ -98,11 +101,45 @@ export function validateLogicJson(logic, /* profile */ _profile) {
   }
 
   if (seq != null) validarSecuencia(seq, errors);
+  if (band != null) validarBanda(band, errors);
+
+  // I3/I4 son los sensores S1/S2 de la banda. Mezclarlas con la lógica del
+  // maletín mientras la banda está activa deja el estado NA/NC ambiguo
+  // (mismo criterio que validar_config en plc_maestro.py).
+  if (bandaActiva(band)) {
+    if (seq) errors.push('No se puede activar la banda y el secuenciador a la vez (la torreta sobreescribe Q10/Q11/Q12).');
+    for (const [i, o] of outputs.entries()) {
+      const lg = o?.logic || {};
+      const usadas = ['source', 'start', 'stop', 'a', 'b', 'enable']
+        .map(c => lg[c]).filter(Boolean).map(v => String(v).toUpperCase());
+      if (usadas.includes('I3') || usadas.includes('I4')) {
+        errors.push(`salida ${i + 1} (${o?.output ?? '?'}): I3/I4 están reservadas como sensores S1/S2 de la banda.`);
+      }
+    }
+  }
 
   const gStop = logic.system?.global_stop;
   if (!esEntrada(gStop)) errors.push(`system.global_stop="${gStop}" no es entrada válida.`);
 
   return { ok: errors.length === 0, errors, warnings };
+}
+
+/** ¿El bloque "band" pide arrancar la banda? (espejo de _banda_activa). */
+export function bandaActiva(band) {
+  return !!band && typeof band === 'object' && (band.enable === undefined || !!band.enable);
+}
+
+// Valida el bloque "band" (banda transportadora + VFD). Espejo de
+// _validar_banda en plc_maestro.py: mismos campos y mismos rangos.
+function validarBanda(band, errors) {
+  if (typeof band !== 'object') { errors.push('"band" no es un objeto.'); return; }
+  if (band.freq_hz != null) rangoEntero(band.freq_hz, 0, 32767, 'band', 'freq_hz', errors);
+  for (const c of ['wait_s1_s', 'wait_s2_s', 'retrigger_s1_s', 'retrigger_s2_s']) {
+    if (band[c] != null) rangoEntero(band[c], 0, 32767, 'band', c, errors);
+  }
+  if (band.direction != null && !BAND_DIRS.has(String(band.direction).toLowerCase())) {
+    errors.push(`band.direction="${band.direction}" debe ser "derecha" o "izquierda".`);
+  }
 }
 
 // Valida el bloque "sequence" (secuenciador de pasos). Espejo del validador
