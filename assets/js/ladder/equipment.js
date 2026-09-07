@@ -107,16 +107,36 @@ function bloqueo(frag) {
 }
 
 /**
+ * ¿Qué lámparas de la torreta nombra la instrucción?
+ * Es un dato de PRESENTACIÓN: decide cuáles se dibujan encendidas en el panel.
+ * No viaja en el engine_config ni cambia los rungs, porque en el PLC la torreta
+ * la gobierna el Ladder maestro (§12.7) a partir del estado de la banda.
+ * @returns {{verde:boolean, amarilla:boolean, roja:boolean}}
+ */
+export function detectTorretaLamps(text) {
+  const t = norm(text);
+  return {
+    verde:    /\bverde\b/.test(t)    || /\bq\s?10\b/.test(t),
+    amarilla: /\bamarill/.test(t)  || /\bambar\b/.test(t) || /\bq\s?11\b/.test(t),
+    roja:     /\broj[ao]\b/.test(t) || /\bq\s?12\b/.test(t),
+  };
+}
+
+/**
  * Traduce una instrucción de banda al JSON lógico con el bloque "band".
  * Solo rellena lo que el texto declara: el compilador dibuja únicamente los
  * componentes presentes (un sensor sin tiempo de espera no se dibuja, la
  * frecuencia solo si se especificó, etc.).
  *
- * @returns {{logic:object, warnings:string[]}}
+ * `hints` son datos de PRESENTACIÓN (qué lámparas nombró el usuario): van
+ * aparte del `logic` justamente para que NO acaben dentro del engine_config.
+ *
+ * @returns {{logic:object, warnings:string[], hints:object}}
  */
 export function buildBandLogic(text) {
   const warnings = [];
   const t = norm(text);
+  const hints = { lamps: detectTorretaLamps(text) };
   // La frecuencia se aparta antes de buscar tiempos para que "35 Hz" no se
   // confunda con "35 s".
   const tt = t.replace(/\d+(?:[.,]\d+)?\s*(?:hz|hertz)/g, ' ');
@@ -124,7 +144,7 @@ export function buildBandLogic(text) {
   // Paro explícito de la banda (sin condición ni sensor de por medio).
   const soloParo = RE_STOP.test(t) && !RE_COND.test(t) && !/\bs\s?[12]\b|\bsensor/.test(t);
   if (soloParo) {
-    return { logic: { name: nombre(text), band: { enable: false } }, warnings };
+    return { logic: { name: nombre(text), band: { enable: false } }, warnings, hints };
   }
 
   const band = { enable: true };
@@ -166,7 +186,7 @@ export function buildBandLogic(text) {
     if (blq != null) band['retrigger_s' + mk.n + '_s'] = blq;
   });
 
-  return { logic: { name: nombre(text), band }, warnings };
+  return { logic: { name: nombre(text), band }, warnings, hints };
 }
 
 function nombre(text) {

@@ -399,7 +399,10 @@ export function renderBandPanel(container, program) {
   if (u.freq) chips.push(`<span class="bp-chip"><i class="ti ti-wave-sine"></i> ${view.freq_hz} Hz</span>`);
   if (u.s1)   chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S1 · ${view.wait_s1_s} s</span>`);
   if (u.s2)   chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S2 · ${view.wait_s2_s} s</span>`);
-  if (u.roja) chips.push(`<span class="bp-chip"><i class="ti ti-player-stop"></i> Paro por sensor</span>`);
+  // El paro por sensor lo determinan los tiempos de espera, no la lampara:
+  // las lamparas ahora solo se encienden si la instruccion las nombra.
+  if (view.wait_s1_s != null || view.wait_s2_s != null)
+    chips.push(`<span class="bp-chip"><i class="ti ti-player-stop"></i> Paro por sensor</span>`);
 
   container.innerHTML = `
     <div class="bp-head">

@@ -250,6 +250,10 @@ body {
 .tnav-btn.compile { color: var(--accent-bright); font-weight: 500; }
 .tnav-btn.compile:hover { background: var(--accent-glow); }
 .tnav-btn.compile.running { color: var(--success); background: var(--success-dim); font-weight: 600; }
+/* Boton "Ver banda transportadora": .tnav-btn es display:flex, asi que el
+   atributo [hidden] necesita ganarle explicitamente. */
+.tnav-btn.band[hidden] { display: none !important; }
+.tnav-btn.band i { color: var(--accent); }
 body.sim-mode .ladder-el { cursor: crosshair; }
 body.sim-mode .rung-svg  { cursor: default; }
 .tnav-btn.upload  { color: var(--success); font-weight: 500; }
@@ -915,19 +919,45 @@ body.sim-mode .rung-svg  { cursor: default; }
 @keyframes sdot { 0%,100%{opacity:1} 50%{opacity:.4} }
 
 
-/* ── Panel de la banda transportadora ──────────────────────────
-   Se muestra sobre el área de rungs solo cuando el programa trae
-   metadata._band_view. Presentación pura, sin lógica propia. */
-.band-panel {
-  border-bottom: 1px solid var(--border);
-  background: var(--bg-surface);
-  flex: 0 0 auto;
+/* ── Banda transportadora: pop-up ──────────────────────────────
+   El esquema vive en un modal propio (#bandModal), fuera del área de rungs,
+   para que el diagrama Ladder siga siendo el elemento principal de la vista.
+   Se abre con el botón "Ver banda transportadora" de la barra superior.
+   Presentación pura, sin lógica propia. */
+.band-modal {
+  position: fixed; inset: 0; z-index: 9998;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.55);
 }
+.band-modal[hidden] { display: none !important; }
+
+.band-modal-box {
+  position: relative;
+  width: min(880px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-surface);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+.band-modal-close {
+  position: absolute; top: 8px; right: 8px;
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; padding: 0;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: var(--bg-elevated); color: var(--text-secondary);
+  cursor: pointer;
+}
+.band-modal-close:hover { color: var(--text-primary); border-color: var(--accent); }
+
+.band-panel { background: var(--bg-surface); }
 .band-panel[hidden] { display: none !important; }
 
 .band-panel .bp-head {
   display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  padding: 8px 14px 0;
+  padding: 14px 44px 0 14px;
 }
 .band-panel .bp-title {
   display: flex; align-items: center; gap: 6px;
@@ -950,5 +980,5 @@ body.sim-mode .rung-svg  { cursor: default; }
   border-color: var(--accent); background: var(--accent-dim); color: var(--accent);
 }
 
-.band-panel .bp-body { padding: 2px 14px 8px; overflow-x: auto; }
+.band-panel .bp-body { padding: 2px 14px 14px; overflow-x: auto; }
 .band-panel .bp-svg { width: 100%; min-width: 620px; height: auto; display: block; }

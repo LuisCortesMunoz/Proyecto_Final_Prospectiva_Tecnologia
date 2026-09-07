@@ -67,6 +67,11 @@
       <button class="tnav-btn copy-link" onclick="copyLink()">
         <i class="ti ti-share"></i> Compartir
       </button>
+      <!-- Solo aparece si el programa trae metadata._band_view (bloque "band");
+           app.js lo muestra/oculta en cada render. -->
+      <button class="tnav-btn band" id="bandOpenBtn" type="button" hidden>
+        <i class="ti ti-topology-bus"></i> Ver banda transportadora
+      </button>
     </div>
 
     <div class="tnav-sep"></div>
@@ -349,9 +354,6 @@
 
     <!-- ── EDITOR ── -->
     <main class="editor" aria-label="Área de programación ladder">
-      <!-- Panel visual de la banda transportadora: oculto salvo que el
-           programa traiga metadata._band_view (bloque "band"). -->
-      <div class="band-panel" id="bandPanel" aria-label="Esquema de la banda transportadora" hidden></div>
       <div class="rung-area" id="rungArea" role="list" aria-label="Rungs del programa ladder"></div>
     </main>
 
@@ -446,6 +448,20 @@
 
   <!-- ══ CONTEXT MENU (clic derecho) ══════════════════════════ -->
   <div class="ctx-menu" id="ctxMenu" role="menu"></div>
+
+  <!-- ══ BANDA TRANSPORTADORA (pop-up) ═══════════════════════
+       El esquema de la banda vive fuera del area de rungs para no competir
+       con el diagrama Ladder. Se abre con el boton "Ver banda transportadora".
+       El contenido lo pinta renderBandPanel() dentro de #bandPanel. -->
+  <div class="band-modal" id="bandModal" role="dialog" aria-modal="true"
+       aria-label="Banda transportadora" hidden>
+    <div class="band-modal-box">
+      <button class="band-modal-close" id="bandModalClose" type="button" title="Cerrar">
+        <i class="ti ti-x"></i>
+      </button>
+      <div class="band-panel" id="bandPanel" aria-label="Esquema de la banda transportadora" hidden></div>
+    </div>
+  </div>
 
   <!-- ══ PROPERTIES POPUP (doble-clic sobre elementos) ════════ -->
   <div class="prop-popup" id="propPopup" role="dialog" aria-label="Propiedades del elemento">

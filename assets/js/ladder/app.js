@@ -542,13 +542,39 @@ function render() {
   const selFull = { ...sel, multiRungId: multi.rungId, multiIds: multi.ids };
   const ra   = document.getElementById('rungArea');
   if (ra) renderAllRungs(ra, prog, selFull);
-  // Panel de la banda: se dibuja solo si el programa trae _band_view.
+  // Panel de la banda: se dibuja solo si el programa trae _band_view. Vive
+  // dentro del pop-up #bandModal, no sobre el area de rungs.
   renderBandPanel(document.getElementById('bandPanel'), prog);
+  updateBandButton();
   renderTerminal();
   renderActiveTab(prog);
   updateSidebarArmed();
   updateEtLabel(prog);
   updatePlcAddress(prog);
+}
+
+// ── Pop-up de la banda transportadora ─────────────────────────
+// El esquema se saco del area de rungs para que el Ladder siga siendo el
+// elemento principal. Aqui solo se abre/cierra: que se dibuja y con que
+// estado lo sigue decidiendo renderBandPanel() con metadata._band_view.
+const hayBanda = () => document.getElementById('bandPanel')?.hidden === false;
+
+function updateBandButton() {
+  const btn = document.getElementById('bandOpenBtn');
+  if (btn) btn.hidden = !hayBanda();
+  // Si el programa nuevo ya no tiene banda, no dejar el pop-up abierto.
+  if (!hayBanda()) closeBandModal();
+}
+
+function openBandModal() {
+  if (!hayBanda()) return;
+  const m = document.getElementById('bandModal');
+  if (m) m.hidden = false;
+}
+
+function closeBandModal() {
+  const m = document.getElementById('bandModal');
+  if (m) m.hidden = true;
 }
 
 store.subscribe(render);
@@ -1843,7 +1869,14 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bb-collapse-btn')?.addEventListener('click', toggleBottomBar);
 
   // Escape cierra popups
-  document.addEventListener('keydown', e => { if (e.key === 'Escape') { hidePropPopup(); hideCtxMenu(); } });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { hidePropPopup(); hideCtxMenu(); closeBandModal(); } });
+
+  // Pop-up de la banda transportadora
+  document.getElementById('bandOpenBtn')?.addEventListener('click', openBandModal);
+  document.getElementById('bandModalClose')?.addEventListener('click', closeBandModal);
+  document.getElementById('bandModal')?.addEventListener('click', (e) => {
+    if (e.target.id === 'bandModal') closeBandModal();   // clic en el fondo
+  });
 
   // Drag-and-drop
   document.querySelector('.sidebar')?.addEventListener('dragstart', onSidebarDragStart);

@@ -349,7 +349,7 @@ function tofAt(addr, seconds, ctx) {
   return (col) => ({ id: eid(), type: 'block_tof', address: addr, pos: { col }, params: { preset_ms: seconds * 1000 } });
 }
 
-function compileBand(band, ctx) {
+function compileBand(band, ctx, hints) {
   const rungs = [];
   const dir     = bandDir(band.direction);
   const freq    = num(band.freq_hz);
@@ -417,6 +417,12 @@ function compileBand(band, ctx) {
       'Torreta roja: banda detenida esperando', ctx));
   }
 
+  // Lámparas de la torreta que la instrucción nombra explícitamente. El PLC
+  // (§12.7 del Ladder maestro) las gobierna solo con el estado de la banda,
+  // por eso los rungs de arriba no cambian; esto es únicamente qué se dibuja
+  // ENCENDIDO en el panel. Sin mención, la torreta queda en estado neutro.
+  const lamps = (hints && hints.lamps) || {};
+
   // Datos para el panel visual (solo presentación; no altera el engine_config).
   const view = {
     enable: true,
@@ -435,9 +441,9 @@ function compileBand(band, ctx) {
       s1: usaS1,
       s2: usaS2,
       torreta: true,
-      verde: true,
-      amarilla: retTerms.length > 0,
-      roja: waitTerms.length > 0,
+      verde: !!lamps.verde,
+      amarilla: !!lamps.amarilla,
+      roja: !!lamps.roja,
     },
   };
 
@@ -497,7 +503,7 @@ function exprUsesVar(expr, name) {
 // Contrato: { name, device_profile, system:{enable,global_stop},
 //             outputs:[{ output, logic:{mode,...}, timer, counter, expr, comment }] }
 // Python lee output/logic/timer/counter/system; aquí dibujamos la vista ladder.
-export function compileLogicToSchema(logic, profile) {
+export function compileLogicToSchema(logic, profile, opts = {}) {
   const warnings = [];
   const used = new Map();
   const symbols = buildSymbols(logic || {}, profile);
@@ -536,7 +542,7 @@ export function compileLogicToSchema(logic, profile) {
   // que el panel visual usa para representar los elementos físicos.
   let bandView = null;
   if (bandOn) {
-    const { rungs: bandRungs, view } = compileBand(bandCfg, ctx);
+    const { rungs: bandRungs, view } = compileBand(bandCfg, ctx, opts.bandHints);
     rungs.push(...bandRungs);
     bandView = view;
   }

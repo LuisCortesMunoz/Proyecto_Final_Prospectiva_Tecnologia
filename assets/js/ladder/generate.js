@@ -26,6 +26,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let source = 'backend';
   let ejemplo_id = '';
   let localWarnings = [];
+  let bandHints = null;   // presentación de la banda; NO viaja en el engine_config
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
   const pasted = tryParseLogicJson(text);
@@ -61,6 +62,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       const b = buildBandLogic(text);
       logic = b.logic;
       localWarnings = b.warnings;
+      bandHints = b.hints;
       source = 'banda-local';
     }
   }
@@ -118,7 +120,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
 
   // 2) Compilar a geometría y 3) normalizar/validar el schema.
   onProgress?.('compiling');
-  const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile);
+  const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile, { bandHints });
   const nv = normalizeAndValidate(program);
 
   const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
