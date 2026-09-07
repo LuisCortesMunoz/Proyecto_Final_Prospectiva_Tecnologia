@@ -1281,11 +1281,13 @@ async function cargarAlPLC() {
 
   const prog = store.getProgram();
   const cfg  = prog?.metadata?.engine_config;
-  // Un programa es cargable si tiene lógica por salida (outputs) O una secuencia
-  // temporizada (semáforo): en ese caso outputs viene vacío y todo va en sequence.
+  // Un programa es cargable si tiene lógica por salida (outputs), una secuencia
+  // temporizada (semáforo) o el bloque de la banda transportadora: en esos dos
+  // últimos casos outputs viene vacío y todo va en sequence o en band.
   const tieneOutputs  = Array.isArray(cfg?.outputs) && cfg.outputs.length > 0;
   const tieneSequence = Array.isArray(cfg?.sequence?.steps) && cfg.sequence.steps.length > 0;
-  if (!cfg || (!tieneOutputs && !tieneSequence)) {
+  const tieneBanda    = !!cfg?.band && typeof cfg.band === 'object';
+  if (!cfg || (!tieneOutputs && !tieneSequence && !tieneBanda)) {
     store.log('err', 'Este programa no tiene "engine_config". Genera el programa con el asistente IA (modo Diseñador) para poder cargarlo al PLC.');
     showToast('Sin engine_config para el PLC', 'error');
     return;
@@ -1297,7 +1299,9 @@ async function cargarAlPLC() {
   const port  = Number(tgt.port) || 502;
   const resumen = tieneOutputs
     ? `${cfg.outputs.length} salida(s)`
-    : `secuencia de ${cfg.sequence.steps.length} paso(s)`;
+    : tieneSequence
+      ? `secuencia de ${cfg.sequence.steps.length} paso(s)`
+      : `la banda transportadora (${cfg.band.enable === false ? 'apagada' : cfg.band.direction || 'derecha'})`;
   store.log('info', `Enviando ${resumen} al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
 
@@ -1324,7 +1328,8 @@ async function cargarAlPLC() {
       return;
     }
 
-    store.log('ok', `Programa cargado al PLC ${d.plc || ''} — ${d.salidas} salida(s) escritas.`);
+    store.log('ok', `Programa cargado al PLC ${d.plc || ''}`
+      + (d.salidas ? ` — ${d.salidas} salida(s) escritas.` : '.'));
     (d.plan || []).forEach(p => store.log('info', '· ' + p));
     showToast('Programa cargado al PLC', 'success');
   } catch (e) {
