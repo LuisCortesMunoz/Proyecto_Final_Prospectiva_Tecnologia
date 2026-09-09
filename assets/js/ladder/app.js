@@ -46,8 +46,13 @@ function recordarPLC(ip, port) {
 function plcObjetivo(prog) {
   const tgt = prog?.metadata?.plc_target || {};
   const rec = plcRecordado();
-  const ip = (tgt.ip || '').trim() || rec.ip;
-  const port = Number(tgt.port) || rec.port || 502;
+  // PRECEDENCIA: manda lo que el usuario eligio (rec), no lo que traiga el
+  // programa. Cada regeneracion reconstruye metadata.plc_target desde el
+  // perfil del dispositivo, asi que si el programa ganara, modificar la
+  // logica borraria la IP elegida. El plc_target solo se usa cuando el
+  // usuario todavia no ha elegido ninguno (p. ej. un .json importado).
+  const ip = rec.ip || (tgt.ip || '').trim();
+  const port = rec.port || Number(tgt.port) || 502;
   return { ip, port };
 }
 

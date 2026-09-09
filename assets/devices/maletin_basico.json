@@ -5,7 +5,7 @@
   "plc": {
     "familia": "Horner XL4 / XC1E5",
     "software": "Cscape 10.2",
-    "modbus": { "ip": "192.168.1.100", "port": 502, "unit_id": 1 }
+    "modbus": { "ip": "", "port": 502, "unit_id": 1 }
   },
   "inputs": [
     { "id": "BTN_VERDE", "addr": "%I1", "kind": "NO", "label": "Botón verde (arranque)", "rol": "marcha" },
