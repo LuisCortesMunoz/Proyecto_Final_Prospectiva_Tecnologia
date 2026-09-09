@@ -2,8 +2,15 @@
  * generate.js — Punto ÚNICO de generación de programas ladder.
  *
  * Flujo (arquitectura única, ver CONTRACT.md):
- *   texto → IA (/generar-logica) → JSON lógico simple
+ *   texto → identificar equipo → IA (/generar-logica) → JSON lógico simple
  *         → validateLogicJson → compileLogicToSchema → normalizeAndValidate → program
+ *
+ * Hay DOS equipos, cada uno con su PLC y su Ladder maestro:
+ *   MODO MALETÍN → outputs / sequence (Q10-Q12, I1..I7)
+ *   MODO BANDA   → bloque "band" (VFD, sensores S1/S2, torreta)
+ * El equipo se decide ANTES de generar y viaja en `device`, para que el
+ * backend mapee la instrucción al Ladder maestro correcto. Si la instrucción
+ * puede aplicar a los dos, no se adivina: se pregunta.
  *
  * Lo usan el panel de chat (ladder.html), la voz del landing (main.js) y el
  * copiloto del asistente (copilot.js). No hay un segundo motor ni geometría
@@ -12,96 +19,91 @@
 import { BACKEND_BASE_URL } from './config.js';
 import { compileLogicToSchema } from './compiler/logicToSchema.js';
 import { validateLogicJson, normalizeAndValidate } from './validate.js';
-import { detectEquipment, equipmentQuestion, buildBandLogic } from './equipment.js';
+import { detectEquipment, equipmentQuestion, buildBandLogic, detectTorretaLamps } from './equipment.js';
 
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
  * @param {object|null} profile  Perfil del dispositivo (maletin_basico.json).
+ * @param {{signal?:AbortSignal, context?:object, onProgress?:Function, device?:string}} [opts]
+ *   `device` fuerza el equipo ('maletin' | 'banda'), p. ej. tras responder la
+ *   pregunta de desambiguación. Si no viene, se deduce del texto.
  * @returns {Promise<{program, logic, warnings:string[], telemetry}>}
  * Lanza Error en fallo; si el JSON lógico no valida, el Error trae `.logicErrors`.
  */
-export async function generateProgram(text, profile, { signal, context, onProgress } = {}) {
+export async function generateProgram(text, profile, { signal, context, onProgress, device } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+  const ahora = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let logic = null;
   let source = 'backend';
   let ejemplo_id = '';
   let localWarnings = [];
   let bandHints = null;   // presentación de la banda; NO viaja en el engine_config
+  let equipo = normalizeDevice(device);
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
   const pasted = tryParseLogicJson(text);
   if (pasted) {
     logic = pasted;
     source = 'json-pegado';
+    if (!equipo) equipo = pasted.band ? 'banda' : 'maletin';
   } else {
     // ── Selección de equipo (maletín / banda transportadora) ────
-    // Hay dos entornos físicos y la instrucción tiene que decir a cuál va.
-    // El backend solo habla el vocabulario del maletín, así que aquí se
-    // decide antes de llamarlo: si es de la banda se arma el bloque "band"
-    // localmente; si es ambigua se pregunta; si es del maletín, el flujo
-    // sigue siendo EXACTAMENTE el de siempre (fetch a /generar-logica).
-    const equipo = detectEquipment(text);
-
-    if (equipo.equipment === null) {
-      // Ambigua: se devuelve por el MISMO canal `needs_clarification` que ya
-      // usan chat.js y copilot.js, así que no hace falta tocar ninguna UI.
-      const t1eq = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-      return {
-        needsClarification: true,
-        questions: [equipmentQuestion()],
-        assumptions: [],
-        analysis: { equipo: 'ambiguo', motivo: equipo.reason },
-        telemetry: { source: 'equipo', latency_ms: Math.round(t1eq - t0) },
-      };
+    // Prioridad: el equipo que ya eligió el usuario > lo que diga el texto.
+    if (!equipo) {
+      const det = detectEquipment(text);
+      if (det.equipment === null) {
+        // Ambigua: se devuelve por el MISMO canal `needs_clarification` que ya
+        // usan chat.js y copilot.js, así que no hace falta tocar ninguna UI.
+        return {
+          needsClarification: true,
+          questions: [equipmentQuestion()],
+          assumptions: [],
+          analysis: { equipo: 'ambiguo', motivo: det.reason },
+          telemetry: { source: 'equipo', latency_ms: Math.round(ahora() - t0) },
+        };
+      }
+      equipo = det.equipment;
     }
 
-    if (equipo.equipment === 'banda') {
-      // La banda se compila con el bloque "band" que plc_maestro.py ya
-      // ejecuta; el compilador deriva de ahí los rungs y metadata._band_view
-      // que el panel visual dibuja.
+    // La torreta que nombra el usuario es dato de PRESENTACIÓN: se calcula
+    // aquí para que el panel visual de la banda se dibuje igual que siempre.
+    if (equipo === 'banda') bandHints = { lamps: detectTorretaLamps(text) };
+
+    // ── Generación: MISMO endpoint para los dos equipos, con `device` ──
+    onProgress?.('fetching');
+    let data = null;
+    try {
+      data = await pedirLogica(text, profile, context, equipo, signal);
+    } catch (e) {
+      if (equipo !== 'banda') throw e;
+      // Red de seguridad SOLO para la banda: si el backend no responde, se
+      // arma el bloque "band" con la lectura local de siempre.
       const b = buildBandLogic(text);
       logic = b.logic;
-      localWarnings = b.warnings;
       bandHints = b.hints;
+      localWarnings = [...b.warnings,
+        'El backend no respondió (' + e.message + '); se usó la lectura local de la banda.'];
       source = 'banda-local';
     }
-  }
 
-  if (logic == null) {
-    onProgress?.('fetching');
-    let res;
-    try {
-      res = await fetch(`${BACKEND_BASE_URL}/generar-logica`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ texto: text, device_profile: profile?.id || null, contexto: context || null }),
-        signal,
-      });
-    } catch (e) {
-      throw new Error('No se pudo contactar el backend (/generar-logica): ' + e.message +
-        '. Mientras tanto puedes pegar un JSON lógico simple en el chat.');
+    if (data) {
+      // El backend puede pedir aclaración en vez de generar (prompt ambiguo, o
+      // equipo sin decidir). Los llamadores lo detectan por `needsClarification`
+      // y muestran las preguntas SIN intentar compilar un programa inexistente.
+      if (data.status === 'needs_clarification') {
+        return {
+          needsClarification: true,
+          questions: Array.isArray(data.questions) ? data.questions : [],
+          assumptions: Array.isArray(data.assumptions) ? data.assumptions : [],
+          analysis: data.analysis || {},
+          telemetry: { source: 'backend', latency_ms: Math.round(ahora() - t0) },
+        };
+      }
+      logic = data.logic || data;
+      ejemplo_id = data.ejemplo_id || '';
+      if (data.device) equipo = data.device;
+      source = equipo === 'banda' ? 'banda-backend' : 'backend';
     }
-    if (!res.ok) {
-      const d = await res.json().catch(() => null);
-      throw new Error(d?.detail || `El backend respondió HTTP ${res.status} en /generar-logica.`);
-    }
-    const data = await res.json();
-    // Fase 1 (agente): el backend puede pedir aclaracion en vez de generar
-    // (prompt ambiguo). Se devuelve un resultado discriminado; los llamadores
-    // (chat.js / copilot.js) lo detectan por `needsClarification` y muestran las
-    // preguntas SIN intentar compilar un programa inexistente.
-    if (data && data.status === 'needs_clarification') {
-      const t1nc = (typeof performance !== 'undefined' ? performance.now() : Date.now());
-      return {
-        needsClarification: true,
-        questions: Array.isArray(data.questions) ? data.questions : [],
-        assumptions: Array.isArray(data.assumptions) ? data.assumptions : [],
-        analysis: data.analysis || {},
-        telemetry: { source: 'backend', latency_ms: Math.round(t1nc - t0) },
-      };
-    }
-    logic = data?.logic || data;
-    ejemplo_id = data?.ejemplo_id || '';
   }
 
   if (!logic || typeof logic !== 'object') {
@@ -123,19 +125,60 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile, { bandHints });
   const nv = normalizeAndValidate(program);
 
-  const t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   return {
     program: nv.program,
     logic,
+    device: equipo,
     warnings: [...localWarnings, ...lv.warnings, ...compileWarnings, ...nv.warnings],
     telemetry: {
       source,
-      latency_ms: Math.round(t1 - t0),
+      device: equipo,
+      latency_ms: Math.round(ahora() - t0),
       rungs: nv.program.rungs.length,
       repairs: nv.repairs.length,
     },
     ejemplo_id,
   };
+}
+
+/**
+ * POST /generar-logica con el equipo ya decidido. Es el ÚNICO punto donde el
+ * front llama a la IA: el backend elige el prompt y el mapeo del Ladder
+ * maestro que corresponde a `device`.
+ */
+async function pedirLogica(text, profile, context, device, signal) {
+  let res;
+  try {
+    res = await fetch(`${BACKEND_BASE_URL}/generar-logica`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        texto: text,
+        device,                                   // 'maletin' | 'banda'
+        device_profile: profile?.id || null,
+        contexto: context || null,
+      }),
+      signal,
+    });
+  } catch (e) {
+    throw new Error('No se pudo contactar el backend (/generar-logica): ' + e.message +
+      '. Mientras tanto puedes pegar un JSON lógico simple en el chat.');
+  }
+  if (!res.ok) {
+    const d = await res.json().catch(() => null);
+    throw new Error(d?.detail || `El backend respondió HTTP ${res.status} en /generar-logica.`);
+  }
+  return res.json();
+}
+
+/** Reduce lo que llegue ('Banda transportadora', 'Maletín'…) al id canónico. */
+function normalizeDevice(device) {
+  const t = String(device || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim();
+  if (!t) return null;
+  if (t.startsWith('banda') || t.includes('transportador') || t.includes('cinta')) return 'banda';
+  if (t.startsWith('maletin')) return 'maletin';
+  return null;
 }
 
 // ¿El texto es un JSON lógico simple pegado? (modo dev / sin backend)
@@ -144,7 +187,7 @@ function tryParseLogicJson(text) {
   if (!t.startsWith('{')) return null;
   try {
     const o = JSON.parse(t);
-    if (o && (Array.isArray(o.outputs) || o.logic)) return o.logic || o;
+    if (o && (Array.isArray(o.outputs) || o.logic || o.band)) return o.logic || o;
   } catch { /* no es JSON */ }
   return null;
 }

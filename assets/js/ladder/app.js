@@ -21,6 +21,36 @@ function plcBridgeUrl() {
   return (localStorage.getItem('lv_plc_bridge') || 'http://localhost:8000').replace(/\/+$/, '');
 }
 
+// ── IP del PLC: se recuerda en el NAVEGADOR, no en el programa ─────
+// Antes vivia solo en metadata.plc_target, y como cada programa nuevo trae su
+// propio metadata (schema.js la reinicia), la IP se perdia y habia que
+// escribirla otra vez. Guardarla aqui la hace sobrevivir a los programas
+// nuevos y a recargar la pagina. El programa la sigue llevando en su metadata
+// para que un .json exportado sepa a que PLC iba.
+function plcRecordado() {
+  try {
+    const ip = (localStorage.getItem('lv_plc_ip') || '').trim();
+    const port = Number(localStorage.getItem('lv_plc_port')) || 502;
+    return { ip, port };
+  } catch { return { ip: '', port: 502 }; }
+}
+
+function recordarPLC(ip, port) {
+  try {
+    localStorage.setItem('lv_plc_ip', String(ip || '').trim());
+    localStorage.setItem('lv_plc_port', String(Number(port) || 502));
+  } catch { /* modo privado: no se puede recordar, no pasa nada */ }
+}
+
+/** IP/puerto a usar: lo del programa si lo trae, si no lo recordado. */
+function plcObjetivo(prog) {
+  const tgt = prog?.metadata?.plc_target || {};
+  const rec = plcRecordado();
+  const ip = (tgt.ip || '').trim() || rec.ip;
+  const port = Number(tgt.port) || rec.port || 502;
+  return { ip, port };
+}
+
 // ── Carga inicial del programa ────────────────────────────────────
 // Prioridad: URL (?l=) → respaldo del copiloto en localStorage → default.
 // La URL puede truncarse en programas grandes (y perder el engine_config);
@@ -1293,22 +1323,57 @@ async function cargarAlPLC() {
     return;
   }
 
-  const url   = plcBridgeUrl();
-  const tgt   = store.getProgram()?.metadata?.plc_target || {};
-  const ip    = (tgt.ip || '').trim();
-  const port  = Number(tgt.port) || 502;
+  const url = plcBridgeUrl();
+  let { ip, port } = plcObjetivo(store.getProgram());
+
+  // Sin IP conocida: que el puente busque el PLC conectado y lo proponga.
+  // La decision de cargar sigue siendo tuya: se pide confirmacion.
+  if (!ip) {
+    store.log('info', 'Sin IP de PLC: buscando en la red desde el puente…');
+    showToast('Buscando el PLC…', 'info');
+    try {
+      const res = await fetch(`${url}/plc/detectar`, { signal: AbortSignal.timeout(60000) });
+      const d = await res.json().catch(() => null);
+      if (!res.ok) throw new Error(d?.detail || `HTTP ${res.status}`);
+      (d.plcs || []).forEach(p => store.log('info', '· PLC encontrado: ' + p));
+      if (d.sugerido) {
+        if (!confirm(`Se encontro un PLC en ${d.sugerido}.
+
+${d.motivo}
+
+¿Cargar el programa ahi?`)) {
+          store.log('info', 'Carga cancelada por el usuario.');
+          return;
+        }
+        ip = d.sugerido;
+        guardarIPPLC(ip, port);      // no vuelve a preguntar la proxima vez
+      } else {
+        store.log('warn', d.motivo || 'No se pudo elegir un PLC.');
+        abrirSelectorPLC();          // varios PLC o ninguno: eliges tu
+        return;
+      }
+    } catch (e) {
+      store.log('err', 'No se pudo buscar el PLC: ' + e.message);
+      abrirSelectorPLC();
+      return;
+    }
+  }
   const resumen = tieneOutputs
     ? `${cfg.outputs.length} salida(s)`
     : tieneSequence
       ? `secuencia de ${cfg.sequence.steps.length} paso(s)`
       : `la banda transportadora (${cfg.band.enable === false ? 'apagada' : cfg.band.direction || 'derecha'})`;
-  store.log('info', `Enviando ${resumen} al PLC ${ip || '(IP por defecto del backend)'}:${port} vía ${url}/aplicar-plc …`);
+  const equipo = cfg.device || (tieneBanda ? 'banda' : 'maletin');
+  store.log('info', `Enviando ${resumen} al PLC del ${equipo} `
+    + `${ip}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
 
   try {
-    // Mandamos la IP/puerto del editor para que el backend conecte al PLC
-    // correcto (si no, usa su IP por defecto, 192.168.3.12).
-    const body = { logic: cfg, port };
+    // El equipo destino viaja explícito: maletin y banda son PLC distintos y
+    // el backend enruta con él. La IP es OPCIONAL: si no se manda, el puente
+    // busca el PLC en la red y lo identifica por su huella. Además verifica,
+    // antes de escribir, que el PLC que responde sea el del equipo correcto.
+    const body = { logic: cfg, port, device: equipo };
     if (ip) body.ip = ip;
     const res = await fetch(`${url}/aplicar-plc`, {
       method:  'POST',
@@ -1321,15 +1386,18 @@ async function cargarAlPLC() {
     if (!res.ok) {
       store.log('err', 'PLC: ' + (d?.detail || `HTTP ${res.status}`));
       showToast('Error al cargar al PLC', 'error');
-      // Falla típica de conexión (503): el PLC no está en esa IP. Ofrecer detectar.
-      if (res.status === 503 && confirm('No se pudo conectar al PLC. ¿Buscar PLCs en la red y elegir la IP?')) {
+      // 503 (no conecta) o 400 (no se pudo autodetectar): ofrecer elegir la IP.
+      if ((res.status === 503 || res.status === 400)
+          && confirm('No se pudo alcanzar el PLC del ' + equipo + '. ¿Buscar PLCs en la red y elegir la IP?')) {
         abrirSelectorPLC();   // el botón "Cargar ahora (TCP)" del selector reintenta
       }
       return;
     }
 
-    store.log('ok', `Programa cargado al PLC ${d.plc || ''}`
+    store.log('ok', `Programa cargado al PLC del ${d.device || equipo} ${d.plc || ''}`
       + (d.salidas ? ` — ${d.salidas} salida(s) escritas.` : '.'));
+    (d.notas || []).forEach(t => store.log('info', '· ' + t));
+    (d.avisos || []).forEach(t => store.log('warn', '· ' + t));
     (d.plan || []).forEach(p => store.log('info', '· ' + p));
     showToast('Programa cargado al PLC', 'success');
   } catch (e) {
@@ -1348,16 +1416,15 @@ let _plcStatus = { ip: null, ok: null };   // ok: null=sin probar, true/false
 function guardarIPPLC(ip, port) {
   const meta = store.getProgram().metadata;
   store.updateMeta({ plc_target: { ...meta.plc_target, ip, port } });
-  store.log('ok', `PLC objetivo: ${ip}:${port}`);
+  recordarPLC(ip, port);          // sobrevive al siguiente programa
+  store.log('ok', `PLC objetivo: ${ip}:${port} (recordado)`);
 }
 
 // Refresca el texto y color de la pastilla "192.168.x.x:502" de la barra.
 function updatePlcAddress(prog) {
   const span = document.getElementById('plcAddress');
   if (!span) return;
-  const tgt  = prog?.metadata?.plc_target || {};
-  const ip   = (tgt.ip || '').trim();
-  const port = Number(tgt.port) || 502;
+  const { ip, port } = plcObjetivo(prog);
   span.textContent = (ip || '—') + ':' + port;
   const btn = span.closest('.tnav-plc');
   if (!btn) return;
@@ -1901,7 +1968,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const fromUrl = !!new URLSearchParams(window.location.search).get('l');
   store.log('info', fromUrl ? 'Programa cargado desde URL.' : 'Programa de ejemplo cargado.');
-  store.log('info', `PLC target: ${store.getProgram().metadata.plc_target.ip}:${store.getProgram().metadata.plc_target.port}`);
+  const _tgt = plcObjetivo(store.getProgram());
+  store.log('info', _tgt.ip
+    ? `PLC objetivo: ${_tgt.ip}:${_tgt.port} (recordado)`
+    : 'Sin PLC elegido: al cargar, el puente buscara el que este conectado.');
 });
 
 function esc(s) {

@@ -166,7 +166,7 @@ export function normalizeAndValidate(programIn) {
   const repairs = [];
 
   if (!program.metadata) {
-    program.metadata = { name: 'Programa', plc_target: { ip: '192.168.1.100', port: 502, unit_id: 1 }, scan_time_ms: 100 };
+    program.metadata = { name: 'Programa', plc_target: { ip: '', port: 502, unit_id: 1 }, scan_time_ms: 100 };
     repairs.push('metadata faltante creada');
   }
   if (!program.symbol_table) { program.symbol_table = {}; repairs.push('symbol_table faltante creada'); }

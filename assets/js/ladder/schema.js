@@ -34,7 +34,10 @@ export function defaultProgram() {
       project_id: 'proj_001',
       name: 'Control Motor',
       version: '1.0.0',
-      plc_target: { ip: '192.168.1.10', port: 502, unit_id: 1 },
+      // ip vacia a proposito: el PLC real se recuerda en el navegador
+      // (lv_plc_ip). Poner una IP de ejemplo aqui borraba la del usuario
+      // cada vez que se creaba un programa.
+      plc_target: { ip: '', port: 502, unit_id: 1 },
       scan_time_ms: 100,
     },
     symbol_table: {

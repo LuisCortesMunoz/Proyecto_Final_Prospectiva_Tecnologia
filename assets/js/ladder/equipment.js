@@ -35,8 +35,7 @@ const BAND_TERMS = [
 const MALETIN_TERMS = [
   /\bmaletin\b/,
   /\bi\s?1\b/, /\bi\s?2\b/, /\bi\s?7\b/,
-  /\bbot(?:on|ones)\b/, /\bpulsador/, /\bselector/,
-  /\benclav/, /\bcontador/, /\bsecuencia/,
+  /\benclav/, /\bcontador/, /\bsecuencia/, /\bsemaforo/,
   /\bparo de emergencia\b/,
 ];
 
@@ -48,6 +47,12 @@ const SHARED_TERMS = [
   /\bq\s?1[012]\b/, /\bverde\b/, /\bamarilla\b/, /\broja\b/,
   /\bsensor/, /\bmotor/, /\bsistema\b/, /\bpieza/,
   /\bi\s?3\b/, /\bi\s?4\b/,
+  /\btemporizador/, /\btimer\b/, /\bsalida\b/, /\bentrada\b/,
+  // "boton"/"pulsador" no deciden solos (espejo de device_router.py): el PLC
+  // de la banda no tiene botones, pero "activa una salida cuando se presione
+  // un botón" debe preguntar en vez de asumir. Con un I1/I2/I7 o la palabra
+  // "maletín" en la frase sí hay término exclusivo y no se pregunta.
+  /\bbot(?:on|ones)\b/, /\bpulsador/, /\bselector/,
 ];
 
 const hits = (t, list) => list.filter(re => re.test(t)).length;
@@ -77,7 +82,7 @@ export function detectEquipment(text) {
 export function equipmentQuestion() {
   return {
     slot: 'equipo',
-    pregunta: '¿Dónde quieres implementar esta lógica: en el maletín o en la banda transportadora?',
+    pregunta: '¿Quieres programar el maletin o la banda transportadora?',
     opciones: ['Maletín', 'Banda transportadora'],
   };
 }

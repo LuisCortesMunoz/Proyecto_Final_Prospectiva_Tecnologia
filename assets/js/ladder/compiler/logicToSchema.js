@@ -564,9 +564,11 @@ export function compileLogicToSchema(logic, profile, opts = {}) {
       _sequence_sim: sequenceSim,
       // Datos de PRESENTACIÓN de la banda para el panel visual (null si no hay).
       _band_view: bandView,
+      // Sin IP inventada: si el perfil no trae una real, se deja vacia y el
+      // editor usa la que el usuario ya eligio (recordada en el navegador).
       plc_target: (profile && profile.plc && profile.plc.modbus)
-        ? { ip: profile.plc.modbus.ip || '192.168.1.100', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
-        : { ip: '192.168.1.100', port: 502, unit_id: 1 },
+        ? { ip: profile.plc.modbus.ip || '', port: profile.plc.modbus.port || 502, unit_id: profile.plc.modbus.unit_id || 1 }
+        : { ip: '', port: 502, unit_id: 1 },
       scan_time_ms: 100,
       _warnings: warnings,
     },
