@@ -88,9 +88,13 @@ export function equipmentQuestion() {
 }
 
 // ── Instrucción de banda → bloque "band" ──────────────────────
-// Campos y rangos idénticos a _validar_banda en plc_maestro.py:
-//   enable · direction · freq_hz · wait_s1_s · wait_s2_s
-//   retrigger_s1_s · retrigger_s2_s
+// Campos y rangos idénticos a validar_config en plc_banda.py (Ladder maestro
+// nuevo de la banda):
+//   enable · direction · freq_hz
+//   s1_action · wait_s1_s · count_s1 · torreta_s1   (idem para S2)
+//   torreta_run · torreta_idle
+//   retrigger_s1_s · retrigger_s2_s  → solo PRESENTACIÓN: el Ladder maestro no
+//   tiene registro de anti-retrigger (lo resuelve con SN_Rising).
 
 const RE_IZQ  = /\bizquierda\b|\breversa\b|\binversa\b|\batras\b|\bantihorario\b|\bccw\b/;
 const RE_DER  = /\bderecha\b|\badelante\b|\bhorario\b|\bcw\b/;
@@ -110,6 +114,13 @@ const int = (s) => Math.round(Number(String(s).replace(',', '.')));
 function segundos(frag) {
   const m = /(\d+(?:[.,]\d+)?)\s*(?:segundos?|segs?|s)\b/.exec(frag);
   return m ? int(m[1]) : null;
+}
+
+/** Piezas a contar en un fragmento ("cuenta 10 piezas", "10 piezas"). */
+function conteo(frag) {
+  const m = /(?:cuenta|contar|cuente|conteo|contador)\D{0,20}(\d+)|(\d+)\s*piezas?/.exec(frag);
+  if (!m) return null;
+  return int(m[1] != null ? m[1] : m[2]);
 }
 
 /** Tiempo de bloqueo / anti-retrigger declarado explícitamente. */
@@ -197,9 +208,24 @@ export function buildBandLogic(text) {
     } else {
       band['wait_s' + mk.n + '_s'] = espera;
     }
+    // El Ladder maestro nuevo distingue el paro temporizado (SN_Action = 2)
+    // del paro por presencia (SN_Action = 1). El atajo histórico "wait_sN_s"
+    // siempre significó "se detiene N segundos y sigue sola": se declara la
+    // acción explícitamente para que el backend no tenga que deducirla.
+    band['s' + mk.n + '_action'] = 'paro_temporizado';
+    // El conteo dejó de ser una acción: basta el preset del contador.
+    const cnt = conteo(frag);
+    if (cnt != null) band['count_s' + mk.n] = cnt;
     const blq = bloqueo(frag);
     if (blq != null) band['retrigger_s' + mk.n + '_s'] = blq;
   });
+
+  // "Cuenta 10 piezas en S2": el conteo suele ir ANTES de nombrar el sensor,
+  // fuera del fragmento. Si sólo se mencionó un sensor, el conteo es suyo.
+  if (marcas.length === 1 && band['count_s' + marcas[0].n] == null) {
+    const cnt = conteo(tt);
+    if (cnt != null) band['count_s' + marcas[0].n] = cnt;
+  }
 
   return { logic: { name: nombre(text), band }, warnings, hints };
 }

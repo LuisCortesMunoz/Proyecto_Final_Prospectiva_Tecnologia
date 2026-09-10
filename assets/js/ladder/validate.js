@@ -20,6 +20,14 @@ const SEQ_MODES      = new Set(['once', 'loop']);
 const SEQ_MAX_STEPS  = 8;
 // Banda transportadora: espejo de BAND_DIR y _validar_banda en plc_maestro.py.
 const BAND_DIRS      = new Set(['derecha', 'right', 'der', 'cw', 'izquierda', 'left', 'izq', 'ccw']);
+// Acciones de sensor del Ladder maestro NUEVO de la banda (S1_Action/S2_Action,
+// %R21 / %R31). Espejo de SENSOR_ACTIONS en plc_banda.py.
+const BAND_ACTIONS   = new Set(['nada', 'paro_presencia', 'paro_mientras_detecta',
+  'paro_temporizado', 'paro_presencia_torreta', 'paro_mientras_detecta_torreta',
+  'paro_temporizado_torreta']);
+// Acciones del ladder anterior: el backend las sigue aceptando y las traduce,
+// asi que aqui no son error (espejo de SENSOR_ACTIONS_OBSOLETAS).
+const BAND_ACTIONS_OBS = new Set(['paro_enclavado', 'contar', 'contar_y_parar']);
 
 const esEntrada = (n) => n == null || ENGINE_INPUTS.has(String(n).toUpperCase());
 const canonOut  = (s) => {
@@ -134,11 +142,30 @@ export function bandaActiva(band) {
 function validarBanda(band, errors) {
   if (typeof band !== 'object') { errors.push('"band" no es un objeto.'); return; }
   if (band.freq_hz != null) rangoEntero(band.freq_hz, 0, 32767, 'band', 'freq_hz', errors);
-  for (const c of ['wait_s1_s', 'wait_s2_s', 'retrigger_s1_s', 'retrigger_s2_s']) {
+  for (const c of ['wait_s1_s', 'wait_s2_s', 'count_s1', 'count_s2',
+                   'retrigger_s1_s', 'retrigger_s2_s']) {
     if (band[c] != null) rangoEntero(band[c], 0, 32767, 'band', c, errors);
+  }
+  // Mascaras de torreta: bitmask verde=1 · amarilla=2 · roja=4 (0..7).
+  for (const c of ['torreta_s1', 'torreta_s2', 'torreta_run', 'torreta_idle']) {
+    if (band[c] != null) rangoEntero(band[c], 0, 7, 'band', c, errors);
   }
   if (band.direction != null && !BAND_DIRS.has(String(band.direction).toLowerCase())) {
     errors.push(`band.direction="${band.direction}" debe ser "derecha" o "izquierda".`);
+  }
+  for (const n of [1, 2]) {
+    const acc = band['s' + n + '_action'];
+    if (acc == null) continue;
+    if (typeof acc === 'number') {
+      if (!Number.isInteger(acc) || acc < 0 || acc > 4) {
+        errors.push(`band.s${n}_action=${acc} debe estar entre 0 y 4.`);
+      }
+    } else {
+      const k = String(acc).toLowerCase();
+      if (!BAND_ACTIONS.has(k) && !BAND_ACTIONS_OBS.has(k)) {
+        errors.push(`band.s${n}_action="${acc}" no es una accion del Ladder maestro de la banda.`);
+      }
+    }
   }
 }
 
