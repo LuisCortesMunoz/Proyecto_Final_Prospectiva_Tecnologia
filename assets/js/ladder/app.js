@@ -10,6 +10,8 @@ import { defaultProgram, newRung, newElement, validateProgram, isOutputType, shi
 import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, renderBandPanel, GR } from './renderer.js';
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
+// Control en vivo de la BANDA (solo esa estacion). El maletin no lo usa.
+import { initBandControl, startBandPolling, stopBandPolling, cargarBandDesdePrograma } from './band-control.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -605,11 +607,19 @@ function openBandModal() {
   if (!hayBanda()) return;
   const m = document.getElementById('bandModal');
   if (m) m.hidden = false;
+  // Al abrir, el formulario arranca con los mismos valores que el esquema del
+  // programa. Se hace SOLO aqui, no en cada render, para no pisar lo que el
+  // usuario este escribiendo mientras el panel esta abierto.
+  cargarBandDesdePrograma(store.getProgram());
+  // El feedback del PLC solo se sondea con el pop-up abierto: ni un Modbus
+  // de mas cuando nadie lo esta mirando.
+  startBandPolling();
 }
 
 function closeBandModal() {
   const m = document.getElementById('bandModal');
   if (m) m.hidden = true;
+  stopBandPolling();
 }
 
 store.subscribe(render);
@@ -1948,7 +1958,8 @@ document.addEventListener('DOMContentLoaded', () => {
   // Escape cierra popups
   document.addEventListener('keydown', e => { if (e.key === 'Escape') { hidePropPopup(); hideCtxMenu(); closeBandModal(); } });
 
-  // Pop-up de la banda transportadora
+  // Pop-up de la banda transportadora (esquema + control en vivo)
+  initBandControl();
   document.getElementById('bandOpenBtn')?.addEventListener('click', openBandModal);
   document.getElementById('bandModalClose')?.addEventListener('click', closeBandModal);
   document.getElementById('bandModal')?.addEventListener('click', (e) => {

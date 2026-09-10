@@ -982,3 +982,151 @@ body.sim-mode .rung-svg  { cursor: default; }
 
 .band-panel .bp-body { padding: 2px 14px 14px; overflow-x: auto; }
 .band-panel .bp-svg { width: 100%; min-width: 620px; height: auto; display: block; }
+
+/* ── Control en vivo de la banda transportadora ───────────────────
+   Vive dentro del pop-up #bandModal, debajo del esquema. Usa los mismos
+   tokens de color, tipografia y radios que el resto del editor: no cambia
+   ningun estilo global ni ninguna otra estacion. */
+
+.band-control { padding: 4px 14px 16px; display: grid; gap: 10px; }
+.band-control[hidden] { display: none !important; }
+
+.bc-section {
+  border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-elevated); padding: 10px 12px;
+}
+.bc-section.bc-status { background: var(--bg-surface); }
+
+.bc-sec-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; margin-bottom: 8px;
+}
+.bc-sec-title {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--font-display); font-size: 11.5px; font-weight: 600;
+  color: var(--text-primary);
+}
+.bc-sec-title i { color: var(--accent); font-size: 14px; }
+.bc-io, .bc-reg {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary);
+}
+.bc-io { margin-left: 4px; }
+
+.bc-conn { font-family: var(--font-mono); font-size: 10px; color: var(--text-tertiary); }
+.bc-conn.is-ok  { color: var(--success); }
+.bc-conn.is-err { color: var(--danger); }
+
+.bc-badges { display: flex; gap: 6px; flex-wrap: wrap; }
+.bc-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 9px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-elevated);
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+  white-space: nowrap;
+}
+.bc-badge i { font-size: 12px; }
+.bc-badge.is-ok   { border-color: var(--success); background: var(--success-dim); color: var(--success); }
+.bc-badge.is-wait { border-color: var(--warning); background: var(--warning-dim); color: var(--warning); }
+.bc-badge.is-off  { border-color: var(--border); color: var(--text-tertiary); }
+.bc-badge.is-run  { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.bc-badge.is-err  { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+
+.bc-alert {
+  margin-top: 8px; padding: 7px 10px; border-radius: var(--radius-sm);
+  border: 1px solid var(--danger); background: var(--danger-dim);
+  color: var(--danger); font-size: 11px; line-height: 1.45;
+}
+.bc-alert[hidden] { display: none !important; }
+.bc-alert.is-info { border-color: var(--info); background: var(--accent-glow); color: var(--text-secondary); }
+
+.bc-grid {
+  display: grid; gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.bc-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.bc-field > label {
+  font-family: var(--font-ui); font-size: 10.5px; font-weight: 600;
+  color: var(--text-secondary);
+}
+.bc-field input[type="number"], .bc-field select {
+  width: 100%; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-surface); color: var(--text-primary);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.bc-field input[type="number"]:focus, .bc-field select:focus {
+  outline: none; border-color: var(--accent);
+}
+.bc-hint, .bc-note {
+  font-family: var(--font-ui); font-size: 10px; color: var(--text-tertiary);
+  line-height: 1.45;
+}
+.bc-note { margin-top: 8px; }
+
+.bc-switch {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-family: var(--font-ui); font-size: 10.5px; color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.bc-seg { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+.bc-seg-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 6px 10px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: var(--font-ui); font-size: 10.5px;
+  transition: var(--transition);
+}
+.bc-seg-btn:hover { border-color: var(--accent); color: var(--accent); }
+.bc-seg-btn.is-on {
+  border-color: var(--accent); background: var(--accent-dim); color: var(--accent);
+  font-weight: 600;
+}
+
+.bc-lamps { display: flex; gap: 6px; flex-wrap: wrap; }
+.bc-lamp {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 8px; border-radius: 999px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--bg-surface);
+  font-family: var(--font-ui); font-size: 10px; color: var(--text-secondary);
+}
+.bc-lamp-v:has(input:checked) { border-color: var(--success); background: var(--success-dim); color: var(--success); }
+.bc-lamp-a:has(input:checked) { border-color: var(--warning); background: var(--warning-dim); color: var(--warning); }
+.bc-lamp-r:has(input:checked) { border-color: var(--danger);  background: var(--danger-dim);  color: var(--danger); }
+
+.bc-feedback {
+  display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  margin-top: 9px; padding-top: 9px; border-top: 1px solid var(--border-light);
+}
+.bc-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--bg-surface);
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-secondary);
+}
+.bc-chip.is-ok { border-color: var(--success); color: var(--success); }
+
+.bc-actions {
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+  padding-top: 2px;
+}
+.bc-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 7px 12px; cursor: pointer;
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  background: var(--bg-surface); color: var(--text-secondary);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 600;
+  transition: var(--transition);
+}
+.bc-btn:hover { border-color: var(--accent); color: var(--accent); }
+.bc-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.bc-btn-primary { border-color: var(--accent); background: var(--accent); color: #fff; }
+.bc-btn-primary:hover { background: var(--accent-bright); color: #fff; }
+.bc-btn-danger { border-color: var(--danger); color: var(--danger); }
+.bc-btn-danger:hover { background: var(--danger-dim); color: var(--danger); }
+.bc-btn-ghost { padding: 3px 9px; font-weight: 500; font-size: 10px; }
+
+.bc-msg { font-family: var(--font-ui); font-size: 10.5px; color: var(--text-tertiary); }
+.bc-msg.is-ok  { color: var(--success); }
+.bc-msg.is-err { color: var(--danger); }

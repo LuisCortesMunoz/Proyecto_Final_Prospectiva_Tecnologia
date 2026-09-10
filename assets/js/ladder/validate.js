@@ -141,7 +141,10 @@ export function bandaActiva(band) {
 // _validar_banda en plc_maestro.py: mismos campos y mismos rangos.
 function validarBanda(band, errors) {
   if (typeof band !== 'object') { errors.push('"band" no es un objeto.'); return; }
-  if (band.freq_hz != null) rangoEntero(band.freq_hz, 0, 32767, 'band', 'freq_hz', errors);
+  // 1..327 Hz: el programa maestro ST multiplica la consigna por 100 sobre un
+  // INT de 16 bits, asi que fuera de ese rango declara la configuracion
+  // invalida (CfgValid = FALSE) y el VFD no arranca.
+  if (band.freq_hz != null) rangoEntero(band.freq_hz, 1, 327, 'band', 'freq_hz', errors);
   for (const c of ['wait_s1_s', 'wait_s2_s', 'count_s1', 'count_s2',
                    'retrigger_s1_s', 'retrigger_s2_s']) {
     if (band[c] != null) rangoEntero(band[c], 0, 32767, 'band', c, errors);
@@ -150,8 +153,23 @@ function validarBanda(band, errors) {
   for (const c of ['torreta_s1', 'torreta_s2', 'torreta_run', 'torreta_idle']) {
     if (band[c] != null) rangoEntero(band[c], 0, 7, 'band', c, errors);
   }
-  if (band.direction != null && !BAND_DIRS.has(String(band.direction).toLowerCase())) {
-    errors.push(`band.direction="${band.direction}" debe ser "derecha" o "izquierda".`);
+  // El ST solo acepta DirCmd = 1 o 2 (0 deja la configuracion invalida), asi
+  // que ademas de los nombres historicos se admite el codigo numerico.
+  if (band.direction != null) {
+    const d = String(band.direction).toLowerCase();
+    if (!BAND_DIRS.has(d) && d !== '1' && d !== '2') {
+      errors.push(`band.direction="${band.direction}" debe ser 1/"derecha" o 2/"izquierda".`);
+    }
+  }
+  // Plumas: 0 = stop, 1 = subir, 2 = bajar (el ST genera las salidas fisicas).
+  for (const n of [1, 2]) {
+    const p = band['pluma' + n];
+    if (p == null) continue;
+    const k = String(p).toLowerCase();
+    if (!['0', '1', '2', 'stop', 'parar', 'paro', 'subir', 'arriba', 'up',
+          'bajar', 'abajo', 'down'].includes(k)) {
+      errors.push(`band.pluma${n}="${p}" debe ser 0 (stop), 1 (subir) o 2 (bajar).`);
+    }
   }
   for (const n of [1, 2]) {
     const acc = band['s' + n + '_action'];

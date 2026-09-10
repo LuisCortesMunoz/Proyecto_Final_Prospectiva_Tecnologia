@@ -463,6 +463,213 @@
         <i class="ti ti-x"></i>
       </button>
       <div class="band-panel" id="bandPanel" aria-label="Esquema de la banda transportadora" hidden></div>
+
+      <!-- Control en vivo de la banda: escribe los registros de interfaz del
+           programa maestro ST y muestra SIEMPRE el feedback real del PLC.
+           Toda la logica fisica (VFD, sensores, torreta, plumas, interlocks)
+           es del PLC; aqui solo se configura y se lee. -->
+      <div class="band-control" id="bandControl" aria-label="Control de la banda transportadora">
+
+        <!-- ── Estado real leido del PLC ── -->
+        <div class="bc-section bc-status">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-activity"></i> Estado del sistema</span>
+            <span class="bc-conn" id="bcConn">sin conectar</span>
+          </div>
+          <div class="bc-badges">
+            <span class="bc-badge" id="bcFase"><i class="ti ti-loader"></i> —</span>
+            <span class="bc-badge" id="bcBanda"><i class="ti ti-topology-bus"></i> Banda: —</span>
+            <span class="bc-badge" id="bcCfg"><i class="ti ti-settings-check"></i> Config: —</span>
+            <span class="bc-badge" id="bcEnable"><i class="ti ti-player-play"></i> I1: —</span>
+            <span class="bc-badge" id="bcSpeed"><i class="ti ti-wave-sine"></i> — Hz</span>
+          </div>
+          <div class="bc-alert" id="bcAlert" hidden></div>
+        </div>
+
+        <!-- ── Banda: direccion y frecuencia ── -->
+        <div class="bc-section">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-settings-automation"></i> Banda</span>
+            <span class="bc-reg">%R2 · %R4</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Dirección</label>
+              <div class="bc-seg" id="bcDir">
+                <button type="button" class="bc-seg-btn is-on" data-dir="1">Dirección 1</button>
+                <button type="button" class="bc-seg-btn" data-dir="2">Dirección 2</button>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Frecuencia (Hz)</label>
+              <input type="number" id="bcFreq" min="1" max="327" step="1" value="30">
+              <span class="bc-hint">1 a 327 Hz. El PLC hace el ×100.</span>
+            </div>
+          </div>
+          <div class="bc-note">
+            Cambiar la frecuencia obliga a reconfigurar el variador: el PLC ejecuta su
+            secuencia de reset y hay que volver a pulsar el botón físico <b>I1</b>.
+          </div>
+        </div>
+
+        <!-- ── Sensor 1 ── -->
+        <div class="bc-section" data-sensor="1">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-eye"></i> Sensor 1 <span class="bc-io">I4</span></span>
+            <label class="bc-switch"><input type="checkbox" id="bcS1En"> Habilitado</label>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Acción</label>
+              <select id="bcS1Action">
+                <option value="0">Solo detectar / contar</option>
+                <option value="1">Detener mientras detecta</option>
+                <option value="2">Detener un tiempo</option>
+                <option value="3">Detener mientras detecta + torreta</option>
+                <option value="4">Detener un tiempo + torreta</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Tiempo (s)</label>
+              <input type="number" id="bcS1Timer" min="0" step="1" value="5">
+            </div>
+            <div class="bc-field">
+              <label>Conteo para actuar</label>
+              <input type="number" id="bcS1Count" min="0" step="1" value="0">
+              <span class="bc-hint">0 = en cada detección.</span>
+            </div>
+            <div class="bc-field">
+              <label>Luces durante el evento</label>
+              <div class="bc-lamps" id="bcS1Mask">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+          </div>
+          <div class="bc-feedback">
+            <span class="bc-chip" id="bcS1Cnt">Conteo: —</span>
+            <span class="bc-chip" id="bcS1Tmr">Temporizador: — s</span>
+            <span class="bc-chip" id="bcS1Done">Conteo alcanzado: —</span>
+            <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="1">
+              <i class="ti ti-refresh"></i> Reiniciar conteo
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Sensor 2 ── -->
+        <div class="bc-section" data-sensor="2">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-eye"></i> Sensor 2 <span class="bc-io">I5</span></span>
+            <label class="bc-switch"><input type="checkbox" id="bcS2En"> Habilitado</label>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Acción</label>
+              <select id="bcS2Action">
+                <option value="0">Solo detectar / contar</option>
+                <option value="1">Detener mientras detecta</option>
+                <option value="2">Detener un tiempo</option>
+                <option value="3">Detener mientras detecta + torreta</option>
+                <option value="4">Detener un tiempo + torreta</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Tiempo (s)</label>
+              <input type="number" id="bcS2Timer" min="0" step="1" value="5">
+            </div>
+            <div class="bc-field">
+              <label>Conteo para actuar</label>
+              <input type="number" id="bcS2Count" min="0" step="1" value="0">
+              <span class="bc-hint">0 = en cada detección.</span>
+            </div>
+            <div class="bc-field">
+              <label>Luces durante el evento</label>
+              <div class="bc-lamps" id="bcS2Mask">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+          </div>
+          <div class="bc-feedback">
+            <span class="bc-chip" id="bcS2Cnt">Conteo: —</span>
+            <span class="bc-chip" id="bcS2Tmr">Temporizador: — s</span>
+            <span class="bc-chip" id="bcS2Done">Conteo alcanzado: —</span>
+            <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="2">
+              <i class="ti ti-refresh"></i> Reiniciar conteo
+            </button>
+          </div>
+        </div>
+
+        <!-- ── Torreta ── -->
+        <div class="bc-section">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-bulb"></i> Torreta <span class="bc-io">Q3 · Q4 · Q5</span></span>
+            <span class="bc-reg">%R40 · %R41</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Con la banda corriendo</label>
+              <div class="bc-lamps" id="bcTorRun">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Con la banda detenida</label>
+              <div class="bc-lamps" id="bcTorIdle">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Plumas ── -->
+        <div class="bc-section">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-arrows-vertical"></i> Plumas</span>
+            <span class="bc-reg">%R60 · %R61 → %R62 · %R63</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Pluma 1</label>
+              <div class="bc-seg" data-pluma="1">
+                <button type="button" class="bc-seg-btn" data-cmd="1"><i class="ti ti-arrow-up"></i> Subir</button>
+                <button type="button" class="bc-seg-btn" data-cmd="0"><i class="ti ti-player-stop"></i> Stop</button>
+                <button type="button" class="bc-seg-btn" data-cmd="2"><i class="ti ti-arrow-down"></i> Bajar</button>
+              </div>
+              <span class="bc-chip" id="bcP1">Estado: —</span>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 2</label>
+              <div class="bc-seg" data-pluma="2">
+                <button type="button" class="bc-seg-btn" data-cmd="1"><i class="ti ti-arrow-up"></i> Subir</button>
+                <button type="button" class="bc-seg-btn" data-cmd="0"><i class="ti ti-player-stop"></i> Stop</button>
+                <button type="button" class="bc-seg-btn" data-cmd="2"><i class="ti ti-arrow-down"></i> Bajar</button>
+              </div>
+              <span class="bc-chip" id="bcP2">Estado: —</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Acciones ── -->
+        <div class="bc-actions">
+          <button type="button" class="bc-btn bc-btn-primary" id="bcSend">
+            <i class="ti ti-upload"></i> Enviar configuración
+          </button>
+          <button type="button" class="bc-btn" id="bcReset">
+            <i class="ti ti-rotate-clockwise"></i> Reset del VFD
+          </button>
+          <button type="button" class="bc-btn bc-btn-danger" id="bcStop">
+            <i class="ti ti-hand-stop"></i> Paro
+          </button>
+          <span class="bc-msg" id="bcMsg"></span>
+        </div>
+      </div>
     </div>
   </div>
 
