@@ -546,7 +546,12 @@ function addLadderMessage(out) {
     // grandes y perder el engine_config), dejamos el programa COMPLETO en
     // localStorage para que el editor lo recupere si la URL falla.
     try { localStorage.setItem('lv_handoff_program', JSON.stringify(program)); } catch { /* cuota llena */ }
-    window.open(`ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`, '_blank');
+    // Programas grandes (p. ej. la banda) superan el largo de URL que acepta
+    // el servidor (414 URI Too Long): viajan solo por localStorage.
+    const url = window.LadderGen.programFitsURL(program)
+      ? `ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`
+      : 'ladder.html?handoff=1&from=chat';
+    window.open(url, '_blank');
   });
   actions.appendChild(openBtn);
 

@@ -7,7 +7,7 @@
  * con el perfil del dispositivo ya cargado.
  */
 import { generateProgram } from './generate.js';
-import { encode } from './codec.js';
+import { encode, fitsInURL } from './codec.js';
 
 const PROFILE_URL = 'assets/devices/maletin_basico.json';
 const profilePromise = fetch(PROFILE_URL).then(r => (r.ok ? r.json() : null)).catch(() => null);
@@ -21,4 +21,7 @@ window.LadderGen = {
   // Codificación URL-safe centralizada en codec.js (antes duplicada en
   // main.js y copilot.js). Para construir ladder.html?l=…
   encodeProgramToURL: encode,
+  // false si el programa no cabe en ?l= (414 URI Too Long): se abre con
+  // ?handoff=1 y el editor lo toma de localStorage.
+  programFitsURL: fitsInURL,
 };

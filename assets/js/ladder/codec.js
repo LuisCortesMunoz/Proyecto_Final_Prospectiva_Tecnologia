@@ -45,9 +45,25 @@ export function importFromURL() {
   return val ? decode(val) : null;
 }
 
+// GitHub Pages rechaza con 414 "URI Too Long" las URLs de mas de ~8 KB, y los
+// programas de la banda superan ese largo. Hasta este limite el programa
+// viaja en ?l= como siempre; por encima se guarda en localStorage y la URL
+// solo lleva ?handoff=1 (el editor lo recupera al cargar).
+export const URL_MAX_CHARS = 6000;
+export const HANDOFF_KEY = 'lv_handoff_program';
+
+/** ¿El programa cabe en ?l= sin exceder el largo de URL que acepta el servidor? */
+export function fitsInURL(program) {
+  return encode(program).length <= URL_MAX_CHARS;
+}
+
 /** Actualiza la URL del navegador sin recargar (para autosave silencioso) */
 export function pushToURL(program) {
-  const url = exportToURL(program);
+  let url = exportToURL(program);
+  if (!fitsInURL(program)) {
+    try { localStorage.setItem(HANDOFF_KEY, JSON.stringify(program)); } catch { /* cuota llena */ }
+    url = window.location.origin + window.location.pathname + '?handoff=1';
+  }
   try {
     history.replaceState(null, '', url);
   } catch {

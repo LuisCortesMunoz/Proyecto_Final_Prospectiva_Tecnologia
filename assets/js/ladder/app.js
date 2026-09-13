@@ -7,7 +7,7 @@
  */
 
 import { defaultProgram, newRung, newElement, validateProgram, isOutputType, shiftColsFrom, compactColumns } from './schema.js';
-import { exportToURL, importFromURL, pushToURL }                                             from './codec.js';
+import { exportToURL, importFromURL, pushToURL, fitsInURL }                                  from './codec.js';
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, renderBandPanel, GR } from './renderer.js';
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 // Control en vivo de la BANDA (solo esa estacion). El maletin no lo usa.
@@ -71,8 +71,10 @@ function plcObjetivo(_prog) {
 function loadInitialProgram() {
   const fromUrl = importFromURL();
   if (fromUrl) return fromUrl;
-  // Si venía un ?l= pero no se pudo decodificar, recuperar el respaldo.
-  if (new URLSearchParams(window.location.search).has('l')) {
+  // Si venía un ?l= que no se pudo decodificar, o un programa demasiado
+  // grande para la URL (?handoff=1, ver codec.js), recuperar el respaldo.
+  const params = new URLSearchParams(window.location.search);
+  if (params.has('l') || params.get('handoff') === '1') {
     try {
       const raw = localStorage.getItem('lv_handoff_program');
       if (raw) return JSON.parse(raw);
@@ -1836,8 +1838,14 @@ window.toggleBottomBar = toggleBottomBar;
 
 // ── Copy link ─────────────────────────────────────────────────
 function copyLink() {
-  const url = exportToURL(store.getProgram());
-  pushToURL(store.getProgram());
+  const prog = store.getProgram();
+  pushToURL(prog);
+  // Un link con un programa grande daria 414 URI Too Long al abrirlo.
+  if (!fitsInURL(prog)) {
+    showToast('Programa demasiado grande para compartir por link: usa Herramientas → Exportar JSON', 'error');
+    return;
+  }
+  const url = exportToURL(prog);
   navigator.clipboard.writeText(url).then(() => showToast('¡Link copiado!', 'success')).catch(() => prompt('Copia este link:', url));
 }
 window.copyLink = copyLink;
