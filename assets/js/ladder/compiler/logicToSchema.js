@@ -354,6 +354,7 @@ function bandSymbols(symbols) {
   put('CfgValid', 'CfgValid', 'Configuración válida (§3): DirCmd 1/2, FreqRequest 1..327, acciones y máscaras en rango');
   put('CfgReady', 'CfgReady', 'Configuración lista (espejo %R7 CfgReady_Reg)');
   put('BandRunning', 'BandRunning', 'Banda en marcha (espejo %R3 BandStatus)');
+  put('%R3', 'BandStatus', 'Estado de la banda: 0 detenida · 1 dir 1 · 2 dir 2', 'INT', 'holding_reg');
   put('S1_StopLatch', 'S1_StopLatch', 'Paro por S1 activo');
   put('S2_StopLatch', 'S2_StopLatch', 'Paro por S2 activo');
   put('S1_CountDone', 'S1_CountDone', 'Objetivo de conteo de S1 alcanzado (espejo %R27)');
@@ -382,13 +383,17 @@ function num(v) {
   return Number.isFinite(n) ? n : null;
 }
 
-// Construye un rung a partir de una expresión y un elemento terminal.
-function bandRung(expr, mkTerminal, comment, ctx) {
-  const ast = parseExpr(tokenize(expr), ctx);
-  const { row0, branches, width } = layout(ast, ctx);
-  row0.push(mkTerminal(width));
+// Rung con alternativas en paralelo (OR). Cada alternativa es una serie de
+// contactos o comparadores; la más larga va en la fila principal.
+function bandRungOr(comment, alts, mkTerminal, ctx) {
+  const orden = [...alts].sort((a, b) => b.length - a.length);
+  const w = Math.max(orden[0].length, 1);
+  const row0 = orden[0].map((c, i) => bandEl(c, i, ctx));
+  row0.push(mkTerminal(w));
   const network = [{ row: 0, elements: row0 }];
-  branches.forEach((b, k) => network.push({ row: k + 1, span: b.span, elements: b.elements }));
+  orden.slice(1).forEach((a, k) => network.push({
+    row: k + 1, span: { from: 0, to: w - 1 }, elements: a.map((c, i) => bandEl(c, i, ctx)),
+  }));
   return { id: ctx.nextId(), enabled: true, comment, network };
 }
 
@@ -474,17 +479,22 @@ function compileBand(band, ctx, hints) {
   // Representación COMPACTA: solo lo que pide la configuración. Lo que el ST
   // hace siempre (reset del VFD con NewCfgFlag/ResetCmd, CfgValid, velocidad
   // real %R8, MOV 1 a %R500 sin marcha) va resumido en los comentarios.
+  // enable === false: la instrucción no pide mover la banda, así que no se
+  // dibujan arranque, frecuencia ni MOV; solo las acciones pedidas.
+  const mover = band.enable !== false;
 
   // 1) Arranque / paro (§4, §5, §6): I1 arranca con la configuración lista,
   //    BandEnable se sostiene y lo quita I3 (o una nueva configuración).
-  rungs.push(bandRungSerie(
-    'Arranque/paro: I1 arranca con la configuración lista (CfgReady, tras el reset del VFD) · I3 detiene',
-    [{ t: 'pe', a: 'I1' }, { t: 'no', a: 'I3' }, { t: 'no', a: 'CfgReady' }],
-    bandOut('coil', 'BandEnable', ctx), ctx,
-    [{ col: 0, c: { t: 'no', a: 'BandEnable' } }]));
+  if (mover) {
+    rungs.push(bandRungSerie(
+      'Arranque/paro: I1 arranca con la configuración lista (CfgReady, tras el reset del VFD) · I3 detiene',
+      [{ t: 'pe', a: 'I1' }, { t: 'no', a: 'I3' }, { t: 'no', a: 'CfgReady' }],
+      bandOut('coil', 'BandEnable', ctx), ctx,
+      [{ col: 0, c: { t: 'no', a: 'BandEnable' } }]));
+  }
 
   // 2) Frecuencia (§8/§9): solo si la instrucción la pide.
-  if (freq != null) {
+  if (mover && freq != null) {
     rungs.push(bandRungSerie(
       `Frecuencia: ${freq} Hz × 100 → %R504`,
       [{ t: 'no', a: 'CfgReady' }],
@@ -492,32 +502,38 @@ function compileBand(band, ctx, hints) {
   }
 
   // 3) Sensores configurados (§11–§14). Detección = flanco de bajada de la
-  //    entrada NC; el paro se sostiene en SN_StopLatch.
+  //    entrada NC. El ST solo evalúa los sensores con la banda habilitada
+  //    (BandEnable, botón I1), por eso ese contacto va en cada rung.
+  const conI1 = mover ? '' : ' (con la banda habilitada por I1)';
   for (const s of S) {
+    if (s.mask && s.acc !== 3 && s.acc !== 4) {
+      ctx.warnings.push(`S${s.n}: la luz de un sensor (torreta_s${s.n}) solo se enciende con las acciones 3 o 4 `
+        + '(paro + torreta); con esta acción el programa maestro no la usa.');
+    }
     if (!s.on) continue;
     const Sn = `S${s.n}`;
     if (s.count > 0 || s.acc === 0) {
       rungs.push(bandRungSerie(
-        s.count > 0 ? `${Sn} (${s.io}) cuenta piezas: objetivo ${s.count}` : `${Sn} (${s.io}) cuenta piezas`,
+        (s.count > 0 ? `${Sn} (${s.io}) cuenta detecciones: objetivo ${s.count}` : `${Sn} (${s.io}) cuenta detecciones`) + conI1,
         [{ t: 'ne', a: s.io }, { t: 'no', a: 'BandEnable' }],
         bandOut('block_ctu', s.cnt, ctx, { preset: s.count, band: { title: 'CTU' } }), ctx));
     }
     if (s.acc === 0) continue;
 
     const disparo = s.count > 0 ? { t: 'pe', a: s.done } : { t: 'ne', a: s.io };
-    const cuando  = s.count > 0 ? `al llegar a ${s.count} piezas` : 'detecta';
+    const cuando  = s.count > 0 ? `al llegar a ${s.count} detecciones` : 'detecta';
     const torTxt  = s.acc >= 3 ? ` + torreta ${TORRETA_NOMBRE[s.mask] || s.mask}` : '';
     if (s.acc === 1 || s.acc === 3) {
       rungs.push(bandRungSerie(
-        `${Sn} ${cuando} → detiene la banda mientras detecta${torTxt}`,
-        [disparo, { t: 'nc', a: s.io }],
+        `${Sn} ${cuando} → detiene la banda mientras detecta${torTxt}${conI1}`,
+        [disparo, { t: 'no', a: 'BandEnable' }, { t: 'nc', a: s.io }],
         bandOut('coil', s.latch, ctx), ctx,
         [{ col: 0, c: { t: 'no', a: s.latch } }]));
     } else {
       const w = s.wait || 0;
       rungs.push(bandRungSerie(
-        `${Sn} ${cuando} → detiene la banda ${w} s${torTxt}`,
-        [disparo, { t: 'nc', a: `${s.tmr}.DN` }],
+        `${Sn} ${cuando} → detiene la banda ${w} s${torTxt}${conI1}`,
+        [disparo, { t: 'no', a: 'BandEnable' }, { t: 'nc', a: `${s.tmr}.DN` }],
         bandOut('coil', s.latch, ctx), ctx,
         [{ col: 0, c: { t: 'no', a: s.latch } }]));
       rungs.push(bandRungSerie(
@@ -528,16 +544,18 @@ function compileBand(band, ctx, hints) {
   }
 
   // 4) Marcha → VFD (§16): MOV 18/34 a %R500. Sin marcha el ST escribe 1.
-  const paroSensor = S.filter(s => s.on && s.acc > 0).map(s => ({ t: 'nc', a: s.latch }));
-  rungs.push(bandRungSerie(
-    `Banda Dirección ${dirN} (${dir}): MOV ${cmd} → %R500${paroSensor.length ? ' · se detiene con el paro por sensor' : ''} · sin marcha el ST escribe 1`,
-    [{ t: 'no', a: 'BandEnable' }, ...paroSensor],
-    bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: `IN ${cmd}` } }), ctx));
+  if (mover) {
+    const paroSensor = S.filter(s => s.on && s.acc > 0).map(s => ({ t: 'nc', a: s.latch }));
+    rungs.push(bandRungSerie(
+      `Banda Dirección ${dirN} (${dir}): MOV ${cmd} → %R500${paroSensor.length ? ' · se detiene con el paro por sensor' : ''} · sin marcha el ST escribe 1`,
+      [{ t: 'no', a: 'BandEnable' }, ...paroSensor],
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: `IN ${cmd}` } }), ctx));
+  }
 
   // 5) Torreta (§15), solo con máscaras. Prioridad S2 → S1 → RUN → IDLE: una
-  //    fuente de mayor prioridad activa bloquea a las de menor.
+  //    fuente de mayor prioridad activa bloquea a las de menor. RUN es
+  //    BandRunning; IDLE es la banda detenida, BandStatus (%R3) = 0.
   const eventos = S.filter(s => s.on && s.acc >= 3).sort((a, b) => b.n - a.n);
-  const sinTorreta = S.filter(s => s.on && (s.acc === 1 || s.acc === 2)).map(s => s.latch);
   const LAMPARAS = [
     ['Q3', 'green', 1, 'verde'],
     ['Q4', 'yellow', 2, 'amarilla'],
@@ -547,25 +565,16 @@ function compileBand(band, ctx, hints) {
     const alts = [], fuentes = [], previas = [];
     for (const s of eventos) {
       if (s.mask & bit) {
-        alts.push([...previas, s.latch].join(' * '));
+        alts.push([...previas, { t: 'no', a: s.latch }]);
         fuentes.push(`paro de S${s.n}`);
       }
-      previas.push('!' + s.latch);
+      previas.push({ t: 'nc', a: s.latch });
     }
-    // Corriendo = habilitada y sin ningún paro por sensor; detenida = lo contrario.
-    if (torRun & bit) {
-      alts.push([...previas, 'BandEnable', ...sinTorreta.map(l => '!' + l)].join(' * '));
-      fuentes.push('banda corriendo');
-    }
-    if (torIdle & bit) {
-      alts.push([...previas, '!BandEnable'].join(' * '));
-      sinTorreta.forEach(l => alts.push([...previas, l].join(' * ')));
-      fuentes.push('banda detenida');
-    }
+    if (torRun & bit)  { alts.push([...previas, { t: 'no', a: 'BandRunning' }]);  fuentes.push('banda corriendo'); }
+    if (torIdle & bit) { alts.push([...previas, { t: 'cmp', a: '%R3', v: 0 }]); fuentes.push('banda detenida (BandStatus = 0)'); }
     if (!alts.length) continue;
-    rungs.push(bandRung(alts.length === 1 ? alts[0] : `(${alts.join(' + ')})`,
-      bandOut('coil', q, ctx, { lamp_color: lampColor }),
-      `Torreta ${nombre} (${q}): ${fuentes.join(' · ')}`, ctx));
+    rungs.push(bandRungOr(`Torreta ${nombre} (${q}): ${fuentes.join(' · ')}`,
+      alts, bandOut('coil', q, ctx, { lamp_color: lampColor }), ctx));
   }
 
   // 6) Plumas (§17): solo el comando pedido (stop = salidas apagadas).
@@ -578,6 +587,14 @@ function compileBand(band, ctx, hints) {
       `Pluma ${n} ${sube ? 'sube' : 'baja'} → ${sube ? qSube : qBaja}${n === 2 && sube ? ' (provisional)' : ''}`,
       [{ t: 'cmp', a: reg, v: c }],
       bandOut('coil', sube ? qSube : qBaja, ctx), ctx));
+  }
+
+  // Sin movimiento ni acciones (p. ej. "detén la banda"): el estado resultante.
+  if (!rungs.length) {
+    rungs.push(bandRungSerie(
+      'Banda detenida: sin marcha el ST mantiene MOV 1 → %R500 (VFD en paro)',
+      [],
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: 'IN 1' } }), ctx));
   }
 
   // Lámparas de la torreta que la instrucción nombra explícitamente. Es solo
@@ -679,7 +696,9 @@ export function compileLogicToSchema(logic, profile, opts = {}) {
   const gStop = logic?.system?.global_stop || null;
 
   const bandCfg = logic?.band;
-  const bandOn  = !!bandCfg && (bandCfg.enable === undefined || !!bandCfg.enable);
+  // Un bloque "band" siempre se dibuja: enable === false solo significa que
+  // la instrucción no pide mover la banda (torreta, sensores o plumas).
+  const bandOn  = !!bandCfg && typeof bandCfg === 'object';
   if (bandOn) bandSymbols(symbols);
 
   const rungs = [];

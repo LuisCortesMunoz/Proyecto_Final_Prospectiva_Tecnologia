@@ -26,7 +26,7 @@ const BAND_TERMS = [
   /\bbandas?\b/, /\btransportador/, /\bcintas?\b/,
   /\bvfd\b/, /\bvariador/,
   /\bs\s?[12]\b/, /\bsensor(?:es)?\s*(?:1|2|uno|dos)\b/,
-  /\btorreta\b/,
+  /\btorreta\b/, /\bplumas?\b/,
   /\bfrecuencias?\b/, /\b\d+(?:[.,]\d+)?\s*hz\b/, /\bhertz\b/,
   /\bderecha\b/, /\bizquierda\b/, /\bhorario\b/, /\bantihorario\b/,
 ];
@@ -108,7 +108,18 @@ const RE_PARAN = /\bpara\s+(?:la\s+(?:banda|cinta)|el\s+(?:motor|transportador|v
 const RE_MOVE  = /\bmov\w*|\bgira|\barranc|\bavanz|\bcorre|\bmarcha|\bconfigur|\bvelocidad|\bfrecuencia|\bhz\b|\bderecha\b|\bizquierda\b/;
 const RE_COND = /\bcuando\b|\bsi\b|\bal\b|\bdetect/;
 
+// ¿Pide MOVER la banda? Los estados ("cuando este corriendo", "con la banda
+// detenida") dicen CUANDO ocurre algo, no piden movimiento: se quitan antes.
+const RE_MOVER  = /\bmuev\w*|\bmover\w*|\bgir[ae]\w*|\barranc\w*|\bavanz[ae]\w*|\bcorr(?:e|er|a)\b|\bmarcha\b|\bvelocidad\b|\bfrecuencia\b|\bhz\b|\bderecha\b|\bizquierda\b/;
+const RE_RUN    = /\bcorriendo\b|\ben marcha\b|\bmoviendo(?:se)?\b|\bavanzando\b|\bse mueve\b|\bfuncionando\b/;
+const RE_IDLE   = /\bdetenid[ao]s?\b|\breposo\b|\bparad[ao]s?\b|\bquiet[ao]\b|\bsin moverse\b|\bsin movimiento\b|\bno se mueve\b|\bapagad[ao]\b/;
+const RE_LAMP   = /\blampara|\bluces?\b|\bluz\b|\btorreta\b|\bverde\b|\bamarill|\bambar\b|\broj[ao]\b/;
+const RE_PLUMA  = /\bplumas?\b/;
+const RE_SENSOR = /\bs\s?[12]\b|\bsensor/;
+const global = (re) => new RegExp(re.source, 'g');
+
 const int = (s) => Math.round(Number(String(s).replace(',', '.')));
+const N_UNO = { 1: '1', 2: '2', uno: '1', dos: '2' };
 
 /** Segundos dentro de un fragmento ("5 s", "5 seg", "5 segundos"). */
 function segundos(frag) {
@@ -116,9 +127,9 @@ function segundos(frag) {
   return m ? int(m[1]) : null;
 }
 
-/** Piezas a contar en un fragmento ("cuenta 10 piezas", "10 piezas"). */
+/** Detecciones a contar ("cuenta 10 piezas", "10 piezas", "3 detecciones"). */
 function conteo(frag) {
-  const m = /(?:cuenta|contar|cuente|conteo|contador)\D{0,20}(\d+)|(\d+)\s*piezas?/.exec(frag);
+  const m = /(?:cuenta|contar|cuente|conteo|contador)\D{0,20}(\d+)|(\d+)\s*(?:piezas?|detecciones|deteccion|objetos?|cajas?|veces)/.exec(frag);
   if (!m) return null;
   return int(m[1] != null ? m[1] : m[2]);
 }
@@ -132,8 +143,6 @@ function bloqueo(frag) {
 /**
  * ¿Qué lámparas de la torreta nombra la instrucción?
  * Es un dato de PRESENTACIÓN: decide cuáles se dibujan encendidas en el panel.
- * No viaja en el engine_config ni cambia los rungs, porque en el PLC la torreta
- * la gobierna el Ladder maestro (§12.7) a partir del estado de la banda.
  * @returns {{verde:boolean, amarilla:boolean, roja:boolean}}
  */
 export function detectTorretaLamps(text) {
@@ -145,11 +154,17 @@ export function detectTorretaLamps(text) {
   };
 }
 
+/** Máscara de torreta 0..7 (verde=1, amarilla=2, roja=4) de un fragmento. */
+function mascara(frag) {
+  const l = detectTorretaLamps(frag);
+  return (l.verde ? 1 : 0) | (l.amarilla ? 2 : 0) | (l.roja ? 4 : 0);
+}
+
 /**
  * Traduce una instrucción de banda al JSON lógico con el bloque "band".
- * Solo rellena lo que el texto declara: el compilador dibuja únicamente los
- * componentes presentes (un sensor sin tiempo de espera no se dibuja, la
- * frecuencia solo si se especificó, etc.).
+ * Solo rellena lo que el texto declara. Si la instrucción NO pide mover la
+ * banda (solo torreta, sensores, conteo o plumas), enable = false y el Ladder
+ * muestra únicamente esas acciones.
  *
  * `hints` son datos de PRESENTACIÓN (qué lámparas nombró el usuario): van
  * aparte del `logic` justamente para que NO acaben dentro del engine_config.
@@ -164,19 +179,24 @@ export function buildBandLogic(text) {
   // confunda con "35 s".
   const tt = t.replace(/\d+(?:[.,]\d+)?\s*(?:hz|hertz)/g, ' ');
 
+  const hayAccion = RE_LAMP.test(t) || RE_PLUMA.test(t) || RE_SENSOR.test(t);
+  const pideMover = RE_MOVER.test(t.replace(global(RE_RUN), ' ').replace(global(RE_IDLE), ' '));
+
   // Paro explícito de la banda: solo si además NO pide movimiento ni
-  // configuración, y no hay condición ni sensor de por medio.
+  // configuración, y no hay condición, sensor, torreta ni pluma de por medio.
   const paro = RE_STOP.test(t) || RE_PARAN.test(t);
-  const soloParo = paro && !RE_MOVE.test(t) && !RE_COND.test(t) && !/\bs\s?[12]\b|\bsensor/.test(t);
+  const soloParo = paro && !RE_MOVE.test(t) && !RE_COND.test(t) && !hayAccion;
   if (soloParo) {
-    warnings.push('La instrucción apaga la banda: el programa queda sin rungs.');
+    warnings.push('La instrucción solo detiene la banda.');
     return { logic: { name: nombre(text), band: { enable: false } }, warnings, hints };
   }
 
-  const band = { enable: true };
+  // Sin acciones, cualquier instrucción de banda se toma como movimiento
+  // (comportamiento de siempre). Con acciones, solo si lo pide.
+  const band = { enable: pideMover || !hayAccion };
 
-  // Sentido de giro (el compilador lo traduce a %R00500 = 18 / 34).
-  band.direction = RE_IZQ.test(t) ? 'izquierda' : (RE_DER.test(t) ? 'derecha' : 'derecha');
+  // Sentido de giro (el ST lo traduce a %R500 = 18 / 34).
+  band.direction = RE_IZQ.test(t) ? 'izquierda' : 'derecha';
 
   // Frecuencia del VFD.
   let mf = /(\d+(?:[.,]\d+)?)\s*(?:hz|hertz)\b/.exec(t);
@@ -184,13 +204,12 @@ export function buildBandLogic(text) {
   if (mf) band.freq_hz = int(mf[1]);
 
   // Sensores S1 / S2: se toma el fragmento que va desde la mención del sensor
-  // hasta la mención del siguiente, y ahí se busca su tiempo de espera.
+  // hasta la mención del siguiente, y ahí se busca qué debe hacer.
   const marcas = [];
   const reS = /\bs\s?([12])\b|\bsensor(?:es)?\s*(1|2|uno|dos)\b/g;
-  const nUno = { 1: '1', 2: '2', uno: '1', dos: '2' };
   let m;
   while ((m = reS.exec(tt)) !== null) {
-    marcas.push({ n: m[1] || nUno[m[2]], i: m.index });
+    marcas.push({ n: m[1] || N_UNO[m[2]], i: m.index });
   }
   // "cuando el sensor detecte una pieza" (sin número) se entiende como S1.
   if (!marcas.length && /\bsensor/.test(tt)) {
@@ -198,33 +217,73 @@ export function buildBandLogic(text) {
     warnings.push('Sensor sin número: se tomó S1.');
   }
 
+  let luzEnSensor = false;
   marcas.forEach((mk, k) => {
     const fin  = k + 1 < marcas.length ? marcas[k + 1].i : tt.length;
     const frag = tt.slice(mk.i, fin);
+    // La luz puede nombrarse antes del sensor ("enciende la roja cuando S1…"),
+    // salvo que esa parte hable del estado de la banda.
+    let antes = k === 0 ? tt.slice(0, mk.i) : '';
+    if (RE_RUN.test(antes) || RE_IDLE.test(antes)) antes = '';
+    const zonaLuz = antes + ' ' + frag;
+
+    const n = mk.n;
     const espera = segundos(frag);
-    if (espera == null) {
-      band['wait_s' + mk.n + '_s'] = 5;
-      warnings.push('S' + mk.n + ' se mencionó sin tiempo de espera: se asumieron 5 s.');
+    const cnt = conteo(frag) ?? (marcas.length === 1 ? conteo(tt) : null);
+    const pideParo = RE_STOP.test(frag) || RE_PARAN.test(frag) || /\bespera/.test(frag) || espera != null;
+
+    if (RE_LAMP.test(zonaLuz)) {
+      // El ST solo enciende la máscara de un sensor junto con un paro
+      // (acciones 3 y 4): la banda se detiene mientras dura el evento.
+      let luz = mascara(zonaLuz);
+      if (!luz) { luz = 7; warnings.push(`S${n}: no se indicó el color: se encienden las tres luces.`); }
+      band['s' + n + '_action'] = espera != null ? 'paro_temporizado_torreta' : 'paro_presencia_torreta';
+      if (espera != null) band['wait_s' + n + '_s'] = espera;
+      band['torreta_s' + n] = luz;
+      luzEnSensor = true;
+      warnings.push(`S${n}: en el programa maestro la luz de un sensor se enciende junto con un paro `
+        + `(la banda se detiene ${espera != null ? `${espera} s` : 'mientras detecta'}) y solo con la banda habilitada por I1.`);
+    } else if (pideParo) {
+      band['s' + n + '_action'] = 'paro_temporizado';
+      if (espera == null) {
+        band['wait_s' + n + '_s'] = 5;
+        warnings.push('S' + n + ' se mencionó sin tiempo de espera: se asumieron 5 s.');
+      } else {
+        band['wait_s' + n + '_s'] = espera;
+      }
     } else {
-      band['wait_s' + mk.n + '_s'] = espera;
+      // Solo detectar y contar.
+      band['s' + n + '_action'] = 'nada';
     }
-    // El Ladder maestro nuevo distingue el paro temporizado (SN_Action = 2)
-    // del paro por presencia (SN_Action = 1). El atajo histórico "wait_sN_s"
-    // siempre significó "se detiene N segundos y sigue sola": se declara la
-    // acción explícitamente para que el backend no tenga que deducirla.
-    band['s' + mk.n + '_action'] = 'paro_temporizado';
-    // El conteo dejó de ser una acción: basta el preset del contador.
-    const cnt = conteo(frag);
-    if (cnt != null) band['count_s' + mk.n] = cnt;
+    if (cnt != null) band['count_s' + n] = cnt;
     const blq = bloqueo(frag);
-    if (blq != null) band['retrigger_s' + mk.n + '_s'] = blq;
+    if (blq != null) band['retrigger_s' + n + '_s'] = blq;
   });
 
-  // "Cuenta 10 piezas en S2": el conteo suele ir ANTES de nombrar el sensor,
-  // fuera del fragmento. Si sólo se mencionó un sensor, el conteo es suyo.
-  if (marcas.length === 1 && band['count_s' + marcas[0].n] == null) {
-    const cnt = conteo(tt);
-    if (cnt != null) band['count_s' + marcas[0].n] = cnt;
+  // Luces por estado de la banda (las que no son de un sensor).
+  const zonaEstado = luzEnSensor ? (marcas.length ? tt.slice(0, marcas[0].i) : '') : tt;
+  const hayEstado = RE_RUN.test(zonaEstado) || RE_IDLE.test(zonaEstado);
+  if (RE_LAMP.test(zonaEstado) && (!luzEnSensor || hayEstado)) {
+    let luz = mascara(zonaEstado);
+    if (!luz) { luz = 7; warnings.push('No se indicó el color de la torreta: se encienden las tres luces.'); }
+    if (RE_RUN.test(zonaEstado)) band.torreta_run = luz;
+    else if (RE_IDLE.test(zonaEstado) || !band.enable) band.torreta_idle = luz;
+    else band.torreta_run = luz;
+  }
+
+  // Plumas: "sube la pluma 1", "baja la pluma 2", "detén la pluma 1".
+  const reP = /\bplumas?\s*(1|2|uno|dos)?\b/g;
+  let mp;
+  while ((mp = reP.exec(t)) !== null) {
+    const n = mp[1] ? N_UNO[mp[1]] : '1';
+    if (!mp[1]) warnings.push('Pluma sin número: se tomó la pluma 1.');
+    const antes = t.slice(Math.max(0, mp.index - 20), mp.index);
+    const despues = t.slice(mp.index + mp[0].length, mp.index + mp[0].length + 20);
+    const cmd = (z) => /\bsub\w*|\blevant\w*|\barriba\b/.test(z) ? 'subir'
+      : /\bbaj\w*|\babajo\b/.test(z) ? 'bajar'
+      : /\bdeten\w*|\bpar[ae]r?\b|\bstop\b|\balto\b/.test(z) ? 'stop' : null;
+    const c = cmd(antes) || cmd(despues);
+    if (c) band['pluma' + n] = c;
   }
 
   return { logic: { name: nombre(text), band }, warnings, hints };
