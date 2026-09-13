@@ -31,10 +31,10 @@ function bridgeUrl() {
   return (localStorage.getItem('lv_plc_bridge') || 'http://localhost:8000').replace(/\/+$/, '');
 }
 
-// IP propia de la BANDA. Es un PLC distinto al del maletín, así que usa su
-// propia clave: nunca se hereda la IP recordada del maletín. Si está vacía,
-// el backend usa la que tenga configurada para la banda (BANDA_PLC_IP o
-// POST /plc/config?device=banda) o la autodetectada.
+// IP del PLC que se opera desde el pop-up. La escribe el usuario en el campo de
+// IP y se actualiza al cargar un programa de banda con "Cargar" (el PLC que el
+// usuario eligió). Si está vacía, el backend usa la configurada con
+// POST /plc/config?device=banda o BANDA_PLC_IP; nunca autodetecta.
 function bandaTarget() {
   const ip = (localStorage.getItem('lv_banda_ip') || '').trim();
   const port = Number(localStorage.getItem('lv_banda_port')) || 0;
