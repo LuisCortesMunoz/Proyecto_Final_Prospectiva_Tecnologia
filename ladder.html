@@ -476,11 +476,17 @@
             <span class="bc-sec-title"><i class="ti ti-activity"></i> Estado del sistema</span>
             <span class="bc-conn" id="bcConn">sin conectar</span>
           </div>
+          <div class="bc-field bc-ip">
+            <label for="bcIp">IP del PLC de la banda</label>
+            <input type="text" id="bcIp" placeholder="p. ej. 192.168.1.50" spellcheck="false" autocomplete="off">
+            <span class="bc-hint">Se recuerda en este navegador. Vacía = la configurada en el puente.</span>
+          </div>
           <div class="bc-badges">
             <span class="bc-badge" id="bcFase"><i class="ti ti-loader"></i> —</span>
             <span class="bc-badge" id="bcBanda"><i class="ti ti-topology-bus"></i> Banda: —</span>
             <span class="bc-badge" id="bcCfg"><i class="ti ti-settings-check"></i> Config: —</span>
             <span class="bc-badge" id="bcEnable"><i class="ti ti-player-play"></i> I1: —</span>
+            <span class="bc-badge" id="bcI3"><i class="ti ti-hand-stop"></i> I3: —</span>
             <span class="bc-badge" id="bcSpeed"><i class="ti ti-wave-sine"></i> — Hz</span>
           </div>
           <div class="bc-alert" id="bcAlert" hidden></div>
@@ -552,7 +558,7 @@
             <span class="bc-chip" id="bcS1Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS1Done">Conteo alcanzado: —</span>
             <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="1">
-              <i class="ti ti-refresh"></i> Reiniciar conteo
+              <i class="ti ti-refresh"></i> Poner conteo en 0
             </button>
           </div>
         </div>
@@ -597,7 +603,7 @@
             <span class="bc-chip" id="bcS2Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS2Done">Conteo alcanzado: —</span>
             <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="2">
-              <i class="ti ti-refresh"></i> Reiniciar conteo
+              <i class="ti ti-refresh"></i> Poner conteo en 0
             </button>
           </div>
         </div>
@@ -625,6 +631,12 @@
                 <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
               </div>
             </div>
+          </div>
+          <div class="bc-feedback">
+            <button type="button" class="bc-btn bc-btn-ghost" id="bcTorApply">
+              <i class="ti ti-bulb"></i> Aplicar torreta ahora
+            </button>
+            <span class="bc-hint">Cambia solo %R40/%R41, sin detener la banda.</span>
           </div>
         </div>
 

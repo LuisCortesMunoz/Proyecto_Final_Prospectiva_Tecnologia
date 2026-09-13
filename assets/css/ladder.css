@@ -1008,6 +1008,8 @@ body.sim-mode .rung-svg  { cursor: default; }
 .bp-svg .bp-sensor.is-wait .bp-beam,
 .bp-svg .bp-sensor.is-wait .bp-beam-tip { stroke: #f59e0b; fill: #f59e0b; opacity: 1; }
 .bp-svg.is-live .bp-sensor:not(.is-wait) .bp-sensor-led { fill: #22c55e; }
+.bp-svg.is-live .bp-sensor.is-detect:not(.is-wait) .bp-sensor-led { fill: #0284c7; }
+.bp-svg.is-live .bp-sensor.is-detect .bp-beam { opacity: 1; stroke-width: 2; }
 
 .bp-svg .bp-pluma.is-up .bp-pluma-up,
 .bp-svg .bp-pluma.is-down .bp-pluma-down { fill: var(--accent); }
@@ -1089,13 +1091,14 @@ body.sim-mode .rung-svg  { cursor: default; }
   font-family: var(--font-ui); font-size: 10.5px; font-weight: 600;
   color: var(--text-secondary);
 }
-.bc-field input[type="number"], .bc-field select {
+.bc-ip { max-width: 360px; margin-bottom: 8px; }
+.bc-field input[type="number"], .bc-field input[type="text"], .bc-field select {
   width: 100%; padding: 6px 8px;
   border: 1px solid var(--border); border-radius: var(--radius-sm);
   background: var(--bg-surface); color: var(--text-primary);
   font-family: var(--font-mono); font-size: 11px;
 }
-.bc-field input[type="number"]:focus, .bc-field select:focus {
+.bc-field input[type="number"]:focus, .bc-field input[type="text"]:focus, .bc-field select:focus {
   outline: none; border-color: var(--accent);
 }
 .bc-hint, .bc-note {

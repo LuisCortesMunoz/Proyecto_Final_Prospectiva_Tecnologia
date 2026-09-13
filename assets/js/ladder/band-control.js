@@ -188,6 +188,7 @@ function postear(ruta, cuerpo, timeout) {
 
 // ── Pintado del feedback ───────────────────────────────────────
 const FASE = {
+  paro:         { txt: 'Paro I3 activo',     clase: 'is-err',  icono: 'ti-hand-stop' },
   configurando: { txt: 'Configurando VFD…',  clase: 'is-wait', icono: 'ti-loader' },
   lista:        { txt: 'Sistema listo',      clase: 'is-ok',   icono: 'ti-circle-check' },
   habilitada:   { txt: 'Banda habilitada',   clase: 'is-ok',   icono: 'ti-player-play' },
@@ -220,6 +221,10 @@ function pintarEstado(est) {
   badge('bcEnable', 'I1: ' + (est.band_enable ? 'habilitada' : 'sin habilitar'),
         est.band_enable ? 'is-ok' : 'is-off', 'ti-player-play');
 
+  const i3 = est.i3_paro;
+  badge('bcI3', 'I3: ' + (i3 === true ? 'paro presionado' : i3 === false ? 'suelto' : 'sin lectura'),
+        i3 === true ? 'is-err' : i3 === false ? 'is-ok' : 'is-off', 'ti-hand-stop');
+
   badge('bcSpeed', `${est.vfd_speed_hz ?? '—'} Hz`, '', 'ti-wave-sine');
 
   // Sensores: conteo, temporizador y "conteo alcanzado" (R25-R27 / R35-R37).
@@ -244,26 +249,30 @@ function pintarEstado(est) {
     });
   }
 
-  // Aviso de paro. El ST no expone un registro de "I3 pulsado", así que se
-  // deduce: con una configuración válida cargada, CfgReady solo se queda en 0
-  // mientras corre la secuencia del VFD (~2 s) o mientras el paro esté activo.
+  // Paro I3: se LEE de la entrada física (est.i3_paro). En el ST vigente I3
+  // no baja CfgReady, así que no se puede deducir de los registros. null =
+  // sin lectura fiable de %I (mapa Modbus sin confirmar): no se afirma nada.
+  const paro = est.i3_paro === true;
+
+  // Configuración válida cargada pero CfgReady en 0 más de lo que dura la
+  // secuencia del VFD (~2 s): la secuencia no avanza (p. ej. con I3 activo).
   const cfgValida = [1, 2].includes(Number(est.dir_cmd))
                     && est.freq_request_hz >= 1 && est.freq_request_hz <= 327;
   if (!est.cfg_ready && cfgValida) {
     if (sinCfgDesde === null) sinCfgDesde = Date.now();
-    if (Date.now() - sinCfgDesde > PARO_SOSPECHA_MS) {
-      paintBandLive($('bandPanel'), est, { paro: true });
-      alerta('Condición de paro: el PLC no confirma la configuración. Lo más '
-           + 'probable es que el paro físico I3 esté activo. La banda y las plumas '
-           + 'están detenidas por el PLC; suelta I3 y vuelve a enviar la '
-           + 'configuración.');
-      return;
-    }
   } else {
     sinCfgDesde = null;
   }
+  const atascada = sinCfgDesde !== null && Date.now() - sinCfgDesde > PARO_SOSPECHA_MS;
 
-  if (!est.cfg_ready && !cfgValida) {
+  if (paro) {
+    alerta('Paro físico I3 activo: el PLC mantiene detenidos la banda, el VFD y las '
+         + 'plumas. Suelta I3 y pulsa I1 para volver a arrancar.');
+  } else if (atascada) {
+    alerta('El PLC no confirma la configuración (CfgReady sigue en 0). La secuencia '
+         + 'del VFD no avanza mientras el paro I3 está activo; si I3 está suelto, '
+         + 'vuelve a enviar la configuración o haz un Reset del VFD.');
+  } else if (!est.cfg_ready && !cfgValida) {
     alerta('El PLC no tiene una configuración válida cargada (dirección 1 o 2 y '
          + 'frecuencia entre 1 y 327 Hz). Envía la configuración para armar el VFD.',
            'info');
@@ -273,7 +282,7 @@ function pintarEstado(est) {
   } else {
     alerta('');
   }
-  paintBandLive($('bandPanel'), est, { paro: false });
+  paintBandLive($('bandPanel'), est, { paro });
 }
 
 // ── Polling ────────────────────────────────────────────────────
@@ -292,8 +301,11 @@ async function sondear() {
   } catch (e) {
     paintBandLive($('bandPanel'), null);   // sin lectura: vuelve a la vista de configuracion
     if (conn) {
-      conn.textContent = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '')
-        ? 'sin conexión con el puente' : 'sin lectura del PLC';
+      const m = e.message || '';
+      conn.textContent = /Failed to fetch|NetworkError|timeout|aborted/i.test(m)
+        ? 'sin conexión con el puente'
+        : /No hay IP/i.test(m) ? 'falta la IP de la banda' : 'sin lectura del PLC';
+      conn.title = m;
       conn.className = 'bc-conn is-err';
     }
   } finally {
@@ -374,6 +386,17 @@ function instalar() {
 
   $('bcSend')?.addEventListener('click', enviarConfig);
 
+  // Torreta en vivo: solo %R40/%R41. El ST las lee en cada scan, así que no
+  // hay trigger ni reinicio del VFD y la banda sigue como estaba.
+  $('bcTorApply')?.addEventListener('click', () =>
+    conBoton($('bcTorApply'), 'Aplicando torreta…', async () => {
+      const d = await postear('/banda/torreta', {
+        run: leerMascara('bcTorRun'), idle: leerMascara('bcTorIdle'),
+      });
+      d.mensaje = 'Torreta actualizada sin detener la banda.';
+      return d;
+    }));
+
   $('bcReset')?.addEventListener('click', () =>
     conBoton($('bcReset'), 'Reiniciando el VFD…', async () => {
       const d = await postear('/banda/reset', {}, 25000);
@@ -412,7 +435,8 @@ function instalar() {
       const sensor = Number(btn.dataset.resetCount);
       conBoton(btn, 'Reiniciando conteo…', async () => {
         const d = await postear('/banda/sensor/reset-contador', { sensor });
-        d.mensaje = `Conteo del sensor ${sensor} en 0.`;
+        // El ST no rearma la acción por conteo al poner el acumulado en 0.
+        d.mensaje = d.avisos?.[0] || `Conteo del sensor ${sensor} en 0.`;
         return d;
       });
     });
@@ -427,6 +451,19 @@ export function initBandControl() {
   if (!$('bandControl')) return;
   instalar();
   marcarDireccion(1);
+
+  // IP propia de la banda (lv_banda_ip). Sin ella, el sondeo depende de que el
+  // puente tenga BANDA_PLC_IP configurada.
+  const ip = $('bcIp');
+  if (ip) {
+    try { ip.value = localStorage.getItem('lv_banda_ip') || ''; } catch { /* sin storage */ }
+    ip.addEventListener('change', () => {
+      try { localStorage.setItem('lv_banda_ip', ip.value.trim()); } catch { /* sin storage */ }
+      ultimoEstado = null;
+      sinCfgDesde = null;
+      if (timer) sondear();
+    });
+  }
 }
 
 /**
@@ -434,6 +471,11 @@ export function initBandControl() {
  * el panel muestre lo mismo que el esquema. No escribe nada en el PLC.
  */
 export function cargarBandDesdePrograma(program) {
+  // La IP pudo elegirse desde el selector de "Cargar" (misma clave lv_banda_ip).
+  const ipIn = $('bcIp');
+  if (ipIn && document.activeElement !== ipIn) {
+    try { ipIn.value = localStorage.getItem('lv_banda_ip') || ''; } catch { /* sin storage */ }
+  }
   const band = program?.metadata?.engine_config?.band;
   if (!band || !$('bandControl')) return;
 

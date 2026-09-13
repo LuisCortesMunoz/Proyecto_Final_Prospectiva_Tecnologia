@@ -29,23 +29,41 @@ function plcBridgeUrl() {
 // escribirla otra vez. Guardarla aqui la hace sobrevivir a los programas
 // nuevos y a recargar la pagina. El programa la sigue llevando en su metadata
 // para que un .json exportado sepa a que PLC iba.
-function plcRecordado() {
+// La BANDA es un PLC distinto al del maletin: su IP vive en su propia clave
+// (lv_banda_ip, la misma que usa el pop-up de la banda). El maletin conserva
+// lv_plc_ip, asi que su flujo no cambia.
+function esProgramaBanda(prog) {
+  const band = prog?.metadata?.engine_config?.band;
+  return !!band && typeof band === 'object';
+}
+
+const CLAVES_PLC = {
+  maletin: { ip: 'lv_plc_ip',   port: 'lv_plc_port' },
+  banda:   { ip: 'lv_banda_ip', port: 'lv_banda_port' },
+};
+
+function plcRecordado(equipo = 'maletin') {
+  const k = CLAVES_PLC[equipo] || CLAVES_PLC.maletin;
   try {
-    const ip = (localStorage.getItem('lv_plc_ip') || '').trim();
-    const port = Number(localStorage.getItem('lv_plc_port')) || 502;
+    const ip = (localStorage.getItem(k.ip) || '').trim();
+    const port = Number(localStorage.getItem(k.port)) || 502;
     return { ip, port };
   } catch { return { ip: '', port: 502 }; }
 }
 
-function recordarPLC(ip, port) {
+function recordarPLC(ip, port, equipo = 'maletin') {
+  const k = CLAVES_PLC[equipo] || CLAVES_PLC.maletin;
   try {
-    localStorage.setItem('lv_plc_ip', String(ip || '').trim());
-    localStorage.setItem('lv_plc_port', String(Number(port) || 502));
+    localStorage.setItem(k.ip, String(ip || '').trim());
+    localStorage.setItem(k.port, String(Number(port) || 502));
   } catch { /* modo privado: no se puede recordar, no pasa nada */ }
 }
 
 /** IP/puerto a usar: lo del programa si lo trae, si no lo recordado. */
 function plcObjetivo(prog) {
+  // BANDA: la ultima IP que TU elegiste para la banda. metadata.plc_target
+  // lo reconstruye el perfil en cada regeneracion, asi que no se usa.
+  if (esProgramaBanda(prog)) return plcRecordado('banda');
   const tgt = prog?.metadata?.plc_target || {};
   const rec = plcRecordado();
   // PRECEDENCIA: manda lo que el usuario eligio (rec), no lo que traiga el
@@ -1320,7 +1338,7 @@ function onNavBtnClick(e) {
 }
 
 // ── Cargar al PLC (envia el engine_config por Modbus TCP via servidor local) ──
-async function cargarAlPLC() {
+async function cargarAlPLC({ confirmado = false } = {}) {
   const t = document.getElementById('tab-btn-terminal');
   if (t) showTab('terminal', t);
 
@@ -1340,6 +1358,15 @@ async function cargarAlPLC() {
 
   const url = plcBridgeUrl();
   let { ip, port } = plcObjetivo(store.getProgram());
+
+  // BANDA: el PLC destino lo eliges tu en cada carga. El programa no decide
+  // que IP es la de la banda: el selector parte de la ultima que elegiste,
+  // pero nada se escribe hasta que confirmas con "Cargar ahora (TCP)".
+  if (tieneBanda && !confirmado) {
+    store.log('info', 'Programa de BANDA: elige el PLC al que quieres cargar la configuración.');
+    abrirSelectorPLC();
+    return;
+  }
 
   // Sin IP conocida: que el puente busque el PLC conectado y lo proponga.
   // La decision de cargar sigue siendo tuya: se pide confirmacion.
@@ -1394,7 +1421,7 @@ ${d.motivo}
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(body),
-      signal:  AbortSignal.timeout(20000),
+      signal:  AbortSignal.timeout(tieneBanda ? 40000 : 20000),   // banda: espera CfgReady
     });
     const d = await res.json().catch(() => null);
 
@@ -1414,6 +1441,11 @@ ${d.motivo}
     (d.notas || []).forEach(t => store.log('info', '· ' + t));
     (d.avisos || []).forEach(t => store.log('warn', '· ' + t));
     (d.plan || []).forEach(p => store.log('info', '· ' + p));
+    if (tieneBanda) {
+      store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
+        ? 'Banda: configuración lista (CfgReady = 1). Pulsa el botón físico I1 para arrancar.'
+        : 'Banda: el PLC no confirmó CfgReady. Revisa que I3 esté suelto y abre "Ver banda transportadora" para ver su estado.');
+    }
     showToast('Programa cargado al PLC', 'success');
   } catch (e) {
     const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
@@ -1429,10 +1461,12 @@ ${d.motivo}
 let _plcStatus = { ip: null, ok: null };   // ok: null=sin probar, true/false
 
 function guardarIPPLC(ip, port) {
-  const meta = store.getProgram().metadata;
+  const prog = store.getProgram();
+  const equipo = esProgramaBanda(prog) ? 'banda' : 'maletin';
+  const meta = prog.metadata;
   store.updateMeta({ plc_target: { ...meta.plc_target, ip, port } });
-  recordarPLC(ip, port);          // sobrevive al siguiente programa
-  store.log('ok', `PLC objetivo: ${ip}:${port} (recordado)`);
+  recordarPLC(ip, port, equipo);  // sobrevive al siguiente programa
+  store.log('ok', `PLC ${equipo === 'banda' ? 'de la banda' : 'objetivo'}: ${ip}:${port} (recordado)`);
 }
 
 // Refresca el texto y color de la pastilla "192.168.x.x:502" de la barra.
@@ -1469,7 +1503,9 @@ async function probarPLC(ip, port) {
 function abrirSelectorPLC() {
   const url  = plcBridgeUrl();
   const meta = store.getProgram().metadata;
-  const tgt  = meta.plc_target || {};
+  // Programa de banda: se parte de la IP de la banda, nunca de la del maletin.
+  const esBanda = esProgramaBanda(store.getProgram());
+  const tgt  = esBanda ? plcRecordado('banda') : (meta.plc_target || {});
   let selIp   = (tgt.ip || '').trim();
   let selPort = Number(tgt.port) || 502;
   let okTest  = false;
@@ -1480,7 +1516,8 @@ function abrirSelectorPLC() {
     const box = document.createElement('div');
     box.style.cssText = 'background:#1e1e2a;color:#e6e6f0;border:1px solid #3a3a4a;border-radius:10px;width:380px;max-width:92vw;padding:18px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.5);';
     box.innerHTML = `
-      <div style="font-weight:600;margin-bottom:4px;">Conectar al PLC (Modbus TCP)</div>
+      <div style="font-weight:600;margin-bottom:4px;">${esBanda ? 'Conectar al PLC de la BANDA (Modbus TCP)' : 'Conectar al PLC (Modbus TCP)'}</div>
+      ${esBanda ? '<div style="font-size:11px;color:#fbbf24;margin-bottom:4px;">Elige el PLC de la banda transportadora, no el del maletín.</div>' : ''}
       <div style="font-size:11px;opacity:.6;margin-bottom:12px;">Backend puente: <code>${url}</code></div>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
@@ -1600,7 +1637,7 @@ function abrirSelectorPLC() {
       updatePlcAddress(store.getProgram());
       showToast(`PLC ${selIp} listo`, 'success');
       cerrar(selIp);
-      if (load) cargarAlPLC();
+      if (load) cargarAlPLC(esBanda ? { confirmado: true } : undefined);
     };
 
     $('#lv-scan').addEventListener('click', escanear);

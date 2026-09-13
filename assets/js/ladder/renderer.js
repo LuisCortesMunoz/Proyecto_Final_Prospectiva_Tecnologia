@@ -529,8 +529,8 @@ export function renderBandPanel(container, program) {
   ${bandCinta(izq)}
   ${bandSensor(262, 1, 'I4', s1.activo, s1.texto)}
   ${bandSensor(420, 2, 'I5', s2.activo, s2.texto)}
-  ${bandPluma(340, 1, 'Q6 · Q7', pluma1)}
-  ${bandPluma(462, 2, 'Q8 · Q9', pluma2)}
+  ${bandPluma(340, 1, 'Q8↑ · Q6↓', pluma1)}
+  ${bandPluma(462, 2, 'Q9↑ · Q7↓', pluma2)}
   ${bandTorreta(618, lamps)}
   <text x="345" y="244" text-anchor="middle" font-size="10" font-weight="600"
         fill="var(--text-secondary)" font-family="var(--font-ui)">
@@ -563,7 +563,7 @@ export function renderBandPanel(container, program) {
 /**
  * Pinta sobre el esquema el estado REAL leído del PLC (GET /banda/estado).
  * `est = null` devuelve el esquema a la vista de configuración (sin lectura).
- * opts.paro: condición de paro deducida por band-control.js.
+ * opts.paro: I3 presionado según la lectura de la entrada física.
  */
 export function paintBandLive(container, est, opts = {}) {
   bandLive = est ? { est, opts } : null;
@@ -581,6 +581,7 @@ export function paintBandLive(container, est, opts = {}) {
     for (const k of ['i1', 'i3', 'lamp-verde', 'lamp-amarilla', 'lamp-roja']) on(k, false);
     for (const n of [1, 2]) {
       on(`s${n}`, false, 'is-wait');
+      on(`s${n}`, false, 'is-detect');
       setTxt(`s${n}-live`, '');
       q(`p${n}`)?.classList.remove('is-up', 'is-down');
       setTxt(`p${n}-state`, `Pluma ${n}`);
@@ -606,7 +607,7 @@ export function paintBandLive(container, est, opts = {}) {
     setTxt('vfd-cmd', `${cmd} (${est.vfd_control})`);
   }
 
-  // Botonera: I1 = banda habilitada (latch del ST); I3 = paro deducido.
+  // Botonera: I1 = banda habilitada (latch del ST); I3 = entrada física leída.
   on('i1', est.band_enable);
   on('i3', opts.paro);
 
@@ -614,6 +615,7 @@ export function paintBandLive(container, est, opts = {}) {
   for (const n of [1, 2]) {
     const tmr = Number(est[`s${n}_timer_s`]) || 0;
     on(`s${n}`, tmr > 0, 'is-wait');
+    on(`s${n}`, est[`s${n}_detecta`] === true, 'is-detect');   // entrada I4/I5 leída
     const cnt = est[`s${n}_count`];
     setTxt(`s${n}-live`, `${cnt ?? '—'} pz${tmr > 0 ? ` · ${tmr} s` : ''}`);
   }
