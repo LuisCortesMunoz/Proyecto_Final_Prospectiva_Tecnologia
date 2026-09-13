@@ -48,6 +48,15 @@ const BLK = { block_ton:'TON', block_tof:'TOF', block_osc:'OSC', block_ctu:'CTU'
 const LAMP_COLOR = { green: '#22c55e', yellow: '#f59e0b', red: '#ef4444' };
 const LAMP_DIM   = { green: 'rgba(34,197,94,0.22)', yellow: 'rgba(245,158,11,0.22)', red: 'rgba(239,68,68,0.22)' };
 
+// Segunda línea de un bloque de la banda: PT de timers y PV de contadores se
+// leen de params (editables en propiedades); el resto trae su texto fijo.
+function bandBlockParam(type, el) {
+  const p = el.params || {};
+  if ((type === 'block_ton' || type === 'block_tof') && p.preset_ms != null) return `PT ${Number(p.preset_ms) / 1000}s`;
+  if ((type === 'block_ctu' || type === 'block_ctd') && p.preset != null) return `PV ${p.preset}`;
+  return p.band?.sub || '';
+}
+
 function elInner(type, en, el, varVals) {
   // Para bobinas con color de lámpara definido, usar estado individual (variable_values)
   if (type === 'coil' && el?.params?.lamp_color) {
@@ -105,6 +114,16 @@ function elInner(type, en, el, varVals) {
       <text x="20" y="16" text-anchor="middle" font-size="9" font-weight="700" fill="${c}" font-family="monospace">R</text>
       <line x1="28" y1="12" x2="40" y2="12" stroke="${c}" stroke-width="${sw}"/>`;
     default:
+      // Bloques de la BANDA (params.band): título del bloque de Cscape (MOV,
+      // MUL, DIV, TON, CTU, CMP) y su parámetro en una segunda línea. Los
+      // bloques sin params.band se dibujan exactamente como siempre.
+      if (BLK[type] && el?.params?.band) {
+        const bb = el.params.band;
+        return `
+        <rect x="0" y="0" width="54" height="24" rx="3" fill="${en ? 'rgba(46,125,225,0.08)' : 'none'}" stroke="${c}" stroke-width="1.4"/>
+        <text x="27" y="10" text-anchor="middle" font-size="8" font-weight="700" fill="${c}" font-family="monospace">${esc(bb.title || BLK[type])}</text>
+        <text x="27" y="20" text-anchor="middle" font-size="7.5" fill="${c}" font-family="monospace">${esc(bandBlockParam(type, el))}</text>`;
+      }
       if (BLK[type]) return `
         <rect x="0" y="0" width="54" height="24" rx="3" fill="${en ? 'rgba(46,125,225,0.08)' : 'none'}" stroke="${c}" stroke-width="1.4"/>
         <text x="27" y="16" text-anchor="middle" font-size="9" font-weight="600" fill="${c}" font-family="monospace">${BLK[type]}</text>`;

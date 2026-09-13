@@ -293,36 +293,86 @@ function compileSequence(seq, ctx) {
 }
 
 // ── Banda transportadora + VFD (bloque "band") → rungs + vista ──
-// Espejo de la sección §12 del Ladder maestro y del bloque "band" que ya
-// acepta plc_maestro.py. No inventa lógica: dibuja la que el PLC ejecuta.
+// Representación Ladder del programa maestro ST de la banda
+// (ladder_maestro_banda.csp). No es una traducción literal del ST: para la
+// configuración pedida dibuja las condiciones que el ST evalúa y lo que
+// activa, con los bloques de Cscape (MOV, MUL, DIV, TON, CTU, CMP).
 //
-//   S1 = I3 (NC)   S2 = I4 (NC)   torreta = Q10 verde / Q11 amarilla / Q12 roja
-//   VFD: %R00500 → 18 derecha · 34 izquierda · 1 paro
-//
-// Etiquetas amigables para el symbol_table del dibujo.
-const BAND_SYMBOLS = {
-  BANDA_ON:     { symbol: 'BANDA_ON',      comment: 'Banda habilitada (SysMode=2)' },
-  BANDA_RUN:    { symbol: 'BANDA_RUN',     comment: 'Banda en marcha' },
-  S1_ESPERA:    { symbol: 'S1_ESPERA',     comment: 'Espera por S1: banda detenida' },
-  S2_ESPERA:    { symbol: 'S2_ESPERA',     comment: 'Espera por S2: banda detenida' },
-  S1_RETRIG:    { symbol: 'S1_RETRIG',     comment: 'Anti-retrigger de S1' },
-  S2_RETRIG:    { symbol: 'S2_RETRIG',     comment: 'Anti-retrigger de S2' },
-  VFD_MARCHA:   { symbol: 'VFD_MARCHA',    comment: 'Comando de marcha al VFD (%R00500)' },
-};
-
+//   Entradas: I1 arranque (NA) · I3 paro (NC) · S1 = I4 (NC) · S2 = I5 (NC)
+//   Torreta:  Q3 verde · Q4 amarilla · Q5 roja (máscaras %R40/%R41/%R24/%R34)
+//   Plumas:   P1 Q8 sube / Q6 baja · P2 Q9 sube (provisional) / Q7 baja
+//   VFD:      %R500 = 18 dir 1 · 34 dir 2 · 1 paro · %R504 = FreqRequest × 100
+//   Triggers: %R5 NewCfgFlag · %R6 ResetCmd (por cambio de valor)
 const BAND_DIR_CANON = {
-  derecha: 'derecha', right: 'derecha', der: 'derecha', cw: 'derecha',
-  izquierda: 'izquierda', left: 'izquierda', izq: 'izquierda', ccw: 'izquierda',
+  derecha: 'derecha', right: 'derecha', der: 'derecha', cw: 'derecha', '1': 'derecha',
+  izquierda: 'izquierda', left: 'izquierda', izq: 'izquierda', ccw: 'izquierda', '2': 'izquierda',
 };
 
 function bandDir(d) { return BAND_DIR_CANON[String(d ?? 'derecha').toLowerCase()] || 'derecha'; }
 
-// I3/I4 son entradas normales del maletín; solo con la banda activa pasan a
-// mostrarse como los sensores S1/S2. Se inyecta en el mapa de símbolos para
-// no alterar el etiquetado de los programas que no usan la banda.
-function bandSensorSymbols(symbols) {
-  symbols.I3 = { addr: 'I3', symbol: 'S1', type: 'BOOL', comment: 'Sensor S1 de la banda (NC)', modbus: { fn: 'read_coil', address: null } };
-  symbols.I4 = { addr: 'I4', symbol: 'S2', type: 'BOOL', comment: 'Sensor S2 de la banda (NC)', modbus: { fn: 'read_coil', address: null } };
+// Códigos de acción de sensor del ST (S1_Action/S2_Action). Los nombres
+// obsoletos se traducen igual que en plc_banda.py.
+const BAND_ACCION = {
+  nada: 0, paro_presencia: 1, paro_mientras_detecta: 1, paro_temporizado: 2,
+  paro_presencia_torreta: 3, paro_mientras_detecta_torreta: 3, paro_temporizado_torreta: 4,
+  paro_enclavado: 2, contar: 0, contar_y_parar: 0,
+};
+function bandAccion(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (Number.isInteger(n) && n >= 0 && n <= 4) return n;
+  return BAND_ACCION[String(v).toLowerCase()] ?? null;
+}
+const BAND_PLUMA = { stop: 0, parar: 0, paro: 0, subir: 1, arriba: 1, up: 1, bajar: 2, abajo: 2, down: 2 };
+function bandPluma(v) {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  if (n === 0 || n === 1 || n === 2) return n;
+  return BAND_PLUMA[String(v).toLowerCase()] ?? null;
+}
+const TORRETA_NOMBRE = ['apagada', 'verde', 'amarilla', 'verde + amarilla', 'roja',
+  'verde + roja', 'amarilla + roja', 'verde + amarilla + roja'];
+
+// Símbolos de la banda. Solo se inyectan cuando el programa trae el bloque
+// "band": el etiquetado de los programas del maletín no cambia.
+function bandSymbols(symbols) {
+  const put = (addr, symbol, comment, type = 'BOOL', fn = 'internal') => {
+    symbols[addr] = { addr, symbol, type, comment, modbus: { fn, address: null } };
+  };
+  put('I1', 'BTN_START', 'I1 (NA): arranque de la banda', 'BOOL', 'read_coil');
+  put('I3', 'BTN_STOP', 'I3 (NC): paro general prioritario', 'BOOL', 'read_coil');
+  put('I4', 'S1', 'Sensor S1 de la banda (I4, NC)', 'BOOL', 'read_coil');
+  put('I5', 'S2', 'Sensor S2 de la banda (I5, NC)', 'BOOL', 'read_coil');
+  put('Q3', 'LAMP_VERDE', 'Torreta verde (Q3)', 'BOOL', 'write_coil');
+  put('Q4', 'LAMP_AMARILLA', 'Torreta amarilla (Q4)', 'BOOL', 'write_coil');
+  put('Q5', 'LAMP_ROJA', 'Torreta roja (Q5)', 'BOOL', 'write_coil');
+  put('Q8', 'P1_SUBE', 'Pluma 1 sube (Q8)', 'BOOL', 'write_coil');
+  put('Q6', 'P1_BAJA', 'Pluma 1 baja (Q6)', 'BOOL', 'write_coil');
+  put('Q9', 'P2_SUBE', 'Pluma 2 sube (Q9, provisional en el ST)', 'BOOL', 'write_coil');
+  put('Q7', 'P2_BAJA', 'Pluma 2 baja (Q7)', 'BOOL', 'write_coil');
+  put('BandEnable', 'BandEnable', 'Banda habilitada por I1 (espejo %R1 BandEnable_Reg)');
+  put('CfgValid', 'CfgValid', 'Configuración válida (§3): DirCmd 1/2, FreqRequest 1..327, acciones y máscaras en rango');
+  put('CfgReady', 'CfgReady', 'Configuración lista (espejo %R7 CfgReady_Reg)');
+  put('BandRunning', 'BandRunning', 'Banda en marcha (espejo %R3 BandStatus)');
+  put('S1_StopLatch', 'S1_StopLatch', 'Paro por S1 activo');
+  put('S2_StopLatch', 'S2_StopLatch', 'Paro por S2 activo');
+  put('S1_CountDone', 'S1_CountDone', 'Objetivo de conteo de S1 alcanzado (espejo %R27)');
+  put('S2_CountDone', 'S2_CountDone', 'Objetivo de conteo de S2 alcanzado (espejo %R37)');
+  put('%R5', 'NewCfgFlag', 'Nueva configuración desde el backend (cambio de valor)', 'INT', 'holding_reg');
+  put('%R6', 'ResetCmd', 'Reset del VFD desde el backend (cambio de valor)', 'INT', 'holding_reg');
+  put('%R506', 'VFD_ResetReg', 'Reset del VFD: 2 durante 2 s', 'INT', 'holding_reg');
+  put('%R506.DN', 'ResetDone', 'Secuencia de reset del VFD terminada');
+  put('%R504', 'VFD_FreqCalc', 'Consigna al VFD = FreqRequest × 100', 'INT', 'holding_reg');
+  put('%R500', 'VFD_Control', 'Comando al VFD: 18 dir 1 · 34 dir 2 · 1 paro', 'INT', 'holding_reg');
+  put('%R8', 'VFD_SpeedDisp', 'Velocidad real en Hz = VFD_SpeedRaw (%R502) ÷ 100', 'INT', 'holding_reg');
+  put('%R25', 'S1_CountAccum', 'Piezas detectadas por S1', 'INT', 'holding_reg');
+  put('%R26', 'S1_TimerAccum', 'Segundos del paro temporizado de S1', 'INT', 'holding_reg');
+  put('%R26.DN', 'S1_TimerDone', 'Tiempo de paro de S1 cumplido');
+  put('%R35', 'S2_CountAccum', 'Piezas detectadas por S2', 'INT', 'holding_reg');
+  put('%R36', 'S2_TimerAccum', 'Segundos del paro temporizado de S2', 'INT', 'holding_reg');
+  put('%R36.DN', 'S2_TimerDone', 'Tiempo de paro de S2 cumplido');
+  put('%R60', 'Pluma1Cmd', 'Comando pluma 1: 0 stop · 1 subir · 2 bajar', 'INT', 'holding_reg');
+  put('%R61', 'Pluma2Cmd', 'Comando pluma 2: 0 stop · 1 subir · 2 bajar', 'INT', 'holding_reg');
 }
 function num(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
 
@@ -336,22 +386,48 @@ function bandRung(expr, mkTerminal, comment, ctx) {
   return { id: ctx.nextId(), enabled: true, comment, network };
 }
 
-function coilAt(addr, ctx) {
-  ctx.useAddr(addr);
-  return (col) => ({ id: eid(), type: 'coil', address: addr, pos: { col }, coil_type: 'output' });
+// Contactos de la banda: no/nc/flanco positivo (pe)/flanco negativo (ne) y
+// comparador CMP (=) para los comandos de pluma.
+const BAND_CONTACT = { no: 'contact_no', nc: 'contact_nc', pe: 'contact_pos_edge', ne: 'contact_neg_edge' };
+function bandEl(spec, col, ctx) {
+  const address = ctx.resolveAddr(spec.a);
+  ctx.useAddr(address);
+  if (spec.t === 'cmp') {
+    return { id: eid(), type: 'block_cmp', address, pos: { col },
+             params: { op: 'EQ', value: spec.v, band: { title: 'CMP', sub: `= ${spec.v}` } } };
+  }
+  return { id: eid(), type: BAND_CONTACT[spec.t], address, pos: { col } };
 }
-function tonAt(addr, seconds, ctx) {
-  ctx.useAddr(addr);
-  return (col) => ({ id: eid(), type: 'block_ton', address: addr, pos: { col }, params: { preset_ms: seconds * 1000 } });
+
+// Rung en serie: contactos en la fila principal, terminal al final y, si hace
+// falta, contactos en paralelo con uno de la fila principal.
+function bandRungSerie(comment, contacts, mkTerminal, ctx, ramas = []) {
+  const row0 = contacts.map((c, i) => bandEl(c, i, ctx));
+  row0.push(mkTerminal(contacts.length));
+  const network = [{ row: 0, elements: row0 }];
+  ramas.forEach((r, k) => network.push({
+    row: k + 1, span: { from: r.col, to: r.col }, elements: [bandEl(r.c, r.col, ctx)],
+  }));
+  return { id: ctx.nextId(), enabled: true, comment, network };
 }
-function tofAt(addr, seconds, ctx) {
+
+// Terminal del rung: bobina (normal/S/R) o bloque. params.band marca los
+// bloques de la banda para que el renderer muestre su título y parámetro.
+function bandOut(type, addr, ctx, params) {
   ctx.useAddr(addr);
-  return (col) => ({ id: eid(), type: 'block_tof', address: addr, pos: { col }, params: { preset_ms: seconds * 1000 } });
+  return (col) => {
+    const el = { id: eid(), type, address: addr, pos: { col } };
+    if (type.startsWith('coil')) el.coil_type = type === 'coil_s' ? 'set' : type === 'coil_r' ? 'reset' : 'output';
+    if (params) el.params = params;
+    return el;
+  };
 }
 
 function compileBand(band, ctx, hints) {
   const rungs = [];
   const dir     = bandDir(band.direction);
+  const dirN    = dir === 'izquierda' ? 2 : 1;
+  const cmd     = dirN === 2 ? 34 : 18;
   const freq    = num(band.freq_hz);
   const waitS1  = num(band.wait_s1_s);
   const waitS2  = num(band.wait_s2_s);
@@ -363,64 +439,177 @@ function compileBand(band, ctx, hints) {
   const retrigS1 = usaS1 && retS1 != null && retS1 > 0;
   const retrigS2 = usaS2 && retS2 != null && retS2 > 0;
 
-  ['BANDA_ON', 'BANDA_RUN'].forEach(a => ctx.useAddr(a));
+  // Cada sensor tal como lo carga el backend (plc_banda._accion_de_sensor):
+  // sin acción, un tiempo de espera implica paro temporizado y un conteo solo
+  // habilita el sensor.
+  const sensor = (n) => {
+    const wait = num(band[`wait_s${n}_s`]);
+    const hayConteo = band[`count_s${n}`] != null;
+    let acc = bandAccion(band[`s${n}_action`]);
+    if (acc == null && wait != null) acc = 2;
+    if (acc == null && hayConteo) acc = 0;
+    return {
+      n, acc, on: acc != null, wait,
+      count: num(band[`count_s${n}`]) || 0,
+      mask: num(band[`torreta_s${n}`]) || 0,
+      io: n === 1 ? 'I4' : 'I5',
+      cnt: n === 1 ? '%R25' : '%R35',
+      tmr: n === 1 ? '%R26' : '%R36',
+      doneReg: n === 1 ? '%R27' : '%R37',
+      maskReg: n === 1 ? '%R24' : '%R34',
+      latch: `S${n}_StopLatch`,
+      done: `S${n}_CountDone`,
+    };
+  };
+  const S = [sensor(1), sensor(2)];
+  const torRun  = num(band.torreta_run) || 0;
+  const torIdle = num(band.torreta_idle) || 0;
 
-  // 1) Espera por sensor: S1/S2 son NC, por eso el contacto es cerrado.
-  if (usaS1) {
-    rungs.push(bandRung('!I3', tonAt('S1_ESPERA', waitS1, ctx),
-      `S1 detecta pieza → la banda se detiene ${waitS1} s`, ctx));
+  // 1) Reconfiguración / reset del VFD (§6, §7, §8). La secuencia no avanza
+  //    con el paro I3 presionado.
+  rungs.push(bandRungSerie(
+    'Reconfiguración: NewCfgFlag (%R5) o ResetCmd (%R6) cambian de valor → reset del VFD 2 s (%R506 = 2) · borra BandEnable, conteos y esperas',
+    [{ t: 'pe', a: '%R5' }, { t: 'no', a: 'I3' }],
+    bandOut('block_ton', '%R506', ctx, { preset_ms: 2000, band: { title: 'TON' } }), ctx,
+    [{ col: 0, c: { t: 'pe', a: '%R6' } }]));
+
+  // 2) Configuración lista (§3 CfgValid + §8 estado 4).
+  const cfgTxt = `DirCmd (%R2) = ${dirN}`
+    + (freq != null ? ` y FreqRequest (%R4) = ${freq} Hz` : ' y FreqRequest (%R4) en 1..327 Hz');
+  rungs.push(bandRungSerie(
+    `Configuración lista: ${cfgTxt} (CfgValid) y reset terminado → CfgReady (%R7 = 1)`,
+    [{ t: 'no', a: 'CfgValid' }, { t: 'no', a: '%R506.DN' }],
+    bandOut('coil', 'CfgReady', ctx), ctx));
+
+  // 3) Consigna de frecuencia al VFD (§8 estado 4 y §9).
+  rungs.push(bandRungSerie(
+    freq != null
+      ? `Consigna al VFD: FreqRequest (%R4 = ${freq} Hz) × 100 → %R504 = ${freq * 100}`
+      : 'Consigna al VFD: FreqRequest (%R4) × 100 → %R504 (frecuencia sin cambio)',
+    [{ t: 'no', a: 'CfgReady' }],
+    bandOut('block_add', '%R504', ctx, { band: { title: 'MUL', sub: freq != null ? `${freq}×100` : '×100' } }), ctx));
+
+  // 4) Arranque por flanco de I1 (§5).
+  rungs.push(bandRungSerie(
+    'Arranque: flanco de I1 con la configuración lista y sin paro I3 → BandEnable (espejo %R1)',
+    [{ t: 'pe', a: 'I1' }, { t: 'no', a: 'CfgReady' }, { t: 'no', a: 'I3' }],
+    bandOut('coil_s', 'BandEnable', ctx), ctx));
+
+  // 5) Paro: I3 (§4), nueva configuración (§6) o reset (§7).
+  rungs.push(bandRungSerie(
+    'Paro: I3 presionado (NC abierto), nueva configuración o reset → quita BandEnable',
+    [{ t: 'nc', a: 'I3' }],
+    bandOut('coil_r', 'BandEnable', ctx), ctx,
+    [{ col: 0, c: { t: 'pe', a: '%R5' } }, { col: 0, c: { t: 'pe', a: '%R6' } }]));
+
+  // 6) Sensores S1 / S2 (§11–§14). Detección = flanco de bajada de la entrada NC.
+  const ACC_TXT = {
+    0: 'solo cuenta, no detiene la banda',
+    1: 'detiene mientras detecta',
+    2: 'detiene un tiempo',
+    3: 'detiene mientras detecta + torreta',
+    4: 'detiene un tiempo + torreta',
+  };
+  for (const s of S) {
+    if (!s.on) continue;
+    const Sn = `S${s.n}`;
+    rungs.push(bandRungSerie(
+      `${Sn} (${s.io}, NC) detecta pieza → cuenta (${s.cnt})`
+        + (s.count > 0 ? ` · objetivo ${s.count} piezas` : ' · actúa en cada detección')
+        + ` · ${ACC_TXT[s.acc]}`,
+      [{ t: 'ne', a: s.io }, { t: 'no', a: 'BandEnable' }, { t: 'no', a: 'I3' }],
+      bandOut('block_ctu', s.cnt, ctx, { preset: s.count, band: { title: 'CTU' } }), ctx));
+    if (s.acc === 0) continue;
+
+    const torTxt = s.acc >= 3 ? ` y enciende su máscara de torreta: ${TORRETA_NOMBRE[s.mask] || s.mask} (${s.maskReg})` : '';
+    rungs.push(bandRungSerie(
+      (s.count > 0 ? `${Sn} llega a ${s.count} piezas (espejo ${s.doneReg})` : `${Sn} detecta`)
+        + ` → detiene la banda (${s.latch})${torTxt}`,
+      [s.count > 0 ? { t: 'pe', a: s.done } : { t: 'ne', a: s.io }, { t: 'no', a: 'BandEnable' }],
+      bandOut('coil_s', s.latch, ctx), ctx));
+
+    if (s.acc === 1 || s.acc === 3) {
+      rungs.push(bandRungSerie(
+        `${Sn} deja de detectar (la pieza sale) → la banda continúa`,
+        [{ t: 'no', a: s.io }],
+        bandOut('coil_r', s.latch, ctx), ctx));
+    } else {
+      const w = s.wait || 0;
+      rungs.push(bandRungSerie(
+        `Paro temporizado de ${Sn}: ${w} s (${s.tmr} = segundos transcurridos)`,
+        [{ t: 'no', a: s.latch }],
+        bandOut('block_ton', s.tmr, ctx, { preset_ms: w * 1000, band: { title: 'TON' } }), ctx));
+      rungs.push(bandRungSerie(
+        `Pasan ${w} s → la banda continúa`,
+        [{ t: 'no', a: `${s.tmr}.DN` }],
+        bandOut('coil_r', s.latch, ctx), ctx));
+    }
   }
-  if (usaS2) {
-    rungs.push(bandRung('!I4', tonAt('S2_ESPERA', waitS2, ctx),
-      `S2 detecta pieza → la banda se detiene ${waitS2} s`, ctx));
+
+  // 7) Marcha y comando al VFD (§16) · velocidad real (§10).
+  const paroSensor = S.filter(s => s.on && s.acc > 0).map(s => ({ t: 'nc', a: s.latch }));
+  rungs.push(bandRungSerie(
+    `Banda en marcha: habilitada, configuración lista, sin paro I3${paroSensor.length ? ' ni paro por sensor' : ''} → BandRunning (BandStatus %R3 = ${dirN})`,
+    [{ t: 'no', a: 'BandEnable' }, { t: 'no', a: 'CfgReady' }, { t: 'no', a: 'I3' }, ...paroSensor],
+    bandOut('coil', 'BandRunning', ctx), ctx));
+  rungs.push(bandRungSerie(
+    `VFD Dirección ${dirN}${freq != null ? ` a ${freq} Hz` : ''}: MOV ${cmd} → %R500 (VFD_Control)`,
+    [{ t: 'no', a: 'BandRunning' }],
+    bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: `IN ${cmd}` } }), ctx));
+  rungs.push(bandRungSerie(
+    'Sin marcha: MOV 1 → %R500 (VFD en paro)',
+    [{ t: 'nc', a: 'BandRunning' }],
+    bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: 'IN 1' } }), ctx));
+  rungs.push(bandRungSerie(
+    'Velocidad real: VFD_SpeedRaw (%R502) ÷ 100 → %R8 (VFD_SpeedDisp)',
+    [],
+    bandOut('block_add', '%R8', ctx, { band: { title: 'DIV', sub: '÷100' } }), ctx));
+
+  // 8) Torreta (§15). Prioridad S2 → S1 → RUN → IDLE: una fuente de mayor
+  //    prioridad activa bloquea a las de menor aunque no encienda este color.
+  const eventos = S.filter(s => s.on && s.acc >= 3).sort((a, b) => b.n - a.n);
+  const LAMPARAS = [
+    ['Q3', 'green', 1, 'verde'],
+    ['Q4', 'yellow', 2, 'amarilla'],
+    ['Q5', 'red', 4, 'roja'],
+  ];
+  for (const [q, lampColor, bit, nombre] of LAMPARAS) {
+    const alts = [], fuentes = [], previas = [];
+    for (const s of eventos) {
+      if (s.mask & bit) {
+        alts.push([...previas, s.latch].join(' * '));
+        fuentes.push(`evento S${s.n} (${s.maskReg})`);
+      }
+      previas.push('!' + s.latch);
+    }
+    if (torRun & bit)  { alts.push([...previas, 'BandRunning'].join(' * '));  fuentes.push('banda corriendo (%R40)'); }
+    if (torIdle & bit) { alts.push([...previas, '!BandRunning'].join(' * ')); fuentes.push('banda detenida (%R41)'); }
+    if (!alts.length) continue;
+    rungs.push(bandRung(`I3 * (${alts.join(' + ')})`,
+      bandOut('coil', q, ctx, { lamp_color: lampColor }),
+      `Torreta ${nombre} (${q}): ${fuentes.join(' · ')} — sin paro I3 · prioridad S2 → S1 → RUN → IDLE`, ctx));
   }
 
-  // 2) Anti-retrigger: bloquea una nueva detección mientras la pieza sale.
-  if (retrigS1) {
-    rungs.push(bandRung('S1_ESPERA', tofAt('S1_RETRIG', retS1, ctx),
-      `Anti-retrigger de S1: ${retS1} s tras el rearranque`, ctx));
-  }
-  if (retrigS2) {
-    rungs.push(bandRung('S2_ESPERA', tofAt('S2_RETRIG', retS2, ctx),
-      `Anti-retrigger de S2: ${retS2} s tras el rearranque`, ctx));
-  }
-
-  // 3) Marcha efectiva de la banda.
-  let exprRun = 'BANDA_ON';
-  if (usaS1) exprRun += ' * !S1_ESPERA';
-  if (usaS2) exprRun += ' * !S2_ESPERA';
-  rungs.push(bandRung(exprRun, coilAt('BANDA_RUN', ctx),
-    'Banda en marcha: habilitada y sin espera de sensor', ctx));
-
-  // 4) Comando al VFD. En el PLC es una escritura a %R00500; en ladder se
-  //    dibuja como la bobina de marcha, con el detalle en el comentario.
-  const cmd = dir === 'izquierda' ? 34 : 18;
-  rungs.push(bandRung('BANDA_RUN', coilAt('VFD_MARCHA', ctx),
-    `VFD: marcha hacia la ${dir} (%R00500 = ${cmd})`
-    + (freq != null ? ` · ${freq} Hz` : ''), ctx));
-
-  // 5) Torreta (§12.7). Verde = corriendo · Amarilla = anti-retrigger ·
-  //    Roja = detenida esperando en un sensor.
-  const retTerms  = [retrigS1 && 'S1_RETRIG', retrigS2 && 'S2_RETRIG'].filter(Boolean);
-  const waitTerms = [usaS1 && 'S1_ESPERA', usaS2 && 'S2_ESPERA'].filter(Boolean);
-
-  let exprVerde = 'BANDA_RUN';
-  retTerms.forEach(t => { exprVerde += ` * !${t}`; });
-  rungs.push(bandRung(exprVerde, coilAt('Q10', ctx), 'Torreta verde: banda corriendo', ctx));
-
-  if (retTerms.length) {
-    rungs.push(bandRung(retTerms.join(' + '), coilAt('Q11', ctx),
-      'Torreta amarilla: pieza saliendo del sensor', ctx));
-  }
-  if (waitTerms.length) {
-    rungs.push(bandRung(waitTerms.join(' + '), coilAt('Q12', ctx),
-      'Torreta roja: banda detenida esperando', ctx));
+  // 9) Plumas (§17): el comando llega por %R60/%R61 y el ST activa la salida.
+  const PLUMAS = [[1, '%R60', 'Q8', 'Q6'], [2, '%R61', 'Q9', 'Q7']];
+  const PCMD = { 0: 'stop', 1: 'subir', 2: 'bajar' };
+  for (const [n, reg, qSube, qBaja] of PLUMAS) {
+    const c = bandPluma(band[`pluma${n}`]);
+    if (c == null) continue;
+    const conf = ` · comando configurado: ${PCMD[c]}`;
+    rungs.push(bandRungSerie(
+      `Pluma ${n} sube: Pluma${n}Cmd (${reg}) = 1 y sin paro I3 → ${qSube}${n === 2 ? ' (provisional)' : ''}${c === 1 ? conf : ''}`,
+      [{ t: 'cmp', a: reg, v: 1 }, { t: 'no', a: 'I3' }],
+      bandOut('coil', qSube, ctx), ctx));
+    rungs.push(bandRungSerie(
+      `Pluma ${n} baja: Pluma${n}Cmd (${reg}) = 2 y sin paro I3 → ${qBaja}`
+        + (c === 2 ? conf : c === 0 ? `${conf} (${qSube} y ${qBaja} apagadas)` : ''),
+      [{ t: 'cmp', a: reg, v: 2 }, { t: 'no', a: 'I3' }],
+      bandOut('coil', qBaja, ctx), ctx));
   }
 
-  // Lámparas de la torreta que la instrucción nombra explícitamente. El PLC
-  // (§12.7 del Ladder maestro) las gobierna solo con el estado de la banda,
-  // por eso los rungs de arriba no cambian; esto es únicamente qué se dibuja
-  // ENCENDIDO en el panel. Sin mención, la torreta queda en estado neutro.
+  // Lámparas de la torreta que la instrucción nombra explícitamente. Es solo
+  // presentación para el panel visual; los rungs de arriba no dependen de esto.
   const lamps = (hints && hints.lamps) || {};
 
   // Datos para el panel visual (solo presentación; no altera el engine_config).
@@ -481,14 +670,13 @@ function guessModbus(a) {
   return { fn: 'internal', address: null };
 }
 function symbolEntryFor(addr, symbols) {
+  // Las señales de la banda llegan ya etiquetadas en `symbols` (bandSymbols).
   const found = symbols[addr];
-  const band  = BAND_SYMBOLS[addr];
   return {
-    // Para las señales de la banda preferimos su etiqueta funcional (S1, S2…)
-    symbol: band ? band.symbol : found ? found.symbol : String(addr).replace(/[%.]/g, '_'),
+    symbol: found ? found.symbol : String(addr).replace(/[%.]/g, '_'),
     type:   found ? found.type   : guessType(addr),
     modbus: found && found.modbus ? found.modbus : guessModbus(addr),
-    comment: band ? band.comment : found ? found.comment : '',
+    comment: found ? found.comment : '',
   };
 }
 
@@ -520,7 +708,7 @@ export function compileLogicToSchema(logic, profile, opts = {}) {
 
   const bandCfg = logic?.band;
   const bandOn  = !!bandCfg && (bandCfg.enable === undefined || !!bandCfg.enable);
-  if (bandOn) bandSensorSymbols(symbols);
+  if (bandOn) bandSymbols(symbols);
 
   const rungs = [];
   for (const o of (logic?.outputs || [])) {
