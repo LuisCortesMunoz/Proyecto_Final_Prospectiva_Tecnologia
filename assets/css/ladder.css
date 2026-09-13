@@ -983,6 +983,47 @@ body.sim-mode .rung-svg  { cursor: default; }
 .band-panel .bp-body { padding: 2px 14px 14px; overflow-x: auto; }
 .band-panel .bp-svg { width: 100%; min-width: 620px; height: auto; display: block; }
 
+/* Esquema: componentes que no participan en la instruccion */
+.bp-svg .is-unused { opacity: 0.45; }
+
+/* Estado en vivo (clases que pone paintBandLive con la lectura del PLC) */
+.bp-svg .bp-track { transition: stroke var(--transition); }
+.bp-svg.is-running .bp-track { stroke: var(--accent); animation: bpBelt 0.6s linear infinite; }
+.bp-svg.is-running .bp-track-bottom,
+.bp-svg.is-running.dir-2 .bp-track-top { animation-direction: reverse; }
+.bp-svg.is-running.dir-2 .bp-track-bottom { animation-direction: normal; }
+.bp-svg .bp-roller-spokes { transform-box: fill-box; transform-origin: center; }
+.bp-svg.is-running .bp-roller-spokes { animation: bpRoll 1.2s linear infinite; }
+.bp-svg.is-running.dir-2 .bp-roller-spokes { animation-direction: reverse; }
+.bp-svg.is-running .bp-belt-state { fill: var(--accent); }
+.bp-svg.is-stop .bp-belt-state { fill: var(--danger); }
+.bp-svg.is-running .bp-motor { stroke: var(--accent); fill: var(--accent-dim); }
+@keyframes bpBelt { to { stroke-dashoffset: -12; } }
+@keyframes bpRoll { to { transform: rotate(360deg); } }
+
+.bp-svg .bp-btn-start.is-on .bp-btn-cap { fill: #22c55e; filter: drop-shadow(0 0 4px rgba(34,197,94,0.7)); }
+.bp-svg .bp-btn-stop.is-on .bp-btn-cap  { fill: #ef4444; filter: drop-shadow(0 0 4px rgba(239,68,68,0.7)); }
+
+.bp-svg .bp-sensor.is-wait .bp-sensor-led { fill: #f59e0b; }
+.bp-svg .bp-sensor.is-wait .bp-beam,
+.bp-svg .bp-sensor.is-wait .bp-beam-tip { stroke: #f59e0b; fill: #f59e0b; opacity: 1; }
+.bp-svg.is-live .bp-sensor:not(.is-wait) .bp-sensor-led { fill: #22c55e; }
+
+.bp-svg .bp-pluma.is-up .bp-pluma-up,
+.bp-svg .bp-pluma.is-down .bp-pluma-down { fill: var(--accent); }
+.bp-svg .bp-pluma.is-up .bp-pluma-head,
+.bp-svg .bp-pluma.is-down .bp-pluma-head { stroke: var(--accent); fill: var(--accent-dim); }
+
+.bp-svg .bp-lamp.is-on .bp-lamp-body {
+  fill: var(--lamp-on); stroke: var(--lamp-on); opacity: 1;
+  filter: drop-shadow(0 0 5px var(--lamp-on));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bp-svg.is-running .bp-track,
+  .bp-svg.is-running .bp-roller-spokes { animation: none; }
+}
+
 /* ── Control en vivo de la banda transportadora ───────────────────
    Vive dentro del pop-up #bandModal, debajo del esquema. Usa los mismos
    tokens de color, tipografia y radios que el resto del editor: no cambia

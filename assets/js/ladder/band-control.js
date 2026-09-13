@@ -44,6 +44,9 @@ function bandaTarget() {
   return t;
 }
 
+// Esquema SVG de la banda: solo se le pasa la lectura para pintarla.
+import { paintBandLive } from './renderer.js';
+
 const POLL_MS = 1500;
 // Segundos que puede estar CfgReady=0 con una configuración válida antes de
 // avisar de un probable paro físico. La secuencia de reset del VFD dura ~2 s.
@@ -249,6 +252,7 @@ function pintarEstado(est) {
   if (!est.cfg_ready && cfgValida) {
     if (sinCfgDesde === null) sinCfgDesde = Date.now();
     if (Date.now() - sinCfgDesde > PARO_SOSPECHA_MS) {
+      paintBandLive($('bandPanel'), est, { paro: true });
       alerta('Condición de paro: el PLC no confirma la configuración. Lo más '
            + 'probable es que el paro físico I3 esté activo. La banda y las plumas '
            + 'están detenidas por el PLC; suelta I3 y vuelve a enviar la '
@@ -269,6 +273,7 @@ function pintarEstado(est) {
   } else {
     alerta('');
   }
+  paintBandLive($('bandPanel'), est, { paro: false });
 }
 
 // ── Polling ────────────────────────────────────────────────────
@@ -285,6 +290,7 @@ async function sondear() {
     if (conn) { conn.textContent = d.plc || 'conectado'; conn.className = 'bc-conn is-ok'; }
     pintarEstado(d.estado || {});
   } catch (e) {
+    paintBandLive($('bandPanel'), null);   // sin lectura: vuelve a la vista de configuracion
     if (conn) {
       conn.textContent = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '')
         ? 'sin conexión con el puente' : 'sin lectura del PLC';

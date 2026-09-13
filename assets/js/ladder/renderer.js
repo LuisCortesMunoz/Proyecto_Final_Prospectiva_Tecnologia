@@ -262,90 +262,229 @@ export function renderAllRungs(container, program, selection) {
 }
 
 // ── Panel visual de la banda transportadora ────────────────────
-// Dibuja SOLO los componentes que participan en la instrucción, leyendo
-// metadata._band_view (que produce el compilador a partir del bloque "band"
-// del engine_config). Es presentación pura: no ejecuta ni altera lógica.
+// Esquema de la estación física (botonera, VFD + motor, banda, sensores,
+// plumas y torreta), tomando como referencia visual el proyecto Cscape de la
+// banda. Se dibuja con metadata._band_view y el bloque "band" del
+// engine_config; los componentes que no participan en la instrucción quedan
+// atenuados. Es presentación pura: no ejecuta ni altera lógica.
+//
+// paintBandLive() pinta encima el feedback REAL del PLC (lo llama
+// band-control.js en cada sondeo); sin lectura, el esquema es solo la vista
+// de la configuración.
 
 const BAND_LAMP = {
-  verde:    { on: '#22c55e', off: 'rgba(34,197,94,0.18)',  label: 'Verde'    },
-  amarilla: { on: '#f59e0b', off: 'rgba(245,158,11,0.18)', label: 'Amarilla' },
-  roja:     { on: '#ef4444', off: 'rgba(239,68,68,0.18)',  label: 'Roja'     },
+  verde:    { on: '#22c55e', off: 'rgba(34,197,94,0.18)',  label: 'Verde',    io: 'Q3', bit: 1 },
+  amarilla: { on: '#f59e0b', off: 'rgba(245,158,11,0.18)', label: 'Amarilla', io: 'Q4', bit: 2 },
+  roja:     { on: '#ef4444', off: 'rgba(239,68,68,0.18)',  label: 'Roja',     io: 'Q5', bit: 4 },
 };
 
-/** Sensor sobre la banda: cuerpo, haz y etiqueta con su tiempo de espera. */
-function bandSensor(x, name, seconds, retrigger) {
-  const c = '#0284c7';
+// Códigos de acción de sensor del ST (y los nombres que traduce el backend).
+const BAND_ACCION = {
+  nada: 0, paro_presencia: 1, paro_mientras_detecta: 1, paro_temporizado: 2,
+  paro_presencia_torreta: 3, paro_mientras_detecta_torreta: 3,
+  paro_temporizado_torreta: 4,
+};
+
+function bandAccion(v) {
+  if (v == null) return null;
+  if (typeof v === 'number') return v;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : (BAND_ACCION[String(v).toLowerCase()] ?? null);
+}
+
+/** Texto corto de lo que hace un sensor en esta instrucción. */
+function bandSensorTexto(accion, seconds, count, retrigger) {
+  let t;
+  if (accion === 0) t = 'solo cuenta';
+  else if (accion === 1 || accion === 3) t = 'detiene mientras detecta';
+  else if (seconds != null) t = `detiene ${seconds} s`;
+  else t = 'detecta';
+  if (accion === 3 || accion === 4) t += ' + torreta';
+  if (count > 0) t += ` · cada ${count} pz`;
+  if (retrigger != null) t += ` · bloqueo ${retrigger} s`;
+  return t;
+}
+
+/** Botonera física: I1 arranque (pulsador verde) e I3 paro (hongo rojo). */
+function bandBotonera(x, y) {
   return `
-    <g class="bp-sensor">
-      <rect x="${x - 15}" y="34" width="30" height="19" rx="3"
-            fill="rgba(2,132,199,0.10)" stroke="${c}" stroke-width="1.4"/>
-      <text x="${x}" y="47" text-anchor="middle" font-size="10" font-weight="700"
-            fill="${c}" font-family="var(--font-mono)">${esc(name)}</text>
-      <line x1="${x}" y1="53" x2="${x}" y2="88" stroke="${c}" stroke-width="1.2"
-            stroke-dasharray="3 3" opacity="0.75"/>
-      <polygon points="${x - 3},84 ${x + 3},84 ${x},89" fill="${c}" opacity="0.75"/>
-      <text x="${x}" y="26" text-anchor="middle" font-size="9.5"
+    <g class="bp-botonera">
+      <rect x="${x}" y="${y}" width="128" height="92" rx="5"
+            fill="var(--bg-surface)" stroke="var(--border)" stroke-width="1.3"/>
+      <text x="${x + 10}" y="${y + 15}" font-size="10" font-weight="700"
+            fill="var(--text-secondary)" font-family="var(--font-ui)">Botonera</text>
+      <g class="bp-btn bp-btn-start" data-bp="i1">
+        <circle cx="${x + 34}" cy="${y + 48}" r="15" fill="var(--bg-elevated)"
+                stroke="var(--wire-inactive)" stroke-width="1.3"/>
+        <circle class="bp-btn-cap" cx="${x + 34}" cy="${y + 48}" r="10"
+                fill="rgba(34,197,94,0.25)" stroke="#16a34a" stroke-width="1.6"/>
+        <text x="${x + 34}" y="${y + 78}" text-anchor="middle" font-size="9.5"
+              fill="var(--text-secondary)" font-family="var(--font-ui)">
+          <tspan font-family="var(--font-mono)" font-weight="700" fill="var(--text-mono)">I1</tspan> Arranque
+        </text>
+      </g>
+      <g class="bp-btn bp-btn-stop" data-bp="i3">
+        <rect x="${x + 84}" y="${y + 50}" width="16" height="10" rx="2"
+              fill="var(--bg-elevated)" stroke="var(--wire-inactive)" stroke-width="1.2"/>
+        <circle class="bp-btn-cap" cx="${x + 92}" cy="${y + 45}" r="13"
+                fill="rgba(239,68,68,0.25)" stroke="#dc2626" stroke-width="1.6"/>
+        <text x="${x + 92}" y="${y + 78}" text-anchor="middle" font-size="9.5"
+              fill="var(--text-secondary)" font-family="var(--font-ui)">
+          <tspan font-family="var(--font-mono)" font-weight="700" fill="var(--text-mono)">I3</tspan> Paro
+        </text>
+      </g>
+    </g>`;
+}
+
+/** Variador: caja con el comando al VFD y la frecuencia (consigna / real). */
+function bandVFD(x, y, view) {
+  const dir = view.direction === 'izquierda' ? 2 : 1;
+  return `
+    <g class="bp-vfd">
+      <rect x="${x}" y="${y}" width="128" height="70" rx="5"
+            fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="${x + 10}" y="${y + 16}" font-size="10" font-weight="700"
+            fill="var(--accent)" font-family="var(--font-mono)">VFD</text>
+      <text x="${x + 118}" y="${y + 16}" text-anchor="end" font-size="9"
+            fill="var(--text-tertiary)" font-family="var(--font-mono)">%R500</text>
+      <line x1="${x + 8}" y1="${y + 22}" x2="${x + 120}" y2="${y + 22}"
+            stroke="var(--border)" stroke-width="1"/>
+      <text x="${x + 10}" y="${y + 37}" font-size="9.5"
             fill="var(--text-secondary)" font-family="var(--font-ui)">
-        espera ${seconds} s${retrigger != null ? ` · bloqueo ${retrigger} s` : ''}
+        Marcha: <tspan data-bp="vfd-cmd">Dirección ${dir} (${view.vfd_cmd})</tspan>
+      </text>
+      <text x="${x + 10}" y="${y + 51}" font-size="9.5"
+            fill="var(--text-secondary)" font-family="var(--font-ui)">
+        Consigna: <tspan font-weight="700" fill="var(--accent)">${view.freq_hz != null ? `${view.freq_hz} Hz` : 'sin cambio'}</tspan>
+      </text>
+      <text x="${x + 10}" y="${y + 64}" font-size="9.5"
+            fill="var(--text-tertiary)" font-family="var(--font-ui)">
+        Velocidad: <tspan data-bp="vfd-speed" font-family="var(--font-mono)">— Hz</tspan>
       </text>
     </g>`;
 }
 
-/** Torreta de 3 lámparas; solo se encienden las que participan. */
+/** Banda con rodillos, motor, recorrido y flechas de ambos sentidos. */
+function bandCinta(izq) {
+  const rodillo = (cx) => `
+      <g class="bp-roller">
+        <circle cx="${cx}" cy="135" r="12" fill="var(--bg-surface)"
+                stroke="var(--text-secondary)" stroke-width="1.4"/>
+        <g class="bp-roller-spokes">
+          <line x1="${cx - 8}" y1="135" x2="${cx + 8}" y2="135" stroke="var(--wire-inactive)" stroke-width="1.2"/>
+          <line x1="${cx}" y1="127" x2="${cx}" y2="143" stroke="var(--wire-inactive)" stroke-width="1.2"/>
+        </g>
+        <circle cx="${cx}" cy="135" r="2.2" fill="var(--text-secondary)"/>
+      </g>`;
+  return `
+    <g class="bp-belt">
+      <rect x="170" y="118" width="350" height="34" rx="17"
+            fill="var(--bg-elevated)" stroke="var(--text-secondary)" stroke-width="1.6"/>
+      <line class="bp-track bp-track-top" x1="187" y1="121" x2="503" y2="121"
+            stroke="var(--wire-inactive)" stroke-width="2" stroke-dasharray="6 6"/>
+      <line class="bp-track bp-track-bottom" x1="187" y1="149" x2="503" y2="149"
+            stroke="var(--wire-inactive)" stroke-width="2" stroke-dasharray="6 6"/>
+      ${rodillo(187)}
+      ${rodillo(503)}
+      <g class="bp-arrow bp-arrow-1"${izq ? ' opacity="0"' : ''}>
+        <line x1="300" y1="135" x2="396" y2="135" stroke="var(--accent)" stroke-width="2.4"/>
+        <polygon points="400,135 388,129 388,141" fill="var(--accent)"/>
+      </g>
+      <g class="bp-arrow bp-arrow-2"${izq ? '' : ' opacity="0"'}>
+        <line x1="304" y1="135" x2="400" y2="135" stroke="var(--accent)" stroke-width="2.4"/>
+        <polygon points="300,135 312,129 312,141" fill="var(--accent)"/>
+      </g>
+      <text class="bp-belt-state" data-bp="belt-state" x="206" y="138.5" font-size="8.5"
+            font-weight="700" letter-spacing="0.06em" fill="var(--text-tertiary)"
+            font-family="var(--font-mono)">CONFIG</text>
+      <!-- Motor acoplado al rodillo motriz -->
+      <line x1="187" y1="147" x2="187" y2="162" stroke="var(--text-secondary)" stroke-width="1.4"/>
+      <rect class="bp-motor" x="172" y="162" width="30" height="22" rx="4"
+            fill="var(--bg-surface)" stroke="var(--text-secondary)" stroke-width="1.4"/>
+      <text x="187" y="177" text-anchor="middle" font-size="10" font-weight="700"
+            fill="var(--text-secondary)" font-family="var(--font-mono)">M</text>
+      <line x1="140" y1="173" x2="172" y2="173" stroke="var(--accent)" stroke-width="1.3"
+            stroke-dasharray="4 3"/>
+    </g>`;
+}
+
+/** Sensor fotoeléctrico sobre la banda: cuerpo, haz y lectura en vivo. */
+function bandSensor(x, n, io, activo, texto) {
+  const c = '#0284c7';
+  return `
+    <g class="bp-sensor${activo ? '' : ' is-unused'}" data-bp="s${n}">
+      <text x="${x}" y="18" text-anchor="middle" font-size="9.5"
+            fill="var(--text-secondary)" font-family="var(--font-ui)">${esc(texto)}</text>
+      <rect x="${x - 17}" y="28" width="34" height="20" rx="3"
+            fill="rgba(2,132,199,0.10)" stroke="${c}" stroke-width="1.4"/>
+      <text x="${x}" y="42" text-anchor="middle" font-size="10" font-weight="700"
+            fill="${c}" font-family="var(--font-mono)">S${n}</text>
+      <circle class="bp-sensor-led" cx="${x + 12}" cy="33" r="2.2" fill="var(--wire-inactive)"/>
+      <text x="${x + 21}" y="42" font-size="9" fill="var(--text-mono)"
+            font-family="var(--font-mono)">${io}</text>
+      <line class="bp-beam" x1="${x}" y1="48" x2="${x}" y2="114" stroke="${c}"
+            stroke-width="1.2" stroke-dasharray="3 3" opacity="0.75"/>
+      <polygon class="bp-beam-tip" points="${x - 3},110 ${x + 3},110 ${x},116" fill="${c}" opacity="0.75"/>
+      <text data-bp="s${n}-live" x="${x + 7}" y="84" font-size="9"
+            fill="var(--text-tertiary)" font-family="var(--font-mono)"></text>
+    </g>`;
+}
+
+/** Pluma (compuerta) al costado de la banda con sus dos sentidos. */
+function bandPluma(x, n, io, activo) {
+  return `
+    <g class="bp-pluma${activo ? '' : ' is-unused'}" data-bp="p${n}">
+      <rect x="${x - 3}" y="152" width="6" height="10" fill="var(--wire-inactive)"/>
+      <rect class="bp-pluma-head" x="${x - 22}" y="162" width="44" height="24" rx="4"
+            fill="var(--bg-surface)" stroke="var(--text-secondary)" stroke-width="1.4"/>
+      <text x="${x - 11}" y="178" text-anchor="middle" font-size="10" font-weight="700"
+            fill="var(--text-secondary)" font-family="var(--font-mono)">P${n}</text>
+      <polygon class="bp-pluma-up" points="${x + 8},172 ${x + 13},166 ${x + 18},172"
+               fill="var(--wire-inactive)"/>
+      <polygon class="bp-pluma-down" points="${x + 8},176 ${x + 13},182 ${x + 18},176"
+               fill="var(--wire-inactive)"/>
+      <rect x="${x - 3}" y="186" width="6" height="14" fill="var(--wire-inactive)"/>
+      <rect x="${x - 14}" y="200" width="28" height="4" rx="2" fill="var(--wire-inactive)"/>
+      <text x="${x}" y="216" text-anchor="middle" font-size="9" fill="var(--text-mono)"
+            font-family="var(--font-mono)">${io}</text>
+      <text data-bp="p${n}-state" x="${x}" y="228" text-anchor="middle" font-size="9"
+            fill="var(--text-tertiary)" font-family="var(--font-ui)">Pluma ${n}</text>
+    </g>`;
+}
+
+/** Torreta de 3 módulos (roja arriba); se atenúan las que no participan. */
 function bandTorreta(x, uses) {
   const orden = [['roja', 0], ['amarilla', 1], ['verde', 2]];
   let out = `
     <g class="bp-torreta">
-      <rect x="${x - 2}" y="118" width="4" height="26" fill="var(--wire-inactive)"/>
-      <rect x="${x - 17}" y="140" width="34" height="6" rx="2" fill="var(--wire-inactive)"/>`;
+      <rect x="${x - 12}" y="14" width="24" height="6" rx="3" fill="var(--wire-inactive)"/>`;
   for (const [color, i] of orden) {
     const activo = !!uses[color];
-    const cy = 30 + i * 30;
+    const y = 20 + i * 27;
     const L = BAND_LAMP[color];
     out += `
-      <circle cx="${x}" cy="${cy}" r="12"
+      <g class="bp-lamp" data-bp="lamp-${color}" style="--lamp-on:${L.on}">
+        <rect class="bp-lamp-body" x="${x - 14}" y="${y}" width="28" height="25" rx="3"
               fill="${activo ? L.off : 'none'}"
               stroke="${activo ? L.on : 'var(--wire-inactive)'}"
-              stroke-width="${activo ? 2.2 : 1.3}"
-              opacity="${activo ? 1 : 0.4}"/>
-      ${activo ? `<circle cx="${x}" cy="${cy}" r="6" fill="${L.on}" opacity="0.55"/>` : ''}
-      <text x="${x + 20}" y="${cy + 4}" font-size="9.5"
-            fill="${activo ? 'var(--text-secondary)' : 'var(--text-tertiary)'}"
-            opacity="${activo ? 1 : 0.5}" font-family="var(--font-ui)">${L.label}</text>`;
+              stroke-width="${activo ? 2 : 1.3}" opacity="${activo ? 1 : 0.45}"/>
+        <text x="${x + 22}" y="${y + 16}" font-size="9.5"
+              fill="${activo ? 'var(--text-secondary)' : 'var(--text-tertiary)'}"
+              opacity="${activo ? 1 : 0.6}" font-family="var(--font-ui)">${L.label}
+          <tspan font-family="var(--font-mono)" font-size="9" fill="var(--text-mono)">${L.io}</tspan></text>
+      </g>`;
   }
   out += `
-      <text x="${x}" y="160" text-anchor="middle" font-size="9.5" font-weight="600"
+      <rect x="${x - 2}" y="101" width="4" height="93" fill="var(--wire-inactive)"/>
+      <rect x="${x - 17}" y="194" width="34" height="7" rx="2" fill="var(--wire-inactive)"/>
+      <text x="${x}" y="216" text-anchor="middle" font-size="9.5" font-weight="600"
             fill="var(--text-tertiary)" font-family="var(--font-ui)">Torreta</text>
     </g>`;
   return out;
 }
 
-/** Variador: caja con el comando enviado y la frecuencia de referencia. */
-function bandVFD(x, y, view) {
-  const dirTxt = view.direction === 'izquierda' ? 'Izquierda' : 'Derecha';
-  return `
-    <g class="bp-vfd">
-      <rect x="${x}" y="${y}" width="118" height="58" rx="5"
-            fill="var(--bg-surface)" stroke="var(--accent)" stroke-width="1.5"/>
-      <text x="${x + 10}" y="${y + 16}" font-size="10" font-weight="700"
-            fill="var(--accent)" font-family="var(--font-mono)">VFD</text>
-      <text x="${x + 108}" y="${y + 16}" text-anchor="end" font-size="9"
-            fill="var(--text-tertiary)" font-family="var(--font-mono)">%R00500</text>
-      <line x1="${x + 8}" y1="${y + 22}" x2="${x + 110}" y2="${y + 22}"
-            stroke="var(--border)" stroke-width="1"/>
-      <text x="${x + 10}" y="${y + 36}" font-size="9.5"
-            fill="var(--text-secondary)" font-family="var(--font-ui)">
-        Marcha: ${dirTxt} (${view.vfd_cmd})
-      </text>
-      ${view.uses.freq ? `
-      <text x="${x + 10}" y="${y + 50}" font-size="9.5"
-            fill="var(--text-secondary)" font-family="var(--font-ui)">
-        Frecuencia: <tspan font-weight="700" fill="var(--accent)">${view.freq_hz} Hz</tspan>
-      </text>` : `
-      <text x="${x + 10}" y="${y + 50}" font-size="9.5" fill="var(--text-tertiary)"
-            font-family="var(--font-ui)">Frecuencia: sin cambio</text>`}
-    </g>`;
-}
+// Último feedback pintado: se reaplica si el esquema se redibuja entre sondeos.
+let bandLive = null;
 
 /**
  * Dibuja el panel de la banda en `container`.
@@ -358,51 +497,58 @@ export function renderBandPanel(container, program) {
   container.hidden = false;
 
   const u = view.uses || {};
+  const band = program?.metadata?.engine_config?.band || {};
   const izq = view.direction === 'izquierda';
 
-  // Posición de los sensores sobre la banda (solo los que participan)
-  const xS1 = 250, xS2 = 400;
+  // Sensores: participan si tienen espera, acción o conteo declarados.
+  const sensor = (n) => {
+    const accion = bandAccion(band[`s${n}_action`]);
+    const seconds = view[`wait_s${n}_s`] ?? band[`wait_s${n}_s`] ?? null;
+    const count = Number(band[`count_s${n}`]) || 0;
+    const activo = !!u[`s${n}`] || accion != null || band[`count_s${n}`] != null;
+    const texto = activo
+      ? bandSensorTexto(accion ?? (seconds != null ? 2 : null), seconds, count, view[`retrigger_s${n}_s`])
+      : 'sin usar';
+    return { activo, texto, seconds };
+  };
+  const s1 = sensor(1), s2 = sensor(2);
 
-  // Flecha de sentido de movimiento sobre la banda
-  const flechaY = 108;
-  const flecha = izq
-    ? `<line x1="330" y1="${flechaY}" x2="190" y2="${flechaY}" stroke="var(--accent)" stroke-width="2.4"/>
-       <polygon points="190,${flechaY} 202,${flechaY - 6} 202,${flechaY + 6}" fill="var(--accent)"/>`
-    : `<line x1="190" y1="${flechaY}" x2="330" y2="${flechaY}" stroke="var(--accent)" stroke-width="2.4"/>
-       <polygon points="330,${flechaY} 318,${flechaY - 6} 318,${flechaY + 6}" fill="var(--accent)"/>`;
+  // Lámparas: las que nombra la instrucción o alguna máscara de torreta.
+  const mascaras = ['torreta_run', 'torreta_idle', 'torreta_s1', 'torreta_s2']
+    .reduce((m, k) => m | (Number(band[k]) || 0), 0);
+  const lamps = {};
+  for (const [color, L] of Object.entries(BAND_LAMP)) lamps[color] = !!u[color] || !!(mascaras & L.bit);
+
+  const pluma1 = band.pluma1 != null, pluma2 = band.pluma2 != null;
 
   const svg = `
-<svg viewBox="0 0 760 200" class="bp-svg" role="img"
+<svg viewBox="0 0 760 248" class="bp-svg${izq ? ' dir-2' : ''}" role="img"
      aria-label="Esquema de la banda transportadora">
-  <!-- Banda -->
-  <g class="bp-belt">
-    <rect x="150" y="90" width="330" height="36" rx="18"
-          fill="var(--bg-elevated)" stroke="var(--text-secondary)" stroke-width="1.6"/>
-    <circle cx="168" cy="108" r="11" fill="none" stroke="var(--text-secondary)" stroke-width="1.4"/>
-    <circle cx="462" cy="108" r="11" fill="none" stroke="var(--text-secondary)" stroke-width="1.4"/>
-    ${flecha}
-    <text x="315" y="146" text-anchor="middle" font-size="10" font-weight="600"
-          fill="var(--text-secondary)" font-family="var(--font-ui)">
-      Banda transportadora — ${izq ? 'movimiento a la izquierda' : 'movimiento a la derecha'}
-    </text>
-  </g>
-
-  ${u.s1 ? bandSensor(xS1, 'S1', view.wait_s1_s, view.retrigger_s1_s) : ''}
-  ${u.s2 ? bandSensor(xS2, 'S2', view.wait_s2_s, view.retrigger_s2_s) : ''}
-
-  ${u.vfd ? bandVFD(12, 80, view) : ''}
-  ${u.torreta ? bandTorreta(560, u) : ''}
+  ${bandBotonera(12, 14)}
+  ${bandVFD(12, 132, view)}
+  ${bandCinta(izq)}
+  ${bandSensor(262, 1, 'I4', s1.activo, s1.texto)}
+  ${bandSensor(420, 2, 'I5', s2.activo, s2.texto)}
+  ${bandPluma(340, 1, 'Q6 · Q7', pluma1)}
+  ${bandPluma(462, 2, 'Q8 · Q9', pluma2)}
+  ${bandTorreta(618, lamps)}
+  <text x="345" y="244" text-anchor="middle" font-size="10" font-weight="600"
+        fill="var(--text-secondary)" font-family="var(--font-ui)">
+    Banda transportadora — <tspan data-bp="dir-text">${izq ? 'Dirección 2 (izquierda)' : 'Dirección 1 (derecha)'}</tspan>
+  </text>
 </svg>`;
 
   const chips = [];
-  chips.push(`<span class="bp-chip bp-chip-accent"><i class="ti ti-arrows-horizontal"></i> ${izq ? 'Izquierda' : 'Derecha'}</span>`);
+  chips.push(`<span class="bp-chip bp-chip-accent"><i class="ti ti-arrows-horizontal"></i> ${izq ? 'Dirección 2' : 'Dirección 1'}</span>`);
   if (u.freq) chips.push(`<span class="bp-chip"><i class="ti ti-wave-sine"></i> ${view.freq_hz} Hz</span>`);
-  if (u.s1)   chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S1 · ${view.wait_s1_s} s</span>`);
-  if (u.s2)   chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S2 · ${view.wait_s2_s} s</span>`);
+  if (s1.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S1${s1.seconds != null ? ` · ${s1.seconds} s` : ''}</span>`);
+  if (s2.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S2${s2.seconds != null ? ` · ${s2.seconds} s` : ''}</span>`);
   // El paro por sensor lo determinan los tiempos de espera, no la lampara:
   // las lamparas ahora solo se encienden si la instruccion las nombra.
   if (view.wait_s1_s != null || view.wait_s2_s != null)
     chips.push(`<span class="bp-chip"><i class="ti ti-player-stop"></i> Paro por sensor</span>`);
+  if (pluma1 || pluma2)
+    chips.push(`<span class="bp-chip"><i class="ti ti-arrows-vertical"></i> Plumas</span>`);
 
   container.innerHTML = `
     <div class="bp-head">
@@ -410,6 +556,82 @@ export function renderBandPanel(container, program) {
       <div class="bp-chips">${chips.join('')}</div>
     </div>
     <div class="bp-body">${svg}</div>`;
+
+  if (bandLive) paintBandLive(container, bandLive.est, bandLive.opts);
+}
+
+/**
+ * Pinta sobre el esquema el estado REAL leído del PLC (GET /banda/estado).
+ * `est = null` devuelve el esquema a la vista de configuración (sin lectura).
+ * opts.paro: condición de paro deducida por band-control.js.
+ */
+export function paintBandLive(container, est, opts = {}) {
+  bandLive = est ? { est, opts } : null;
+  const svg = container?.querySelector('.bp-svg');
+  if (!svg) return;
+  const q = (k) => svg.querySelector(`[data-bp="${k}"]`);
+  const setTxt = (k, t) => { const el = q(k); if (el) el.textContent = t; };
+  const on = (k, v, clase = 'is-on') => q(k)?.classList.toggle(clase, !!v);
+
+  svg.classList.toggle('is-live', !!est);
+  if (!est) {
+    svg.classList.remove('is-running', 'is-stop');
+    setTxt('belt-state', 'CONFIG');
+    setTxt('vfd-speed', '— Hz');
+    for (const k of ['i1', 'i3', 'lamp-verde', 'lamp-amarilla', 'lamp-roja']) on(k, false);
+    for (const n of [1, 2]) {
+      on(`s${n}`, false, 'is-wait');
+      setTxt(`s${n}-live`, '');
+      q(`p${n}`)?.classList.remove('is-up', 'is-down');
+      setTxt(`p${n}-state`, `Pluma ${n}`);
+    }
+    return;
+  }
+
+  // Banda: sentido real si corre; si no, el que tiene cargado el PLC.
+  const running = !!est.running;
+  const dir = Number(est.direccion || est.dir_cmd);
+  svg.classList.toggle('is-running', running);
+  svg.classList.toggle('is-stop', !!opts.paro);
+  if (dir === 1 || dir === 2) {
+    svg.classList.toggle('dir-2', dir === 2);
+    setTxt('dir-text', dir === 2 ? 'Dirección 2 (izquierda)' : 'Dirección 1 (derecha)');
+    svg.querySelector('.bp-arrow-1')?.setAttribute('opacity', dir === 2 ? '0' : '1');
+    svg.querySelector('.bp-arrow-2')?.setAttribute('opacity', dir === 2 ? '1' : '0');
+  }
+  setTxt('belt-state', opts.paro ? 'PARO' : running ? 'MARCHA' : 'DETENIDA');
+  setTxt('vfd-speed', `${est.vfd_speed_hz ?? '—'} Hz`);
+  if (est.vfd_control != null) {
+    const cmd = { 18: 'Dirección 1', 34: 'Dirección 2', 1: 'Stop' }[est.vfd_control] || 'Comando';
+    setTxt('vfd-cmd', `${cmd} (${est.vfd_control})`);
+  }
+
+  // Botonera: I1 = banda habilitada (latch del ST); I3 = paro deducido.
+  on('i1', est.band_enable);
+  on('i3', opts.paro);
+
+  // Sensores: temporizador corriendo = banda detenida por ese sensor.
+  for (const n of [1, 2]) {
+    const tmr = Number(est[`s${n}_timer_s`]) || 0;
+    on(`s${n}`, tmr > 0, 'is-wait');
+    const cnt = est[`s${n}_count`];
+    setTxt(`s${n}-live`, `${cnt ?? '—'} pz${tmr > 0 ? ` · ${tmr} s` : ''}`);
+  }
+
+  // Plumas: estado real %R62/%R63 (0 detenida, 1 subiendo, 2 bajando).
+  for (const n of [1, 2]) {
+    const p = est[`pluma${n}`] || {};
+    const g = q(`p${n}`);
+    g?.classList.toggle('is-up', Number(p.status) === 1);
+    g?.classList.toggle('is-down', Number(p.status) === 2);
+    setTxt(`p${n}-state`, p.estado || `Pluma ${n}`);
+  }
+
+  // Torreta: el ST no expone Q3..Q5, así que se muestra la máscara que aplica
+  // al estado actual (%R40 corriendo / %R41 detenida). Durante un evento de
+  // sensor con torreta, las lámparas físicas pueden diferir.
+  const mask = Number(running ? est.torreta?.run : est.torreta?.idle) || 0;
+  for (const [color, L] of Object.entries(BAND_LAMP)) on(`lamp-${color}`, mask & L.bit);
 }
 
 export function renderIOTable(program) {
