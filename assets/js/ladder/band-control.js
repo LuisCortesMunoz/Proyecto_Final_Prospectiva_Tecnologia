@@ -399,6 +399,10 @@ function pintarEstado(est) {
   } else if (est.fase === 'sin_marcha') {
     alerta('Configuración sin movimiento lista: sensores, torreta y plumas ya están activos. '
          + 'No hace falta pulsar ningún botón de arranque.', 'info');
+  } else if (est.fase === 'esperando_config' && est.motivos_cfg_invalida?.length) {
+    // El backend repite las reglas de CfgValid (§3) sobre los registros leídos.
+    alerta('El PLC rechaza la configuración cargada (CfgValid = 0): '
+         + est.motivos_cfg_invalida.join(' ') + ' Vuelve a enviar la configuración.');
   } else if (est.fase === 'esperando_config') {
     alerta('El PLC no tiene una configuración válida cargada (dirección 1 o 2 y frecuencia '
          + 'entre 1 y 327 Hz). Envía la configuración para armar el VFD.', 'info');
