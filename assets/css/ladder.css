@@ -1174,3 +1174,41 @@ body.sim-mode .rung-svg  { cursor: default; }
 .bc-msg { font-family: var(--font-ui); font-size: 10.5px; color: var(--text-tertiary); }
 .bc-msg.is-ok  { color: var(--success); }
 .bc-msg.is-err { color: var(--danger); }
+
+.bc-chip.is-err  { border-color: var(--danger); color: var(--danger); }
+.bc-chip.is-wait { border-color: var(--warning); color: var(--warning); }
+
+/* Secuencia de arranque: Esperando configuración → … → Banda corriendo */
+.bc-steps {
+  list-style: none; margin: 0 0 8px; padding: 0;
+  display: flex; flex-wrap: wrap; gap: 4px; counter-reset: bcpaso;
+}
+.bc-step {
+  counter-increment: bcpaso;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 9px 3px 4px; border: 1px solid var(--border); border-radius: 999px;
+  font-family: var(--font-ui); font-size: 10.5px; color: var(--text-tertiary);
+}
+.bc-step::before {
+  content: counter(bcpaso);
+  display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--bg-elevated); font-family: var(--font-mono); font-size: 9px;
+}
+.bc-step.is-done { border-color: var(--success); color: var(--success); }
+.bc-step.is-done::before { content: '✓'; background: var(--success-dim); }
+.bc-step.is-on { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+.bc-steps.is-stop .bc-step.is-on { border-color: var(--danger); background: var(--danger-dim); color: var(--danger); }
+
+.bc-bar { height: 5px; margin-top: 8px; border-radius: 3px; background: var(--bg-elevated); overflow: hidden; }
+.bc-bar > span { display: block; height: 100%; width: 0; background: var(--accent); transition: width var(--transition); }
+
+/* Diagnóstico avanzado: tabla de registros leídos (solo lectura) */
+.bc-diag > summary { cursor: pointer; }
+.bc-diag-body { margin-top: 8px; overflow-x: auto; font-family: var(--font-ui); font-size: 10.5px; color: var(--text-tertiary); }
+.bc-diag-body table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 10px; }
+.bc-diag-body th, .bc-diag-body td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.bc-diag-body th { color: var(--text-tertiary); font-weight: 600; }
+.bc-diag-body td { color: var(--text-secondary); }
+.bc-diag-body td.is-rw { color: var(--accent); }
+
+.bp-svg .bp-btn-aux.is-on .bp-btn-cap { fill: #f59e0b; filter: drop-shadow(0 0 4px rgba(245,158,11,0.7)); }

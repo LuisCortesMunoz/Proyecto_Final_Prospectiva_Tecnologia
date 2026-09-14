@@ -19,7 +19,7 @@
 import { BACKEND_BASE_URL } from './config.js';
 import { compileLogicToSchema } from './compiler/logicToSchema.js';
 import { validateLogicJson, normalizeAndValidate } from './validate.js';
-import { detectEquipment, equipmentQuestion, buildBandLogic, detectTorretaLamps } from './equipment.js';
+import { detectEquipment, equipmentQuestion, buildBandLogic, detectTorretaLamps, canonicalBand } from './equipment.js';
 
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
@@ -46,6 +46,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     logic = pasted;
     source = 'json-pegado';
     if (!equipo) equipo = pasted.band ? 'banda' : 'maletin';
+    if (pasted.band) logic = { ...pasted, band: canonicalBand(pasted.band) };
   } else {
     // ── Selección de equipo (maletín / banda transportadora) ────
     // Prioridad: el equipo que ya eligió el usuario > lo que diga el texto.
@@ -69,21 +70,26 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     // aquí para que el panel visual de la banda se dibuje igual que siempre.
     if (equipo === 'banda') bandHints = { lamps: detectTorretaLamps(text) };
 
-    // ── Generación: MISMO endpoint para los dos equipos, con `device` ──
-    onProgress?.('fetching');
+    // ── MODO BANDA: normalización determinista de la intención ──
+    // Frases equivalentes deben dar el MISMO bloque "band", así que primero se
+    // interpreta localmente. Solo si no hay ninguna intención reconocible se
+    // consulta a la IA (y su respuesta también se canoniza abajo).
     let data = null;
-    try {
+    if (equipo === 'banda') {
+      const prevBand = context?.programa_anterior?.metadata?.engine_config?.band || null;
+      const b = buildBandLogic(text, { previous: prevBand });
+      if (b.logic) {
+        logic = b.logic;
+        bandHints = b.hints;
+        localWarnings = b.warnings;
+        source = 'banda-normalizador';
+      }
+    }
+
+    // ── Generación: MISMO endpoint para los dos equipos, con `device` ──
+    if (!logic) {
+      onProgress?.('fetching');
       data = await pedirLogica(text, profile, context, equipo, signal);
-    } catch (e) {
-      if (equipo !== 'banda') throw e;
-      // Red de seguridad SOLO para la banda: si el backend no responde, se
-      // arma el bloque "band" con la lectura local de siempre.
-      const b = buildBandLogic(text);
-      logic = b.logic;
-      bandHints = b.hints;
-      localWarnings = [...b.warnings,
-        'El backend no respondió (' + e.message + '); se usó la lectura local de la banda.'];
-      source = 'banda-local';
     }
 
     if (data) {
@@ -103,6 +109,10 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       ejemplo_id = data.ejemplo_id || '';
       if (data.device) equipo = data.device;
       source = equipo === 'banda' ? 'banda-backend' : 'backend';
+      // La IA de la banda pasa por la MISMA forma canónica que el normalizador.
+      if (equipo === 'banda' && logic && typeof logic === 'object') {
+        logic = { ...logic, device: 'banda', outputs: [], band: canonicalBand(logic.band) };
+      }
     }
   }
 

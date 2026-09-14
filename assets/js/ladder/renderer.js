@@ -311,47 +311,45 @@ function bandAccion(v) {
   return Number.isFinite(n) ? n : (BAND_ACCION[String(v).toLowerCase()] ?? null);
 }
 
+const PLUMA_SENSOR_TXT = { 1: '↑', 2: '↓', 3: 'stop', subir: '↑', bajar: '↓', stop: 'stop' };
+const STOP_MODE_CHIP = ['I3', 'I2 + I3', 'Software + I3', 'I2 + Software + I3'];
+
 /** Texto corto de lo que hace un sensor en esta instrucción. */
-function bandSensorTexto(accion, seconds, count, retrigger) {
+function bandSensorTexto(accion, seconds, count, plumas = []) {
   let t;
   if (accion === 0) t = 'solo cuenta';
-  else if (accion === 1 || accion === 3) t = 'detiene mientras detecta';
-  else if (seconds != null) t = `detiene ${seconds} s`;
+  else if (accion === 1 || accion === 3) t = 'pausa mientras detecta';
+  else if (seconds != null) t = `pausa ${seconds} s`;
   else t = 'detecta';
   if (accion === 3 || accion === 4) t += ' + torreta';
-  if (count > 0) t += ` · cada ${count} pz`;
-  if (retrigger != null) t += ` · bloqueo ${retrigger} s`;
+  plumas.forEach((p, k) => { if (p && PLUMA_SENSOR_TXT[p]) t += ` · P${k + 1} ${PLUMA_SENSOR_TXT[p]}`; });
+  if (count > 0) t += ` · al contar ${count}`;
   return t;
 }
 
-/** Botonera física: I1 arranque (pulsador verde) e I3 paro (hongo rojo). */
-function bandBotonera(x, y) {
+/** Botonera física: I1 arranque (verde), I2 paro auxiliar (ámbar) e I3 paro prioritario (rojo). */
+function bandBotonera(x, y, stopMode = 0) {
+  const i2Usado = stopMode === 1 || stopMode === 3;
+  const boton = (cx, clase, bp, io, texto, color, fill, unused) => `
+      <g class="bp-btn ${clase}${unused ? ' is-unused' : ''}" data-bp="${bp}">
+        <circle cx="${cx}" cy="${y + 44}" r="13" fill="var(--bg-elevated)"
+                stroke="var(--wire-inactive)" stroke-width="1.3"/>
+        <circle class="bp-btn-cap" cx="${cx}" cy="${y + 44}" r="8.5"
+                fill="${fill}" stroke="${color}" stroke-width="1.6"/>
+        <text x="${cx}" y="${y + 71}" text-anchor="middle" font-size="9.5" font-weight="700"
+              fill="var(--text-mono)" font-family="var(--font-mono)">${io}</text>
+        <text x="${cx}" y="${y + 83}" text-anchor="middle" font-size="8"
+              fill="var(--text-secondary)" font-family="var(--font-ui)">${texto}</text>
+      </g>`;
   return `
     <g class="bp-botonera">
       <rect x="${x}" y="${y}" width="128" height="92" rx="5"
             fill="var(--bg-surface)" stroke="var(--border)" stroke-width="1.3"/>
       <text x="${x + 10}" y="${y + 15}" font-size="10" font-weight="700"
             fill="var(--text-secondary)" font-family="var(--font-ui)">Botonera</text>
-      <g class="bp-btn bp-btn-start" data-bp="i1">
-        <circle cx="${x + 34}" cy="${y + 48}" r="15" fill="var(--bg-elevated)"
-                stroke="var(--wire-inactive)" stroke-width="1.3"/>
-        <circle class="bp-btn-cap" cx="${x + 34}" cy="${y + 48}" r="10"
-                fill="rgba(34,197,94,0.25)" stroke="#16a34a" stroke-width="1.6"/>
-        <text x="${x + 34}" y="${y + 78}" text-anchor="middle" font-size="9.5"
-              fill="var(--text-secondary)" font-family="var(--font-ui)">
-          <tspan font-family="var(--font-mono)" font-weight="700" fill="var(--text-mono)">I1</tspan> Arranque
-        </text>
-      </g>
-      <g class="bp-btn bp-btn-stop" data-bp="i3">
-        <rect x="${x + 84}" y="${y + 50}" width="16" height="10" rx="2"
-              fill="var(--bg-elevated)" stroke="var(--wire-inactive)" stroke-width="1.2"/>
-        <circle class="bp-btn-cap" cx="${x + 92}" cy="${y + 45}" r="13"
-                fill="rgba(239,68,68,0.25)" stroke="#dc2626" stroke-width="1.6"/>
-        <text x="${x + 92}" y="${y + 78}" text-anchor="middle" font-size="9.5"
-              fill="var(--text-secondary)" font-family="var(--font-ui)">
-          <tspan font-family="var(--font-mono)" font-weight="700" fill="var(--text-mono)">I3</tspan> Paro
-        </text>
-      </g>
+      ${boton(x + 24, 'bp-btn-start', 'i1', 'I1', 'arranque', '#16a34a', 'rgba(34,197,94,0.25)', false)}
+      ${boton(x + 64, 'bp-btn-aux', 'i2', 'I2', 'paro aux', '#d97706', 'rgba(245,158,11,0.25)', !i2Usado)}
+      ${boton(x + 104, 'bp-btn-stop', 'i3', 'I3', 'paro', '#dc2626', 'rgba(239,68,68,0.25)', false)}
     </g>`;
 }
 
@@ -370,7 +368,7 @@ function bandVFD(x, y, view) {
             stroke="var(--border)" stroke-width="1"/>
       <text x="${x + 10}" y="${y + 37}" font-size="9.5"
             fill="var(--text-secondary)" font-family="var(--font-ui)">
-        Marcha: <tspan data-bp="vfd-cmd">Dirección ${dir} (${view.vfd_cmd})</tspan>
+        Marcha: <tspan data-bp="vfd-cmd">${view.mover === false ? 'sin marcha (1)' : `Dirección ${dir} (${view.vfd_cmd})`}</tspan>
       </text>
       <text x="${x + 10}" y="${y + 51}" font-size="9.5"
             fill="var(--text-secondary)" font-family="var(--font-ui)">
@@ -519,14 +517,15 @@ export function renderBandPanel(container, program) {
   const band = program?.metadata?.engine_config?.band || {};
   const izq = view.direction === 'izquierda';
 
-  // Sensores: participan si tienen espera, acción o conteo declarados.
+  // Sensores: participan si tienen acción, espera, conteo o plumas declarados.
   const sensor = (n) => {
     const accion = bandAccion(band[`s${n}_action`]);
-    const seconds = view[`wait_s${n}_s`] ?? band[`wait_s${n}_s`] ?? null;
+    const seconds = view[`wait_s${n}_s`] ?? null;
     const count = Number(band[`count_s${n}`]) || 0;
-    const activo = !!u[`s${n}`] || accion != null || band[`count_s${n}`] != null;
+    const plumas = [band[`s${n}_pluma1`], band[`s${n}_pluma2`]];
+    const activo = !!u[`s${n}`] || accion != null;
     const texto = activo
-      ? bandSensorTexto(accion ?? (seconds != null ? 2 : null), seconds, count, view[`retrigger_s${n}_s`])
+      ? bandSensorTexto(accion ?? (seconds != null ? 2 : 1), seconds, count, plumas)
       : 'sin usar';
     return { activo, texto, seconds };
   };
@@ -538,18 +537,19 @@ export function renderBandPanel(container, program) {
   const lamps = {};
   for (const [color, L] of Object.entries(BAND_LAMP)) lamps[color] = !!u[color] || !!(mascaras & L.bit);
 
-  const pluma1 = band.pluma1 != null, pluma2 = band.pluma2 != null;
+  const pluma1 = !!u.pluma1 || band.pluma1 != null;
+  const pluma2 = !!u.pluma2 || band.pluma2 != null;
 
   const svg = `
 <svg viewBox="0 0 760 248" class="bp-svg${izq ? ' dir-2' : ''}" role="img"
      aria-label="Esquema de la banda transportadora">
-  ${bandBotonera(12, 14)}
+  ${bandBotonera(12, 14, view.stop_mode)}
   ${bandVFD(12, 132, view)}
   ${bandCinta(izq)}
   ${bandSensor(262, 1, 'I4', s1.activo, s1.texto)}
   ${bandSensor(420, 2, 'I5', s2.activo, s2.texto)}
-  ${bandPluma(340, 1, 'Q8↑ · Q6↓', pluma1)}
-  ${bandPluma(462, 2, 'Q9↑ · Q7↓', pluma2)}
+  ${bandPluma(340, 1, 'Q8↑ · Q9↓', pluma1)}
+  ${bandPluma(462, 2, 'Q6↑ · Q7↓', pluma2)}
   ${bandTorreta(618, lamps)}
   <text x="345" y="244" text-anchor="middle" font-size="10" font-weight="600"
         fill="var(--text-secondary)" font-family="var(--font-ui)">
@@ -558,14 +558,20 @@ export function renderBandPanel(container, program) {
 </svg>`;
 
   const chips = [];
-  chips.push(`<span class="bp-chip bp-chip-accent"><i class="ti ti-arrows-horizontal"></i> ${izq ? 'Dirección 2' : 'Dirección 1'}</span>`);
+  if (view.mover === false) {
+    chips.push(`<span class="bp-chip"><i class="ti ti-player-stop"></i> Sin marcha</span>`);
+  } else {
+    chips.push(`<span class="bp-chip bp-chip-accent"><i class="ti ti-arrows-horizontal"></i> ${izq ? 'Dirección 2' : 'Dirección 1'}</span>`);
+  }
   if (u.freq) chips.push(`<span class="bp-chip"><i class="ti ti-wave-sine"></i> ${view.freq_hz} Hz</span>`);
+  if (view.mover !== false && view.stop_mode) {
+    chips.push(`<span class="bp-chip"><i class="ti ti-hand-stop"></i> Paro ${STOP_MODE_CHIP[view.stop_mode]}</span>`);
+  }
+  if (view.auto_stop_mode) {
+    chips.push(`<span class="bp-chip"><i class="ti ti-clock-stop"></i> Paro automático ${view.auto_stop_s} s</span>`);
+  }
   if (s1.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S1${s1.seconds != null ? ` · ${s1.seconds} s` : ''}</span>`);
   if (s2.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S2${s2.seconds != null ? ` · ${s2.seconds} s` : ''}</span>`);
-  // El paro por sensor lo determinan los tiempos de espera, no la lampara:
-  // las lamparas ahora solo se encienden si la instruccion las nombra.
-  if (view.wait_s1_s != null || view.wait_s2_s != null)
-    chips.push(`<span class="bp-chip"><i class="ti ti-player-stop"></i> Paro por sensor</span>`);
   if (pluma1 || pluma2)
     chips.push(`<span class="bp-chip"><i class="ti ti-arrows-vertical"></i> Plumas</span>`);
 
@@ -582,7 +588,8 @@ export function renderBandPanel(container, program) {
 /**
  * Pinta sobre el esquema el estado REAL leído del PLC (GET /banda/estado).
  * `est = null` devuelve el esquema a la vista de configuración (sin lectura).
- * opts.paro: I3 presionado según la lectura de la entrada física.
+ * Todo sale de registros del ST: monitores R100..R127 para entradas y
+ * salidas físicas, R62/R63 para plumas y R14 para la causa de paro.
  */
 export function paintBandLive(container, est, opts = {}) {
   bandLive = est ? { est, opts } : null;
@@ -597,7 +604,7 @@ export function paintBandLive(container, est, opts = {}) {
     svg.classList.remove('is-running', 'is-stop');
     setTxt('belt-state', 'CONFIG');
     setTxt('vfd-speed', '— Hz');
-    for (const k of ['i1', 'i3', 'lamp-verde', 'lamp-amarilla', 'lamp-roja']) on(k, false);
+    for (const k of ['i1', 'i2', 'i3', 'lamp-verde', 'lamp-amarilla', 'lamp-roja']) on(k, false);
     for (const n of [1, 2]) {
       on(`s${n}`, false, 'is-wait');
       on(`s${n}`, false, 'is-detect');
@@ -610,32 +617,35 @@ export function paintBandLive(container, est, opts = {}) {
 
   // Banda: sentido real si corre; si no, el que tiene cargado el PLC.
   const running = !!est.running;
+  const paro = !!(opts.paro ?? est.gen_stop);
+  const pausa = est.fase === 'pausa_sensor';
   const dir = Number(est.direccion || est.dir_cmd);
   svg.classList.toggle('is-running', running);
-  svg.classList.toggle('is-stop', !!opts.paro);
+  svg.classList.toggle('is-stop', paro);
   if (dir === 1 || dir === 2) {
     svg.classList.toggle('dir-2', dir === 2);
     setTxt('dir-text', dir === 2 ? 'Dirección 2 (izquierda)' : 'Dirección 1 (derecha)');
     svg.querySelector('.bp-arrow-1')?.setAttribute('opacity', dir === 2 ? '0' : '1');
     svg.querySelector('.bp-arrow-2')?.setAttribute('opacity', dir === 2 ? '1' : '0');
   }
-  setTxt('belt-state', opts.paro ? 'PARO' : running ? 'MARCHA' : 'DETENIDA');
+  setTxt('belt-state', paro ? 'PARO' : running ? 'MARCHA' : pausa ? 'PAUSA' : 'DETENIDA');
   setTxt('vfd-speed', `${est.vfd_speed_hz ?? '—'} Hz`);
   if (est.vfd_control != null) {
     const cmd = { 18: 'Dirección 1', 34: 'Dirección 2', 1: 'Stop' }[est.vfd_control] || 'Comando';
     setTxt('vfd-cmd', `${cmd} (${est.vfd_control})`);
   }
 
-  // Botonera: I1 = botón físico leído (i1_pulsado); sin lectura fiable de %I se
-  // muestra el latch del ST. I3 = entrada física leída.
-  on('i1', est.i1_pulsado ?? est.band_enable);
-  on('i3', opts.paro);
+  // Botonera: monitores del ST (R105..R107), ya normalizados (1 = activo).
+  on('i1', est.i1_pulsado);
+  on('i2', est.i2_activo);
+  on('i3', est.i3_paro);
 
-  // Sensores: temporizador corriendo = banda detenida por ese sensor.
+  // Sensores: detección real (R108/R109) y pausa del sensor (StopReason 5/6).
   for (const n of [1, 2]) {
     const tmr = Number(est[`s${n}_timer_s`]) || 0;
-    on(`s${n}`, tmr > 0, 'is-wait');
-    on(`s${n}`, est[`s${n}_detecta`] === true, 'is-detect');   // entrada I4/I5 leída
+    const enPausa = Number(est.stop_reason) === (n === 1 ? 5 : 6);
+    on(`s${n}`, enPausa || tmr > 0, 'is-wait');
+    on(`s${n}`, est[`s${n}_detecta`] === true, 'is-detect');
     const cnt = est[`s${n}_count`];
     setTxt(`s${n}-live`, `${cnt ?? '—'} pz${tmr > 0 ? ` · ${tmr} s` : ''}`);
   }
@@ -649,15 +659,10 @@ export function paintBandLive(container, est, opts = {}) {
     setTxt(`p${n}-state`, p.estado || `Pluma ${n}`);
   }
 
-  // Torreta: el ST no expone Q3..Q5, así que se muestra la máscara que aplica
-  // al estado actual (%R40 corriendo / %R41 detenida). Durante un evento de
-  // sensor con torreta, las lámparas físicas pueden diferir.
-  // §15b: con I1 presionado se suman las lámparas de %R50. Con el paro I3 el ST
-  // apaga toda la torreta.
-  const conI1 = est.i1_pulsado === true ? Number(est.torreta?.i1) || 0 : 0;
-  const mask = opts.paro ? 0
-    : (Number(running ? est.torreta?.run : est.torreta?.idle) || 0) | conI1;
-  for (const [color, L] of Object.entries(BAND_LAMP)) on(`lamp-${color}`, mask & L.bit);
+  // Torreta: salidas físicas REALES Q3..Q5 (monitores R110..R112). El PLC ya
+  // resolvió prioridades (S2 → S1 → RUN → IDLE, I1, paro).
+  const L = est.lamparas || {};
+  for (const color of Object.keys(BAND_LAMP)) on(`lamp-${color}`, L[color]);
 }
 
 export function renderIOTable(program) {

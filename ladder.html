@@ -464,10 +464,10 @@
       </button>
       <div class="band-panel" id="bandPanel" aria-label="Esquema de la banda transportadora" hidden></div>
 
-      <!-- Control en vivo de la banda: escribe los registros de interfaz del
-           programa maestro ST y muestra SIEMPRE el feedback real del PLC.
-           Toda la logica fisica (VFD, sensores, torreta, plumas, interlocks)
-           es del PLC; aqui solo se configura y se lee. -->
+      <!-- Control en vivo de la banda: escribe SOLO registros de configuracion o
+           comando del programa maestro ST y muestra SIEMPRE el feedback real del
+           PLC. Toda la logica fisica (VFD, paros, sensores, torreta, plumas y sus
+           prioridades) es del PLC; aqui solo se configura y se lee. -->
       <div class="band-control" id="bandControl" aria-label="Control de la banda transportadora">
 
         <!-- ── Estado real leido del PLC ── -->
@@ -481,12 +481,19 @@
             <input type="text" id="bcIp" placeholder="p. ej. 192.168.1.50" spellcheck="false" autocomplete="off">
             <span class="bc-hint">Se recuerda en este navegador. Vacía = la configurada en el puente.</span>
           </div>
+          <ol class="bc-steps" id="bcSteps" aria-label="Secuencia de arranque">
+            <li class="bc-step" data-step="config">Esperando configuración</li>
+            <li class="bc-step" data-step="vfd">Configurando VFD</li>
+            <li class="bc-step" data-step="lista">Lista</li>
+            <li class="bc-step" data-step="i1">Esperando I1</li>
+            <li class="bc-step" data-step="run">Banda corriendo</li>
+          </ol>
           <div class="bc-badges">
             <span class="bc-badge" id="bcFase"><i class="ti ti-loader"></i> —</span>
             <span class="bc-badge" id="bcBanda"><i class="ti ti-topology-bus"></i> Banda: —</span>
             <span class="bc-badge" id="bcCfg"><i class="ti ti-settings-check"></i> Config: —</span>
-            <span class="bc-badge" id="bcEnable"><i class="ti ti-player-play"></i> I1: —</span>
-            <span class="bc-badge" id="bcI3"><i class="ti ti-hand-stop"></i> I3: —</span>
+            <span class="bc-badge" id="bcEnable"><i class="ti ti-player-play"></i> Habilitación: —</span>
+            <span class="bc-badge" id="bcReason"><i class="ti ti-info-circle"></i> Causa de paro: —</span>
             <span class="bc-badge" id="bcSpeed"><i class="ti ti-wave-sine"></i> — Hz</span>
           </div>
           <div class="bc-alert" id="bcAlert" hidden></div>
@@ -502,8 +509,8 @@
             <div class="bc-field">
               <label>Dirección</label>
               <div class="bc-seg" id="bcDir">
-                <button type="button" class="bc-seg-btn is-on" data-dir="1">Dirección 1</button>
-                <button type="button" class="bc-seg-btn" data-dir="2">Dirección 2</button>
+                <button type="button" class="bc-seg-btn is-on" data-dir="1">Dirección 1 · derecha</button>
+                <button type="button" class="bc-seg-btn" data-dir="2">Dirección 2 · izquierda</button>
               </div>
             </div>
             <div class="bc-field">
@@ -518,6 +525,67 @@
           </div>
         </div>
 
+        <!-- ── Paros ── -->
+        <div class="bc-section">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-hand-stop"></i> Paros <span class="bc-io">I1 · I2 · I3</span></span>
+            <span class="bc-reg">%R9 · %R10</span>
+          </div>
+          <div class="bc-field">
+            <label>Modo de paro</label>
+            <div class="bc-seg" id="bcStopMode">
+              <button type="button" class="bc-seg-btn is-on" data-mode="0">I3</button>
+              <button type="button" class="bc-seg-btn" data-mode="1">I2 + I3</button>
+              <button type="button" class="bc-seg-btn" data-mode="2">Software + I3</button>
+              <button type="button" class="bc-seg-btn" data-mode="3">I2 + Software + I3</button>
+            </div>
+            <span class="bc-hint">I3 siempre detiene. Con el PLC conectado, el modo se aplica al instante.</span>
+          </div>
+          <div class="bc-feedback">
+            <span class="bc-chip" id="bcStopPlc">Modo en el PLC: —</span>
+            <span class="bc-chip" id="bcIn1">I1 arranque: —</span>
+            <span class="bc-chip" id="bcIn2">I2 paro aux: —</span>
+            <span class="bc-chip" id="bcIn3">I3 paro: —</span>
+          </div>
+          <div class="bc-feedback">
+            <button type="button" class="bc-btn bc-btn-danger" id="bcSoftStop">
+              <i class="ti ti-lock"></i> Activar paro software
+            </button>
+            <span class="bc-chip" id="bcSoftState">Paro software: —</span>
+            <span class="bc-hint">Liberarlo no rearranca la banda: hay que pulsar I1.</span>
+          </div>
+        </div>
+
+        <!-- ── Secuencia automatica ── -->
+        <div class="bc-section">
+          <div class="bc-sec-head">
+            <span class="bc-sec-title"><i class="ti ti-clock-stop"></i> Secuencia automática</span>
+            <span class="bc-reg">%R11 · %R12 · %R13 · %R15</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Avanzar → esperar → detener</label>
+              <select id="bcAutoMode">
+                <option value="0">Deshabilitada</option>
+                <option value="1">Contar solo el movimiento real</option>
+                <option value="2">Contar desde START (aunque un sensor pause)</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Tiempo objetivo (s)</label>
+              <input type="number" id="bcAutoS" min="1" step="1" value="10">
+              <span class="bc-hint">Al cumplirse la banda se detiene; I1 repite la secuencia.</span>
+            </div>
+          </div>
+          <div class="bc-feedback">
+            <span class="bc-chip" id="bcAutoObj">Tiempo objetivo: —</span>
+            <span class="bc-chip" id="bcAutoAcc">Transcurrido: —</span>
+            <span class="bc-chip" id="bcAutoState">Estado: —</span>
+            <span class="bc-chip" id="bcAutoDone">Secuencia terminada: —</span>
+          </div>
+          <div class="bc-bar"><span id="bcAutoBar"></span></div>
+        </div>
+
         <!-- ── Sensor 1 ── -->
         <div class="bc-section" data-sensor="1">
           <div class="bc-sec-head">
@@ -528,35 +596,55 @@
             <div class="bc-field">
               <label>Acción</label>
               <select id="bcS1Action">
-                <option value="0">Solo detectar / contar</option>
+                <option value="0">Solo contar</option>
                 <option value="1">Detener mientras detecta</option>
-                <option value="2">Detener un tiempo</option>
-                <option value="3">Detener mientras detecta + torreta</option>
-                <option value="4">Detener un tiempo + torreta</option>
+                <option value="2">Detener por tiempo</option>
+                <option value="3">Detener + torreta mientras detecta</option>
+                <option value="4">Detener por tiempo + torreta</option>
               </select>
+              <span class="bc-hint">Es una pausa: al terminar, la banda continúa sola.</span>
             </div>
             <div class="bc-field">
               <label>Tiempo (s)</label>
               <input type="number" id="bcS1Timer" min="0" step="1" value="5">
             </div>
             <div class="bc-field">
-              <label>Conteo para actuar</label>
+              <label>Conteo objetivo</label>
               <input type="number" id="bcS1Count" min="0" step="1" value="0">
               <span class="bc-hint">0 = en cada detección.</span>
             </div>
             <div class="bc-field">
-              <label>Luces durante el evento</label>
+              <label>Luces durante la pausa</label>
               <div class="bc-lamps" id="bcS1Mask">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
                 <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
               </div>
             </div>
+            <div class="bc-field">
+              <label>Pluma 1 durante la pausa</label>
+              <select id="bcS1P1">
+                <option value="0">Sin intervenir</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Forzar stop</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 2 durante la pausa</label>
+              <select id="bcS1P2">
+                <option value="0">Sin intervenir</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Forzar stop</option>
+              </select>
+            </div>
           </div>
           <div class="bc-feedback">
+            <span class="bc-chip" id="bcS1Det">Detectando: —</span>
             <span class="bc-chip" id="bcS1Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS1Tmr">Temporizador: — s</span>
-            <span class="bc-chip" id="bcS1Done">Conteo alcanzado: —</span>
+            <span class="bc-chip" id="bcS1Done">Objetivo alcanzado: —</span>
             <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="1">
               <i class="ti ti-refresh"></i> Poner conteo en 0
             </button>
@@ -573,35 +661,55 @@
             <div class="bc-field">
               <label>Acción</label>
               <select id="bcS2Action">
-                <option value="0">Solo detectar / contar</option>
+                <option value="0">Solo contar</option>
                 <option value="1">Detener mientras detecta</option>
-                <option value="2">Detener un tiempo</option>
-                <option value="3">Detener mientras detecta + torreta</option>
-                <option value="4">Detener un tiempo + torreta</option>
+                <option value="2">Detener por tiempo</option>
+                <option value="3">Detener + torreta mientras detecta</option>
+                <option value="4">Detener por tiempo + torreta</option>
               </select>
+              <span class="bc-hint">Es una pausa: al terminar, la banda continúa sola.</span>
             </div>
             <div class="bc-field">
               <label>Tiempo (s)</label>
               <input type="number" id="bcS2Timer" min="0" step="1" value="5">
             </div>
             <div class="bc-field">
-              <label>Conteo para actuar</label>
+              <label>Conteo objetivo</label>
               <input type="number" id="bcS2Count" min="0" step="1" value="0">
               <span class="bc-hint">0 = en cada detección.</span>
             </div>
             <div class="bc-field">
-              <label>Luces durante el evento</label>
+              <label>Luces durante la pausa</label>
               <div class="bc-lamps" id="bcS2Mask">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
                 <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
               </div>
             </div>
+            <div class="bc-field">
+              <label>Pluma 1 durante la pausa</label>
+              <select id="bcS2P1">
+                <option value="0">Sin intervenir</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Forzar stop</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 2 durante la pausa</label>
+              <select id="bcS2P2">
+                <option value="0">Sin intervenir</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Forzar stop</option>
+              </select>
+            </div>
           </div>
           <div class="bc-feedback">
+            <span class="bc-chip" id="bcS2Det">Detectando: —</span>
             <span class="bc-chip" id="bcS2Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS2Tmr">Temporizador: — s</span>
-            <span class="bc-chip" id="bcS2Done">Conteo alcanzado: —</span>
+            <span class="bc-chip" id="bcS2Done">Objetivo alcanzado: —</span>
             <button type="button" class="bc-btn bc-btn-ghost" data-reset-count="2">
               <i class="ti ti-refresh"></i> Poner conteo en 0
             </button>
@@ -612,11 +720,11 @@
         <div class="bc-section">
           <div class="bc-sec-head">
             <span class="bc-sec-title"><i class="ti ti-bulb"></i> Torreta <span class="bc-io">Q3 · Q4 · Q5</span></span>
-            <span class="bc-reg">%R40 · %R41</span>
+            <span class="bc-reg">%R40 · %R41 · %R50</span>
           </div>
           <div class="bc-grid">
             <div class="bc-field">
-              <label>Con la banda corriendo</label>
+              <label>Con la banda corriendo (RUN)</label>
               <div class="bc-lamps" id="bcTorRun">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
@@ -624,8 +732,16 @@
               </div>
             </div>
             <div class="bc-field">
-              <label>Con la banda detenida</label>
+              <label>Con la banda detenida (IDLE)</label>
               <div class="bc-lamps" id="bcTorIdle">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Mientras I1 está presionado</label>
+              <div class="bc-lamps" id="bcTorI1">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
                 <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
@@ -633,10 +749,15 @@
             </div>
           </div>
           <div class="bc-feedback">
+            <span class="bc-chip" id="bcQ3">Verde Q3: —</span>
+            <span class="bc-chip" id="bcQ4">Amarilla Q4: —</span>
+            <span class="bc-chip" id="bcQ5">Roja Q5: —</span>
+          </div>
+          <div class="bc-feedback">
             <button type="button" class="bc-btn bc-btn-ghost" id="bcTorApply">
               <i class="ti ti-bulb"></i> Aplicar torreta ahora
             </button>
-            <span class="bc-hint">Cambia solo %R40/%R41, sin detener la banda.</span>
+            <span class="bc-hint">Cambia solo %R40/%R41/%R50, sin detener la banda. Prioridad del PLC: S2 → S1 → RUN → IDLE.</span>
           </div>
         </div>
 
@@ -648,7 +769,7 @@
           </div>
           <div class="bc-grid">
             <div class="bc-field">
-              <label>Pluma 1</label>
+              <label>Pluma 1 <span class="bc-io">Q8 ↑ · Q9 ↓</span></label>
               <div class="bc-seg" data-pluma="1">
                 <button type="button" class="bc-seg-btn" data-cmd="1"><i class="ti ti-arrow-up"></i> Subir</button>
                 <button type="button" class="bc-seg-btn" data-cmd="0"><i class="ti ti-player-stop"></i> Stop</button>
@@ -657,7 +778,7 @@
               <span class="bc-chip" id="bcP1">Estado: —</span>
             </div>
             <div class="bc-field">
-              <label>Pluma 2</label>
+              <label>Pluma 2 <span class="bc-io">Q6 ↑ · Q7 ↓</span></label>
               <div class="bc-seg" data-pluma="2">
                 <button type="button" class="bc-seg-btn" data-cmd="1"><i class="ti ti-arrow-up"></i> Subir</button>
                 <button type="button" class="bc-seg-btn" data-cmd="0"><i class="ti ti-player-stop"></i> Stop</button>
@@ -666,7 +787,17 @@
               <span class="bc-chip" id="bcP2">Estado: —</span>
             </div>
           </div>
+          <div class="bc-note">
+            El PLC decide la salida final: un paro general detiene las plumas y la
+            pausa de un sensor puede sobrescribir el comando manual (S2 → S1 → manual).
+          </div>
         </div>
+
+        <!-- ── Diagnostico avanzado (solo lectura) ── -->
+        <details class="bc-section bc-diag" id="bcDiagBox">
+          <summary class="bc-sec-title"><i class="ti ti-list-details"></i> Diagnóstico avanzado (registros)</summary>
+          <div class="bc-diag-body" id="bcDiag">Sin lectura del PLC.</div>
+        </details>
 
         <!-- ── Acciones ── -->
         <div class="bc-actions">
@@ -676,8 +807,9 @@
           <button type="button" class="bc-btn" id="bcReset">
             <i class="ti ti-rotate-clockwise"></i> Reset del VFD
           </button>
-          <button type="button" class="bc-btn bc-btn-danger" id="bcStop">
-            <i class="ti ti-hand-stop"></i> Paro
+          <button type="button" class="bc-btn bc-btn-danger" id="bcStop"
+                  title="Desarma la configuración (DirCmd = 0). Funciona con cualquier modo de paro.">
+            <i class="ti ti-hand-stop"></i> Paro y desarmar
           </button>
           <span class="bc-msg" id="bcMsg"></span>
         </div>

@@ -173,17 +173,39 @@ function validarBanda(band, errors) {
   }
   for (const n of [1, 2]) {
     const acc = band['s' + n + '_action'];
-    if (acc == null) continue;
-    if (typeof acc === 'number') {
-      if (!Number.isInteger(acc) || acc < 0 || acc > 4) {
-        errors.push(`band.s${n}_action=${acc} debe estar entre 0 y 4.`);
+    if (acc != null) {
+      if (typeof acc === 'number') {
+        if (!Number.isInteger(acc) || acc < 0 || acc > 4) {
+          errors.push(`band.s${n}_action=${acc} debe estar entre 0 y 4.`);
+        }
+      } else {
+        const k = String(acc).toLowerCase();
+        if (!BAND_ACTIONS.has(k) && !BAND_ACTIONS_OBS.has(k)) {
+          errors.push(`band.s${n}_action="${acc}" no es una accion del Ladder maestro de la banda.`);
+        }
       }
-    } else {
-      const k = String(acc).toLowerCase();
-      if (!BAND_ACTIONS.has(k) && !BAND_ACTIONS_OBS.has(k)) {
-        errors.push(`band.s${n}_action="${acc}" no es una accion del Ladder maestro de la banda.`);
+      // Acciones 2 y 4 sin tiempo: el ST invalida TODA la configuracion.
+      const codigo = typeof acc === 'number' ? acc : { paro_temporizado: 2, paro_temporizado_torreta: 4, paro_enclavado: 2 }[String(acc).toLowerCase()];
+      if ((codigo === 2 || codigo === 4) && !(Number(band['wait_s' + n + '_s']) > 0)) {
+        errors.push(`band.s${n}_action detiene la banda por tiempo: band.wait_s${n}_s debe ser mayor que 0 s.`);
       }
     }
+    // Plumas por sensor (%R28/%R29/%R38/%R39): 0 nada · 1 subir · 2 bajar · 3 forzar stop.
+    for (const m of [1, 2]) {
+      const p = band[`s${n}_pluma${m}`];
+      if (p == null) continue;
+      const k = String(p).toLowerCase();
+      if (!['0', '1', '2', '3', 'nada', 'subir', 'bajar', 'stop', 'forzar_stop'].includes(k)) {
+        errors.push(`band.s${n}_pluma${m}="${p}" debe ser 0 (nada), 1 (subir), 2 (bajar) o 3 (forzar stop).`);
+      }
+    }
+  }
+  // Paros (%R9) y paro automatico (%R11/%R15), mismas reglas que §3 del ST.
+  if (band.stop_mode != null) rangoEntero(band.stop_mode, 0, 3, 'band', 'stop_mode', errors);
+  if (band.auto_stop_mode != null) rangoEntero(band.auto_stop_mode, 0, 2, 'band', 'auto_stop_mode', errors);
+  if (band.auto_stop_s != null) rangoEntero(band.auto_stop_s, 0, 32767, 'band', 'auto_stop_s', errors);
+  if (Number(band.auto_stop_mode) > 0 && !(Number(band.auto_stop_s) > 0)) {
+    errors.push('band.auto_stop_mode activo necesita band.auto_stop_s mayor que 0 segundos.');
   }
 }
 

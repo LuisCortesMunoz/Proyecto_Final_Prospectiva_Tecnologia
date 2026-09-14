@@ -7,6 +7,7 @@
  */
 import { generateProgram } from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
+import { describeBand } from './equipment.js';
 
 const PROFILE_URL = 'assets/devices/maletin_basico.json';
 let profile = null;
@@ -68,6 +69,11 @@ const OUTPUT_NAMES = { Q10: 'Verde', Q11: 'Amarilla', Q12: 'Roja' };
 const MODE_LABELS  = { directo: 'directo', enclavado: 'enclavado', combinacional: 'combinacional', off: 'apagado' };
 
 function logicSummaryHtml(logic) {
+  // Banda: resumen de la configuración canónica (lo que hará su PLC).
+  if (logic?.band && typeof logic.band === 'object') {
+    const rows = describeBand(logic.band).map(t => `<tr><td>${esc(t)}</td></tr>`).join('');
+    return `<details class="cmsg-logic" open><summary>¿Qué entendió la IA? (banda)</summary><table>${rows}</table></details>`;
+  }
   if (!logic || !Array.isArray(logic.outputs) || !logic.outputs.length) return '';
   const rows = logic.outputs.map(o => {
     const out  = String(o.output || '').toUpperCase();
