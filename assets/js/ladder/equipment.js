@@ -113,7 +113,9 @@ const RE_COND = /\bcuando\b|\bsi\b|\bal\b|\bdetect/;
 const RE_MOVER  = /\bmuev\w*|\bmover\w*|\bgir[ae]\w*|\barranc\w*|\bavanz[ae]\w*|\bcorr(?:e|er|a)\b|\bmarcha\b|\bvelocidad\b|\bfrecuencia\b|\bhz\b|\bderecha\b|\bizquierda\b/;
 const RE_RUN    = /\bcorriendo\b|\ben marcha\b|\bmoviendo(?:se)?\b|\bavanzando\b|\bse mueve\b|\bfuncionando\b/;
 const RE_IDLE   = /\bdetenid[ao]s?\b|\breposo\b|\bparad[ao]s?\b|\bquiet[ao]\b|\bsin moverse\b|\bsin movimiento\b|\bno se mueve\b|\bapagad[ao]\b/;
-const RE_LAMP   = /\blampara|\bluces?\b|\bluz\b|\btorreta\b|\bverde\b|\bamarill|\bambar\b|\broj[ao]\b/;
+const RE_LAMP   = /\blampara|\bluces?\b|\bluz\b|\btorreta\b|\bverde\b|\bamarill|\bambar\b|\broj[ao]\b|\bq\s?[345]\b/;
+// "con I1", "mientras I1 esté presionado": la luz sigue al botón (§15b del ST).
+const RE_I1     = /\bi\s?1\b/;
 const RE_PLUMA  = /\bplumas?\b/;
 const RE_SENSOR = /\bs\s?[12]\b|\bsensor/;
 const global = (re) => new RegExp(re.source, 'g');
@@ -148,9 +150,9 @@ function bloqueo(frag) {
 export function detectTorretaLamps(text) {
   const t = norm(text);
   return {
-    verde:    /\bverde\b/.test(t)    || /\bq\s?10\b/.test(t),
-    amarilla: /\bamarill/.test(t)  || /\bambar\b/.test(t) || /\bq\s?11\b/.test(t),
-    roja:     /\broj[ao]\b/.test(t) || /\bq\s?12\b/.test(t),
+    verde:    /\bverde\b/.test(t)    || /\bq\s?(?:10|3)\b/.test(t),
+    amarilla: /\bamarill/.test(t)  || /\bambar\b/.test(t) || /\bq\s?(?:11|4)\b/.test(t),
+    roja:     /\broj[ao]\b/.test(t) || /\bq\s?(?:12|5)\b/.test(t),
   };
 }
 
@@ -266,7 +268,8 @@ export function buildBandLogic(text) {
   if (RE_LAMP.test(zonaEstado) && (!luzEnSensor || hayEstado)) {
     let luz = mascara(zonaEstado);
     if (!luz) { luz = 7; warnings.push('No se indicó el color de la torreta: se encienden las tres luces.'); }
-    if (RE_RUN.test(zonaEstado)) band.torreta_run = luz;
+    if (RE_I1.test(zonaEstado) && !hayEstado) band.torreta_i1 = luz;
+    else if (RE_RUN.test(zonaEstado)) band.torreta_run = luz;
     else if (RE_IDLE.test(zonaEstado) || !band.enable) band.torreta_idle = luz;
     else band.torreta_run = luz;
   }

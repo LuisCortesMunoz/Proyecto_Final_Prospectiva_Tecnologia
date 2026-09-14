@@ -299,7 +299,8 @@ function compileSequence(seq, ctx) {
 // activa, con los bloques de Cscape (MOV, MUL, DIV, TON, CTU, CMP).
 //
 //   Entradas: I1 arranque (NA) · I3 paro (NC) · S1 = I4 (NC) · S2 = I5 (NC)
-//   Torreta:  Q3 verde · Q4 amarilla · Q5 roja (máscaras %R40/%R41/%R24/%R34)
+//   Torreta:  Q3 verde · Q4 amarilla · Q5 roja (máscaras %R40/%R41/%R24/%R34,
+//             %R50 = mientras I1 esté presionado, §15b)
 //   Plumas:   P1 Q8 sube / Q6 baja · P2 Q9 sube (provisional) / Q7 baja
 //   VFD:      %R500 = 18 dir 1 · 34 dir 2 · 1 paro · %R504 = FreqRequest × 100
 //   Triggers: %R5 NewCfgFlag · %R6 ResetCmd (por cambio de valor)
@@ -475,6 +476,7 @@ function compileBand(band, ctx, hints) {
   const S = [sensor(1), sensor(2)];
   const torRun  = num(band.torreta_run) || 0;
   const torIdle = num(band.torreta_idle) || 0;
+  const torI1   = num(band.torreta_i1) || 0;
 
   // Representación COMPACTA: solo lo que pide la configuración. Lo que el ST
   // hace siempre (reset del VFD con NewCfgFlag/ResetCmd, CfgValid, velocidad
@@ -572,6 +574,8 @@ function compileBand(band, ctx, hints) {
     }
     if (torRun & bit)  { alts.push([...previas, { t: 'no', a: 'BandRunning' }]);  fuentes.push('banda corriendo'); }
     if (torIdle & bit) { alts.push([...previas, { t: 'cmp', a: '%R3', v: 0 }]); fuentes.push('banda detenida (BandStatus = 0)'); }
+    // §15b: sigue a I1 (NA) mientras esté presionado, sin enclavar; I3 (NC) suelto.
+    if (torI1 & bit)   { alts.push([{ t: 'no', a: 'I1' }, { t: 'no', a: 'I3' }]); fuentes.push('mientras I1 esté presionado (I3 suelto)'); }
     if (!alts.length) continue;
     rungs.push(bandRungOr(`Torreta ${nombre} (${q}): ${fuentes.join(' · ')}`,
       alts, bandOut('coil', q, ctx, { lamp_color: lampColor }), ctx));

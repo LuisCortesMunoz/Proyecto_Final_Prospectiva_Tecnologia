@@ -150,7 +150,7 @@ function validarBanda(band, errors) {
     if (band[c] != null) rangoEntero(band[c], 0, 32767, 'band', c, errors);
   }
   // Mascaras de torreta: bitmask verde=1 · amarilla=2 · roja=4 (0..7).
-  for (const c of ['torreta_s1', 'torreta_s2', 'torreta_run', 'torreta_idle']) {
+  for (const c of ['torreta_s1', 'torreta_s2', 'torreta_run', 'torreta_idle', 'torreta_i1']) {
     if (band[c] != null) rangoEntero(band[c], 0, 7, 'band', c, errors);
   }
   // El ST solo acepta DirCmd = 1 o 2 (0 deja la configuracion invalida), asi

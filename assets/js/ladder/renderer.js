@@ -533,7 +533,7 @@ export function renderBandPanel(container, program) {
   const s1 = sensor(1), s2 = sensor(2);
 
   // Lámparas: las que nombra la instrucción o alguna máscara de torreta.
-  const mascaras = ['torreta_run', 'torreta_idle', 'torreta_s1', 'torreta_s2']
+  const mascaras = ['torreta_run', 'torreta_idle', 'torreta_s1', 'torreta_s2', 'torreta_i1']
     .reduce((m, k) => m | (Number(band[k]) || 0), 0);
   const lamps = {};
   for (const [color, L] of Object.entries(BAND_LAMP)) lamps[color] = !!u[color] || !!(mascaras & L.bit);
@@ -626,8 +626,9 @@ export function paintBandLive(container, est, opts = {}) {
     setTxt('vfd-cmd', `${cmd} (${est.vfd_control})`);
   }
 
-  // Botonera: I1 = banda habilitada (latch del ST); I3 = entrada física leída.
-  on('i1', est.band_enable);
+  // Botonera: I1 = botón físico leído (i1_pulsado); sin lectura fiable de %I se
+  // muestra el latch del ST. I3 = entrada física leída.
+  on('i1', est.i1_pulsado ?? est.band_enable);
   on('i3', opts.paro);
 
   // Sensores: temporizador corriendo = banda detenida por ese sensor.
@@ -651,7 +652,11 @@ export function paintBandLive(container, est, opts = {}) {
   // Torreta: el ST no expone Q3..Q5, así que se muestra la máscara que aplica
   // al estado actual (%R40 corriendo / %R41 detenida). Durante un evento de
   // sensor con torreta, las lámparas físicas pueden diferir.
-  const mask = Number(running ? est.torreta?.run : est.torreta?.idle) || 0;
+  // §15b: con I1 presionado se suman las lámparas de %R50. Con el paro I3 el ST
+  // apaga toda la torreta.
+  const conI1 = est.i1_pulsado === true ? Number(est.torreta?.i1) || 0 : 0;
+  const mask = opts.paro ? 0
+    : (Number(running ? est.torreta?.run : est.torreta?.idle) || 0) | conI1;
   for (const [color, L] of Object.entries(BAND_LAMP)) on(`lamp-${color}`, mask & L.bit);
 }
 

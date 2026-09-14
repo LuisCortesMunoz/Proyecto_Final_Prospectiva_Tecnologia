@@ -189,6 +189,7 @@ function postear(ruta, cuerpo, timeout) {
 // ── Pintado del feedback ───────────────────────────────────────
 const FASE = {
   paro:         { txt: 'Paro I3 activo',     clase: 'is-err',  icono: 'ti-hand-stop' },
+  sin_marcha:   { txt: 'Sin marcha · luces con I1', clase: 'is-off', icono: 'ti-bulb' },
   configurando: { txt: 'Configurando VFD…',  clase: 'is-wait', icono: 'ti-loader' },
   lista:        { txt: 'Sistema listo',      clase: 'is-ok',   icono: 'ti-circle-check' },
   habilitada:   { txt: 'Banda habilitada',   clase: 'is-ok',   icono: 'ti-player-play' },
@@ -272,6 +273,9 @@ function pintarEstado(est) {
     alerta('El PLC no confirma la configuración (CfgReady sigue en 0). La secuencia '
          + 'del VFD no avanza mientras el paro I3 está activo; si I3 está suelto, '
          + 'vuelve a enviar la configuración o haz un Reset del VFD.');
+  } else if (est.fase === 'sin_marcha') {
+    alerta('Programa sin marcha: I1 no arranca la banda. Las lámparas configuradas se '
+         + 'encienden solo mientras I1 esté presionado.', 'info');
   } else if (!est.cfg_ready && !cfgValida) {
     alerta('El PLC no tiene una configuración válida cargada (dirección 1 o 2 y '
          + 'frecuencia entre 1 y 327 Hz). Envía la configuración para armar el VFD.',
