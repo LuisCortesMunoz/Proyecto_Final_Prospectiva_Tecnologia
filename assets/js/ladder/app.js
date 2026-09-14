@@ -11,7 +11,7 @@ import { exportToURL, importFromURL, pushToURL, fitsInURL }                     
 import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, renderBandPanel, GR } from './renderer.js';
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 // Control en vivo de la BANDA (solo esa estacion). El maletin no lo usa.
-import { initBandControl, startBandPolling, stopBandPolling, cargarBandDesdePrograma } from './band-control.js';
+import { initBandControl, startBandPolling, stopBandPolling, cargarBandDesdePrograma, mostrarAvisoStart } from './band-control.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -1375,7 +1375,7 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
     ? `${cfg.outputs.length} salida(s)`
     : tieneSequence
       ? `secuencia de ${cfg.sequence.steps.length} paso(s)`
-      : `la banda transportadora (${cfg.band.enable === false ? 'apagada' : cfg.band.direction || 'derecha'})`;
+      : `la banda transportadora (${cfg.band.enable === false ? 'sin movimiento' : cfg.band.direction || 'derecha'})`;
   store.log('info', `Enviando ${resumen} al PLC del ${equipo} `
     + `${ip}:${port} vía ${url}/aplicar-plc …`);
   showToast('Cargando al PLC…', 'info');
@@ -1414,13 +1414,18 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
         localStorage.setItem('lv_banda_ip', ip);
         localStorage.setItem('lv_banda_port', String(port));
       } catch { /* sin storage */ }
-      if (d.sin_marcha) {
-        store.log('info', 'Banda: programa sin marcha. Las lámparas configuradas se encienden '
-          + 'mientras I1 esté presionado; la banda no arranca.');
-      } else {
+      // "Listo" solo con CfgReady real. El aviso de arranque aparece únicamente
+      // si la configuración mueve la banda (lo decide el backend).
+      if (!d.requiere_start) {
         store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
-          ? 'Banda: configuración lista (CfgReady = 1). Pulsa el botón físico I1 para arrancar.'
-          : 'Banda: el PLC no confirmó CfgReady. Revisa que I3 esté suelto y abre "Ver banda transportadora" para ver su estado.');
+          ? 'Banda: configuración sin movimiento lista (CfgReady = 1). Sensores, torreta y plumas ya están activos.'
+          : 'Banda: el PLC no confirmó CfgReady. Abre "Ver banda transportadora" para ver su estado.');
+      } else {
+        const boton = d.boton_start || 'I1';
+        store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
+          ? `Banda: configuración lista (CfgReady = 1). Pulsa el botón físico ${boton} para arrancar.`
+          : 'Banda: el PLC no confirmó CfgReady. Revisa que no haya un paro activo y abre "Ver banda transportadora" para ver su estado.');
+        if (d.cfg_ready) mostrarAvisoStart(boton);
       }
     }
     showToast('Programa cargado al PLC', 'success');

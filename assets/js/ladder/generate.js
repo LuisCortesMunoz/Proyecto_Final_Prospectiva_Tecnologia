@@ -19,7 +19,7 @@
 import { BACKEND_BASE_URL } from './config.js';
 import { compileLogicToSchema } from './compiler/logicToSchema.js';
 import { validateLogicJson, normalizeAndValidate } from './validate.js';
-import { detectEquipment, equipmentQuestion, buildBandLogic, detectTorretaLamps, canonicalBand } from './equipment.js';
+import { detectEquipment, equipmentQuestion, canonicalBand } from './equipment.js';
 
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
@@ -37,7 +37,6 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let source = 'backend';
   let ejemplo_id = '';
   let localWarnings = [];
-  let bandHints = null;   // presentación de la banda; NO viaja en el engine_config
   let equipo = normalizeDevice(device);
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
@@ -66,31 +65,11 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       equipo = det.equipment;
     }
 
-    // La torreta que nombra el usuario es dato de PRESENTACIÓN: se calcula
-    // aquí para que el panel visual de la banda se dibuje igual que siempre.
-    if (equipo === 'banda') bandHints = { lamps: detectTorretaLamps(text) };
-
-    // ── MODO BANDA: normalización determinista de la intención ──
-    // Frases equivalentes deben dar el MISMO bloque "band", así que primero se
-    // interpreta localmente. Solo si no hay ninguna intención reconocible se
-    // consulta a la IA (y su respuesta también se canoniza abajo).
-    let data = null;
-    if (equipo === 'banda') {
-      const prevBand = context?.programa_anterior?.metadata?.engine_config?.band || null;
-      const b = buildBandLogic(text, { previous: prevBand });
-      if (b.logic) {
-        logic = b.logic;
-        bandHints = b.hints;
-        localWarnings = b.warnings;
-        source = 'banda-normalizador';
-      }
-    }
-
     // ── Generación: MISMO endpoint para los dos equipos, con `device` ──
-    if (!logic) {
-      onProgress?.('fetching');
-      data = await pedirLogica(text, profile, context, equipo, signal);
-    }
+    // En la banda el LLM entiende la instrucción completa y el backend la
+    // normaliza, comprueba su cobertura y la valida: aquí no se lee el texto.
+    onProgress?.('fetching');
+    const data = await pedirLogica(text, profile, context, equipo, signal);
 
     if (data) {
       // El backend puede pedir aclaración en vez de generar (prompt ambiguo, o
@@ -132,7 +111,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
 
   // 2) Compilar a geometría y 3) normalizar/validar el schema.
   onProgress?.('compiling');
-  const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile, { bandHints });
+  const { program, warnings: compileWarnings } = compileLogicToSchema(logic, profile);
   const nv = normalizeAndValidate(program);
 
   return {

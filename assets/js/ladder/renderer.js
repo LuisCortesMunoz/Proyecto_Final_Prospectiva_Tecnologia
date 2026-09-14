@@ -314,14 +314,10 @@ function bandAccion(v) {
 const PLUMA_SENSOR_TXT = { 1: '↑', 2: '↓', 3: 'stop', subir: '↑', bajar: '↓', stop: 'stop' };
 const STOP_MODE_CHIP = ['I3', 'I2 + I3', 'Software + I3', 'I2 + Software + I3'];
 
-/** Texto corto de lo que hace un sensor en esta instrucción. */
-function bandSensorTexto(accion, seconds, count, plumas = []) {
-  let t;
-  if (accion === 0) t = 'solo cuenta';
-  else if (accion === 1 || accion === 3) t = 'pausa mientras detecta';
-  else if (seconds != null) t = `pausa ${seconds} s`;
-  else t = 'detecta';
-  if (accion === 3 || accion === 4) t += ' + torreta';
+/** Texto corto de lo que hace un sensor (evento) en esta instrucción. */
+function bandSensorTexto(accion, seconds, count, plumas = [], soloEvento = false) {
+  let t = (accion === 2 || accion === 4) && seconds != null ? `evento ${seconds} s` : 'evento';
+  if (!soloEvento && accion > 0) t += ' · pausa';
   plumas.forEach((p, k) => { if (p && PLUMA_SENSOR_TXT[p]) t += ` · P${k + 1} ${PLUMA_SENSOR_TXT[p]}`; });
   if (count > 0) t += ` · al contar ${count}`;
   return t;
@@ -525,7 +521,8 @@ export function renderBandPanel(container, program) {
     const plumas = [band[`s${n}_pluma1`], band[`s${n}_pluma2`]];
     const activo = !!u[`s${n}`] || accion != null;
     const texto = activo
-      ? bandSensorTexto(accion ?? (seconds != null ? 2 : 1), seconds, count, plumas)
+      ? bandSensorTexto(accion ?? (seconds != null ? 2 : 0), seconds, count, plumas,
+          Number(band[`s${n}_band_mode`]) === 1)
       : 'sin usar';
     return { activo, texto, seconds };
   };
@@ -640,11 +637,11 @@ export function paintBandLive(container, est, opts = {}) {
   on('i2', est.i2_activo);
   on('i3', est.i3_paro);
 
-  // Sensores: detección real (R108/R109) y pausa del sensor (StopReason 5/6).
+  // Sensores: detección real (R108/R109) y evento activo (R18/R19).
   for (const n of [1, 2]) {
     const tmr = Number(est[`s${n}_timer_s`]) || 0;
-    const enPausa = Number(est.stop_reason) === (n === 1 ? 5 : 6);
-    on(`s${n}`, enPausa || tmr > 0, 'is-wait');
+    const enEvento = est[`s${n}_event_active`] === true || Number(est.stop_reason) === (n === 1 ? 5 : 6);
+    on(`s${n}`, enEvento || tmr > 0, 'is-wait');
     on(`s${n}`, est[`s${n}_detecta`] === true, 'is-detect');
     const cnt = est[`s${n}_count`];
     setTxt(`s${n}-live`, `${cnt ?? '—'} pz${tmr > 0 ? ` · ${tmr} s` : ''}`);

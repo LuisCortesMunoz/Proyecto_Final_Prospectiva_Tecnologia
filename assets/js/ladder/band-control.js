@@ -22,7 +22,7 @@
  *   R50 lámparas con I1 · R60..R63 plumas · R100..R127 monitores · R500..R506 VFD
  * Registros que se escriben (vía POST, siempre desde el backend):
  *   R2 dirección · R4 frecuencia · R9 StopMode · R10 SoftStopCmd · R11/R15 paro
- *   automático · R20-R24/R28/R29 S1 · R30-R34/R38/R39 S2 · R40/R41/R50 torreta
+ *   automático · R16/R20-R24/R28/R29 S1 · R17/R30-R34/R38/R39 S2 · R40/R41/R50 torreta
  *   R60/R61 plumas · R5 NewCfgFlag (trigger) · R6 ResetCmd (trigger)
  * Nunca R500/R504/R506 ni los monitores R100..R127.
  */
@@ -139,13 +139,16 @@ const siNo = (v) => (v ? 'sí' : 'no');
 // escriben exactamente los mismos registros.
 function construirBand() {
   const autoModo = entero('bcAutoMode', 0);
+  // Sin movimiento el backend deja DirCmd = FreqRequest = 0: sensores, torreta
+  // y plumas funcionan igual y no hace falta el botón de arranque.
+  const mover = $('bcMove')?.checked !== false;
   const band = {
-    enable: true,
-    direction: direccionElegida(),
-    freq_hz: entero('bcFreq', 0),
+    enable: mover,
+    direction: mover ? direccionElegida() : null,
+    freq_hz: mover ? entero('bcFreq', 0) : null,
     stop_mode: segValor('bcStopMode', 'mode') ?? 0,
-    auto_stop_mode: autoModo || null,
-    auto_stop_s: autoModo ? entero('bcAutoS', 0) : null,
+    auto_stop_mode: mover && autoModo ? autoModo : null,
+    auto_stop_s: mover && autoModo ? entero('bcAutoS', 0) : null,
     torreta_run:  leerMascara('bcTorRun'),
     torreta_idle: leerMascara('bcTorIdle'),
     torreta_i1:   leerMascara('bcTorI1'),
@@ -155,7 +158,8 @@ function construirBand() {
     const on = $(`bcS${n}En`)?.checked;
     if (!on) {
       // Sensor apagado: sin acción declarada, el backend lo deshabilita.
-      for (const k of [`s${n}_action`, `wait_s${n}_s`, `count_s${n}`, `torreta_s${n}`, `s${n}_pluma1`, `s${n}_pluma2`]) {
+      for (const k of [`s${n}_action`, `s${n}_band_mode`, `wait_s${n}_s`, `count_s${n}`, `torreta_s${n}`,
+                       `s${n}_pluma1`, `s${n}_pluma2`]) {
         band[k] = null;
       }
       continue;
@@ -167,6 +171,7 @@ function construirBand() {
     band[`torreta_s${n}`] = leerMascara(`bcS${n}Mask`);
     band[`s${n}_pluma1`]  = entero(`bcS${n}P1`, 0);
     band[`s${n}_pluma2`]  = entero(`bcS${n}P2`, 0);
+    band[`s${n}_band_mode`] = entero(`bcS${n}Mode`, 0);
   }
   return band;
 }
@@ -175,10 +180,12 @@ function construirBand() {
 // contra las reglas del ST (CfgValid): aquí solo se evita el viaje inútil.
 function revisar(band) {
   const errores = [];
-  if (![1, 2].includes(Number(band.direction)))
-    errores.push('Elige una dirección (1 o 2).');
-  if (!(band.freq_hz >= 1 && band.freq_hz <= 327))
-    errores.push('La frecuencia debe estar entre 1 y 327 Hz.');
+  if (band.enable) {
+    if (![1, 2].includes(Number(band.direction)))
+      errores.push('Elige una dirección (1 o 2).');
+    if (!(band.freq_hz >= 1 && band.freq_hz <= 327))
+      errores.push('La frecuencia debe estar entre 1 y 327 Hz.');
+  }
   if (Number(band.auto_stop_mode) > 0 && !(band.auto_stop_s > 0))
     errores.push('La secuencia automática necesita un tiempo objetivo mayor que 0 s.');
   for (const n of [1, 2]) {
@@ -223,7 +230,7 @@ const FASE = {
   paro_i2:          { txt: 'Paro I2 activo',          clase: 'is-err',  icono: 'ti-hand-stop' },
   paro_software:    { txt: 'Paro software activo',    clase: 'is-err',  icono: 'ti-lock' },
   esperando_config: { txt: 'Esperando configuración', clase: 'is-off',  icono: 'ti-settings' },
-  sin_marcha:       { txt: 'Sin marcha · lámparas/plumas', clase: 'is-off', icono: 'ti-bulb' },
+  sin_marcha:       { txt: 'Lista · sin movimiento', clase: 'is-ok', icono: 'ti-circle-check' },
   configurando:     { txt: 'Configurando VFD…',       clase: 'is-wait', icono: 'ti-loader' },
   lista:            { txt: 'Lista · esperando I1',    clase: 'is-ok',   icono: 'ti-circle-check' },
   habilitada:       { txt: 'Banda habilitada',        clase: 'is-ok',   icono: 'ti-player-play' },
@@ -256,13 +263,16 @@ function pintarPasos(est) {
     run: est.running,
   };
   const activo = {
-    esperando_config: 'config', sin_marcha: 'config', configurando: 'vfd',
+    esperando_config: 'config', configurando: 'vfd',
     lista: 'i1', habilitada: 'run', pausa_sensor: 'run', corriendo: 'run',
   }[est.fase] || null;
+  // Sin movimiento no hay VFD que preparar ni botón de arranque.
+  const sinMovimiento = est.cfg_valid && !est.movimiento_configurado;
   const cont = $('bcSteps');
   cont?.querySelectorAll('.bc-step').forEach(el => {
     el.classList.toggle('is-done', !!hecho[el.dataset.step]);
     el.classList.toggle('is-on', el.dataset.step === activo);
+    el.classList.toggle('is-skip', sinMovimiento && ['vfd', 'i1', 'run'].includes(el.dataset.step));
   });
   cont?.classList.toggle('is-stop', !!est.gen_stop);
 }
@@ -335,6 +345,9 @@ function pintarEstado(est) {
     const enPausa = Number(est.stop_reason) === (n === 1 ? 5 : 6);
     chip(`bcS${n}Det`, `Detectando: ${siNo(s.detecta)}${enPausa ? ' · pausa activa' : ''}`,
          enPausa ? 'is-wait' : s.detecta ? 'is-ok' : '');
+    chip(`bcS${n}Evt`, `Evento: ${s.event_active ? 'activo' : 'inactivo'} · `
+      + (Number(s.band_mode) === 1 ? 'no afecta la banda' : 'puede pausar la banda'),
+         s.event_active ? 'is-ok' : '');
     chip(`bcS${n}Cnt`, `Conteo: ${s.count ?? '—'} / ${s.count_preset ? s.count_preset : 'cada detección'}`);
     const temporizado = s.action === 2 || s.action === 4;
     chip(`bcS${n}Tmr`, `Temporizador: ${temporizado ? `${s.timer_s ?? 0} / ${s.timer_preset ?? 0} s` : '—'}`);
@@ -384,8 +397,8 @@ function pintarEstado(est) {
   } else if (est.fase === 'auto_completado') {
     alerta(`Secuencia terminada: paro automático a los ${preset} s. Pulsa I1 para repetirla.`, 'info');
   } else if (est.fase === 'sin_marcha') {
-    alerta('Programa sin marcha: I1 no arranca la banda. Las lámparas y plumas configuradas '
-         + 'funcionan igual.', 'info');
+    alerta('Configuración sin movimiento lista: sensores, torreta y plumas ya están activos. '
+         + 'No hace falta pulsar ningún botón de arranque.', 'info');
   } else if (est.fase === 'esperando_config') {
     alerta('El PLC no tiene una configuración válida cargada (dirección 1 o 2 y frecuencia '
          + 'entre 1 y 327 Hz). Envía la configuración para armar el VFD.', 'info');
@@ -475,11 +488,37 @@ async function enviarConfig() {
     cambiaFreq ? 'Cambiando frecuencia: reconfigurando el VFD…' : 'Enviando configuración…',
     async () => {
       const d = await postear('/banda/config', { band }, 25000);
-      d.mensaje = d.estado?.cfg_ready
-        ? 'Configuración lista. Pulsa I1 para habilitar la banda.'
-        : 'Configuración enviada. Esperando que el PLC prepare el VFD…';
+      // "Listo" solo cuando el PLC reporta CfgReady (%R7), nunca por la escritura.
+      const listo = !!d.estado?.cfg_ready;
+      d.mensaje = !listo
+        ? 'Configuración enviada. El PLC aún no confirma que esté lista (CfgReady).'
+        : d.requiere_start
+          ? `Configuración lista. Pulsa ${d.boton_start || 'I1'} para iniciar.`
+          : 'Configuración lista. Sensores, torreta y plumas activos.';
+      if (listo && d.requiere_start) mostrarAvisoStart(d.boton_start);
       return d;
     });
+}
+
+// ── Aviso de arranque ──────────────────────────────────────────
+/**
+ * Pop-up que indica qué botón físico inicia el proceso. Solo se muestra
+ * cuando el PLC ya confirmó CfgReady y la configuración mueve la banda; el
+ * backend decide ambas cosas (requiere_start / boton_start). No bloquea la
+ * página y se cierra con "Entendido", la X o Escape.
+ */
+export function mostrarAvisoStart(boton) {
+  const box = $('bandStart');
+  if (!box) return;
+  const b = $('bandStartBtn');
+  if (b) b.textContent = boton || 'I1';
+  box.hidden = false;
+  $('bandStartOk')?.focus();
+}
+
+function cerrarAvisoStart() {
+  const box = $('bandStart');
+  if (box) box.hidden = true;
 }
 
 function instalar() {
@@ -594,6 +633,9 @@ function instalar() {
  * solo corre mientras el pop-up de la banda está abierto.
  */
 export function initBandControl() {
+  $('bandStartOk')?.addEventListener('click', cerrarAvisoStart);
+  $('bandStartClose')?.addEventListener('click', cerrarAvisoStart);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarAvisoStart(); });
   if (!$('bandControl')) return;
   instalar();
   marcarDireccion(1);
@@ -626,6 +668,8 @@ export function cargarBandDesdePrograma(program) {
   if (!crudo || !$('bandControl')) return;
   const band = canonicalBand(crudo);
 
+  const mov = $('bcMove');
+  if (mov) mov.checked = band.enable !== false;
   marcarDireccion(band.direction === 'izquierda' ? 2 : 1);
   setValor('bcFreq', band.freq_hz);
   marcarSeg('bcStopMode', 'mode', band.stop_mode || 0);
@@ -642,6 +686,7 @@ export function cargarBandDesdePrograma(program) {
     pintarMascara(`bcS${n}Mask`, band[`torreta_s${n}`] || 0);
     setValor(`bcS${n}P1`, band[`s${n}_pluma1`] || 0);
     setValor(`bcS${n}P2`, band[`s${n}_pluma2`] || 0);
+    setValor(`bcS${n}Mode`, band[`s${n}_band_mode`] || 0);
   }
   pintarMascara('bcTorRun',  band.torreta_run  || 0);
   pintarMascara('bcTorIdle', band.torreta_idle || 0);

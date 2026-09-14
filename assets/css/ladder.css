@@ -1212,3 +1212,22 @@ body.sim-mode .rung-svg  { cursor: default; }
 .bc-diag-body td.is-rw { color: var(--accent); }
 
 .bp-svg .bp-btn-aux.is-on .bp-btn-cap { fill: #f59e0b; filter: drop-shadow(0 0 4px rgba(245,158,11,0.7)); }
+
+.bc-step.is-skip { opacity: 0.45; text-decoration: line-through; }
+
+/* Aviso de arranque: tarjeta flotante, no bloquea la aplicación */
+.band-start {
+  position: fixed; right: 20px; bottom: 20px; z-index: 2000;
+  width: min(340px, calc(100vw - 32px));
+}
+.band-start[hidden] { display: none !important; }
+.band-start-box {
+  position: relative; display: grid; gap: 8px; justify-items: start;
+  padding: 16px 18px 14px; border: 1px solid var(--accent); border-radius: 10px;
+  background: var(--bg-surface); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+}
+.band-start .band-modal-close { position: absolute; top: 8px; right: 8px; }
+.band-start-icon { font-size: 22px; color: var(--accent); }
+.band-start-title { font-family: var(--font-ui); font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.band-start-text { margin: 0; font-family: var(--font-ui); font-size: 12.5px; color: var(--text-secondary); }
+.band-start-text b { font-family: var(--font-mono); color: var(--accent); }

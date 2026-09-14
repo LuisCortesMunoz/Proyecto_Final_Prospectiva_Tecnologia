@@ -201,6 +201,17 @@ function validarBanda(band, errors) {
     }
   }
   // Paros (%R9) y paro automatico (%R11/%R15), mismas reglas que §3 del ST.
+  // Efecto de cada sensor en la banda (%R16/%R17): 0 puede pausarla · 1 solo evento.
+  for (const n of [1, 2]) {
+    if (band[`s${n}_band_mode`] != null) rangoEntero(band[`s${n}_band_mode`], 0, 1, 'band', `s${n}_band_mode`, errors);
+  }
+  // Arranque: el ST vigente solo acepta I1 (§5).
+  if (band.start_button != null && String(band.start_button).toUpperCase() !== 'I1') {
+    errors.push(`band.start_button="${band.start_button}": el programa maestro solo arranca con I1.`);
+  }
+  if (band.enable !== false && band.freq_hz == null) {
+    errors.push('La banda debe moverse: falta la frecuencia en Hz (1..327).');
+  }
   if (band.stop_mode != null) rangoEntero(band.stop_mode, 0, 3, 'band', 'stop_mode', errors);
   if (band.auto_stop_mode != null) rangoEntero(band.auto_stop_mode, 0, 2, 'band', 'auto_stop_mode', errors);
   if (band.auto_stop_s != null) rangoEntero(band.auto_stop_s, 0, 32767, 'band', 'auto_stop_s', errors);

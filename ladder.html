@@ -502,8 +502,8 @@
         <!-- ── Banda: direccion y frecuencia ── -->
         <div class="bc-section">
           <div class="bc-sec-head">
-            <span class="bc-sec-title"><i class="ti ti-settings-automation"></i> Banda</span>
-            <span class="bc-reg">%R2 · %R4</span>
+            <span class="bc-sec-title"><i class="ti ti-settings-automation"></i> Banda <span class="bc-reg">%R2 · %R4</span></span>
+            <label class="bc-switch"><input type="checkbox" id="bcMove" checked> Mover la banda</label>
           </div>
           <div class="bc-grid">
             <div class="bc-field">
@@ -521,7 +521,8 @@
           </div>
           <div class="bc-note">
             Cambiar la frecuencia obliga a reconfigurar el variador: el PLC ejecuta su
-            secuencia de reset y hay que volver a pulsar el botón físico <b>I1</b>.
+            secuencia de reset y hay que volver a pulsar el botón físico <b>I1</b>. Sin
+            "Mover la banda", dirección y frecuencia se envían en 0 y no hace falta I1.
           </div>
         </div>
 
@@ -602,7 +603,14 @@
                 <option value="3">Detener + torreta mientras detecta</option>
                 <option value="4">Detener por tiempo + torreta</option>
               </select>
-              <span class="bc-hint">Es una pausa: al terminar, la banda continúa sola.</span>
+              <span class="bc-hint">Luces y plumas del sensor actúan mientras dura el evento.</span>
+            </div>
+            <div class="bc-field">
+              <label>Efecto en la banda</label>
+              <select id="bcS1Mode">
+                <option value="0">Pausar la banda (continúa sola)</option>
+                <option value="1">No afectar la banda (solo evento)</option>
+              </select>
             </div>
             <div class="bc-field">
               <label>Tiempo (s)</label>
@@ -614,7 +622,7 @@
               <span class="bc-hint">0 = en cada detección.</span>
             </div>
             <div class="bc-field">
-              <label>Luces durante la pausa</label>
+              <label>Luces durante el evento</label>
               <div class="bc-lamps" id="bcS1Mask">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
@@ -622,7 +630,7 @@
               </div>
             </div>
             <div class="bc-field">
-              <label>Pluma 1 durante la pausa</label>
+              <label>Pluma 1 durante el evento</label>
               <select id="bcS1P1">
                 <option value="0">Sin intervenir</option>
                 <option value="1">Subir</option>
@@ -631,7 +639,7 @@
               </select>
             </div>
             <div class="bc-field">
-              <label>Pluma 2 durante la pausa</label>
+              <label>Pluma 2 durante el evento</label>
               <select id="bcS1P2">
                 <option value="0">Sin intervenir</option>
                 <option value="1">Subir</option>
@@ -642,6 +650,7 @@
           </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS1Det">Detectando: —</span>
+            <span class="bc-chip" id="bcS1Evt">Evento: —</span>
             <span class="bc-chip" id="bcS1Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS1Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS1Done">Objetivo alcanzado: —</span>
@@ -667,7 +676,14 @@
                 <option value="3">Detener + torreta mientras detecta</option>
                 <option value="4">Detener por tiempo + torreta</option>
               </select>
-              <span class="bc-hint">Es una pausa: al terminar, la banda continúa sola.</span>
+              <span class="bc-hint">Luces y plumas del sensor actúan mientras dura el evento.</span>
+            </div>
+            <div class="bc-field">
+              <label>Efecto en la banda</label>
+              <select id="bcS2Mode">
+                <option value="0">Pausar la banda (continúa sola)</option>
+                <option value="1">No afectar la banda (solo evento)</option>
+              </select>
             </div>
             <div class="bc-field">
               <label>Tiempo (s)</label>
@@ -679,7 +695,7 @@
               <span class="bc-hint">0 = en cada detección.</span>
             </div>
             <div class="bc-field">
-              <label>Luces durante la pausa</label>
+              <label>Luces durante el evento</label>
               <div class="bc-lamps" id="bcS2Mask">
                 <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
                 <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
@@ -687,7 +703,7 @@
               </div>
             </div>
             <div class="bc-field">
-              <label>Pluma 1 durante la pausa</label>
+              <label>Pluma 1 durante el evento</label>
               <select id="bcS2P1">
                 <option value="0">Sin intervenir</option>
                 <option value="1">Subir</option>
@@ -696,7 +712,7 @@
               </select>
             </div>
             <div class="bc-field">
-              <label>Pluma 2 durante la pausa</label>
+              <label>Pluma 2 durante el evento</label>
               <select id="bcS2P2">
                 <option value="0">Sin intervenir</option>
                 <option value="1">Subir</option>
@@ -707,6 +723,7 @@
           </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS2Det">Detectando: —</span>
+            <span class="bc-chip" id="bcS2Evt">Evento: —</span>
             <span class="bc-chip" id="bcS2Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS2Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS2Done">Objetivo alcanzado: —</span>
@@ -788,8 +805,8 @@
             </div>
           </div>
           <div class="bc-note">
-            El PLC decide la salida final: un paro general detiene las plumas y la
-            pausa de un sensor puede sobrescribir el comando manual (S2 → S1 → manual).
+            El PLC decide la salida final: I3 detiene las plumas y el
+            evento de un sensor puede sobrescribir el comando manual (S2 → S1 → manual).
           </div>
         </div>
 
@@ -814,6 +831,21 @@
           <span class="bc-msg" id="bcMsg"></span>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- ══ AVISO DE ARRANQUE DE LA BANDA ═════════════════════════
+       Aparece solo cuando el PLC confirmo CfgReady y la configuracion mueve
+       la banda. No bloquea la aplicacion: se cierra con Entendido, X o Esc. -->
+  <div class="band-start" id="bandStart" role="alertdialog" aria-labelledby="bandStartTitle" hidden>
+    <div class="band-start-box">
+      <button class="band-modal-close" id="bandStartClose" type="button" title="Cerrar">
+        <i class="ti ti-x"></i>
+      </button>
+      <div class="band-start-icon"><i class="ti ti-player-play"></i></div>
+      <div class="band-start-title" id="bandStartTitle">Configuración lista</div>
+      <p class="band-start-text">Para iniciar el proceso, presiona <b id="bandStartBtn">I1</b>.</p>
+      <button type="button" class="bc-btn bc-btn-primary" id="bandStartOk">Entendido</button>
     </div>
   </div>
 
