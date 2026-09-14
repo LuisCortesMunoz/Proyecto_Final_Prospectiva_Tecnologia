@@ -1414,9 +1414,14 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
         localStorage.setItem('lv_banda_ip', ip);
         localStorage.setItem('lv_banda_port', String(port));
       } catch { /* sin storage */ }
-      store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
-        ? 'Banda: configuración lista (CfgReady = 1). Pulsa el botón físico I1 para arrancar.'
-        : 'Banda: el PLC no confirmó CfgReady. Revisa que I3 esté suelto y abre "Ver banda transportadora" para ver su estado.');
+      if (d.sin_marcha) {
+        store.log('info', 'Banda: programa sin marcha. Las lámparas configuradas se encienden '
+          + 'mientras I1 esté presionado; la banda no arranca.');
+      } else {
+        store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
+          ? 'Banda: configuración lista (CfgReady = 1). Pulsa el botón físico I1 para arrancar.'
+          : 'Banda: el PLC no confirmó CfgReady. Revisa que I3 esté suelto y abre "Ver banda transportadora" para ver su estado.');
+      }
     }
     showToast('Programa cargado al PLC', 'success');
   } catch (e) {
