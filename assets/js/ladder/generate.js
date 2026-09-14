@@ -36,7 +36,6 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let logic = null;
   let source = 'backend';
   let ejemplo_id = '';
-  let localWarnings = [];
   let equipo = normalizeDevice(device);
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
@@ -118,7 +117,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     program: nv.program,
     logic,
     device: equipo,
-    warnings: [...localWarnings, ...lv.warnings, ...compileWarnings, ...nv.warnings],
+    warnings: [...lv.warnings, ...compileWarnings, ...nv.warnings],
     telemetry: {
       source,
       device: equipo,

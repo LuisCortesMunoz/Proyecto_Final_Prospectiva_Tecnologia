@@ -350,8 +350,6 @@ function bandSensorPluma(v) {
 }
 // Mapeo físico confirmado del ST (§17).
 const PLUMA_Q = { 1: { sube: 'Q8', baja: 'Q9', reg: '%R60' }, 2: { sube: 'Q6', baja: 'Q7', reg: '%R61' } };
-const TORRETA_NOMBRE = ['apagada', 'verde', 'amarilla', 'verde + amarilla', 'roja',
-  'verde + roja', 'amarilla + roja', 'verde + amarilla + roja'];
 const STOP_MODE_TXT = ['I3', 'I2 + I3', 'software + I3', 'I2 + software + I3'];
 
 // Símbolos de la banda. Solo se inyectan cuando el programa trae el bloque
@@ -462,7 +460,7 @@ function bandOut(type, addr, ctx, params) {
   };
 }
 
-function compileBand(band, ctx, hints) {
+function compileBand(band, ctx) {
   const rungs = [];
   const dir      = bandDir(band.direction);
   const dirN     = dir === 'izquierda' ? 2 : 1;
@@ -665,7 +663,6 @@ function compileBand(band, ctx, hints) {
       bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: 'IN 1' } }), ctx));
   }
 
-  const lamps = (hints && hints.lamps) || {};
   const temporizada = (s) => s.on && s.temporizado ? s.wait : null;
 
   // Datos para el panel visual (solo presentación; no altera el engine_config).
@@ -681,9 +678,6 @@ function compileBand(band, ctx, hints) {
     auto_stop_s: autoMode ? autoS : null,
     wait_s1_s: temporizada(S[0]),
     wait_s2_s: temporizada(S[1]),
-    // El ST no tiene anti-retrigger: el panel ya no lo muestra.
-    retrigger_s1_s: null,
-    retrigger_s2_s: null,
     // Qué componentes participan en ESTA instrucción (el panel dibuja solo estos)
     uses: {
       banda: true,
@@ -692,9 +686,6 @@ function compileBand(band, ctx, hints) {
       s1: S[0].on,
       s2: S[1].on,
       torreta: true,
-      verde: !!lamps.verde,
-      amarilla: !!lamps.amarilla,
-      roja: !!lamps.roja,
       pluma1: band.pluma1 != null || S.some(s => s.on && s.plumas[0]),
       pluma2: band.pluma2 != null || S.some(s => s.on && s.plumas[1]),
     },
@@ -796,7 +787,7 @@ export function compileLogicToSchema(logic, profile, opts = {}) {
   // que el panel visual usa para representar los elementos físicos.
   let bandView = null;
   if (bandOn) {
-    const { rungs: bandRungs, view } = compileBand(bandCfg, ctx, opts.bandHints);
+    const { rungs: bandRungs, view } = compileBand(bandCfg, ctx);
     rungs.push(...bandRungs);
     bandView = view;
   }
