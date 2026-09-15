@@ -496,6 +496,9 @@
             <span class="bc-badge" id="bcReason"><i class="ti ti-info-circle"></i> Causa de paro: —</span>
             <span class="bc-badge" id="bcSpeed"><i class="ti ti-wave-sine"></i> — Hz</span>
           </div>
+          <div class="bc-feedback">
+            <span class="bc-chip" id="bcCount">Contador: —</span>
+          </div>
           <div class="bc-alert" id="bcAlert" hidden></div>
         </div>
 
@@ -648,6 +651,56 @@
               </select>
             </div>
           </div>
+          <div class="bc-subhead">
+            <span><i class="ti ti-numbers"></i> Al alcanzar el conteo objetivo</span>
+            <span class="bc-reg">%R70..%R74</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Detener</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS1CBand"> Solo la banda</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS1CProc"> Todo el proceso</label>
+            </div>
+            <div class="bc-field">
+              <label>Luces que quedan encendidas</label>
+              <div class="bc-lamps" id="bcS1CLamps">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Cambiar dirección</label>
+              <select id="bcS1CDir">
+                <option value="0">Sin cambio</option>
+                <option value="1">Dirección 1 · derecha</option>
+                <option value="2">Dirección 2 · izquierda</option>
+                <option value="3">Invertir</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 1</label>
+              <select id="bcS1CP1">
+                <option value="0">Sin cambio</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Stop</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 2</label>
+              <select id="bcS1CP2">
+                <option value="0">Sin cambio</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Stop</option>
+              </select>
+            </div>
+          </div>
+          <div class="bc-note">
+            Se ejecutan una sola vez al llegar al conteo, se pueden combinar y quedan enclavadas
+            hasta enviar la configuración o pulsar Reset. I3 sigue siendo el paro prioritario.
+          </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS1Det">Detectando: —</span>
             <span class="bc-chip" id="bcS1Evt">Evento: —</span>
@@ -720,6 +773,56 @@
                 <option value="3">Forzar stop</option>
               </select>
             </div>
+          </div>
+          <div class="bc-subhead">
+            <span><i class="ti ti-numbers"></i> Al alcanzar el conteo objetivo</span>
+            <span class="bc-reg">%R75..%R79</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Detener</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS2CBand"> Solo la banda</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS2CProc"> Todo el proceso</label>
+            </div>
+            <div class="bc-field">
+              <label>Luces que quedan encendidas</label>
+              <div class="bc-lamps" id="bcS2CLamps">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Cambiar dirección</label>
+              <select id="bcS2CDir">
+                <option value="0">Sin cambio</option>
+                <option value="1">Dirección 1 · derecha</option>
+                <option value="2">Dirección 2 · izquierda</option>
+                <option value="3">Invertir</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 1</label>
+              <select id="bcS2CP1">
+                <option value="0">Sin cambio</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Stop</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Pluma 2</label>
+              <select id="bcS2CP2">
+                <option value="0">Sin cambio</option>
+                <option value="1">Subir</option>
+                <option value="2">Bajar</option>
+                <option value="3">Stop</option>
+              </select>
+            </div>
+          </div>
+          <div class="bc-note">
+            Se ejecutan una sola vez al llegar al conteo, se pueden combinar y quedan enclavadas
+            hasta enviar la configuración o pulsar Reset. I3 sigue siendo el paro prioritario.
           </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS2Det">Detectando: —</span>
@@ -822,7 +925,7 @@
             <i class="ti ti-upload"></i> Enviar configuración
           </button>
           <button type="button" class="bc-btn" id="bcReset">
-            <i class="ti ti-rotate-clockwise"></i> Reset del VFD
+            <i class="ti ti-rotate-clockwise"></i> Reset (VFD y contador)
           </button>
           <button type="button" class="bc-btn bc-btn-danger" id="bcStop"
                   title="Desarma la configuración (DirCmd = 0). Funciona con cualquier modo de paro.">

@@ -112,7 +112,14 @@ export const BAND_FIELDS = [
   's1_action', 's1_band_mode', 'wait_s1_s', 'count_s1', 'torreta_s1', 's1_pluma1', 's1_pluma2',
   's2_action', 's2_band_mode', 'wait_s2_s', 'count_s2', 'torreta_s2', 's2_pluma1', 's2_pluma2',
   'torreta_run', 'torreta_idle', 'torreta_i1', 'pluma1', 'pluma2',
+  // Acciones enclavadas al alcanzar el conteo (§14c, %R70..%R79).
+  's1_count_action_mask', 's1_count_lamp_mask', 's1_count_dir', 's1_count_pluma1', 's1_count_pluma2',
+  's2_count_action_mask', 's2_count_lamp_mask', 's2_count_dir', 's2_count_pluma1', 's2_count_pluma2',
 ];
+
+// S_CountActionMask: 1 detener banda · 2 detener proceso · 4 luces · 8 dirección
+// · 16 pluma 1 · 32 pluma 2. Se suman.
+const COUNT_DIR_CODES = { sin_cambio: 0, derecha: 1, direccion_1: 1, izquierda: 2, direccion_2: 2, invertir: 3 };
 
 const ACTION_CODES = {
   nada: 0, contar: 0, contar_y_parar: 0,
@@ -179,6 +186,13 @@ export function canonicalBand(raw) {
     // Plumas o torreta sin acción: un evento que sigue al sensor.
     if (acc == null && (p1 || p2 || mask)) acc = 0;
     if (acc == null && b[`count_s${n}`] != null) acc = 0;
+    const cmask = nulo0(codigo(b[`s${n}_count_action_mask`], {}, 0, 63));
+    if (acc == null && cmask) acc = 0;
+    out[`s${n}_count_action_mask`] = cmask;
+    out[`s${n}_count_lamp_mask`] = nulo0(entero(b[`s${n}_count_lamp_mask`]));
+    out[`s${n}_count_dir`] = nulo0(codigo(b[`s${n}_count_dir`], COUNT_DIR_CODES, 0, 3));
+    out[`s${n}_count_pluma1`] = nulo0(codigo(b[`s${n}_count_pluma1`], SENSOR_PLUMA_CODES, 0, 3));
+    out[`s${n}_count_pluma2`] = nulo0(codigo(b[`s${n}_count_pluma2`], SENSOR_PLUMA_CODES, 0, 3));
     out[`s${n}_action`] = acc;
     out[`s${n}_band_mode`] = acc == null ? null : (codigo(b[`s${n}_band_mode`], {}, 0, 1) ?? 0);
     // El tiempo solo existe para los eventos temporizados (2 y 4).
@@ -231,6 +245,19 @@ export function describeBand(band) {
       if (p) s += ` · pluma ${m} ${PLUMA_SENSOR_TXT[p] ?? p}`;
     }
     L.push(s);
+    const cm = Number(b[`s${n}_count_action_mask`]) || 0;
+    if (cm) {
+      const dir = { 1: 'dirección 1', 2: 'dirección 2', 3: 'invierte la dirección' }[b[`s${n}_count_dir`]];
+      const acciones = [
+        cm & 1 && 'detiene la banda',
+        cm & 2 && 'detiene el proceso',
+        cm & 4 && `enciende ${colores(b[`s${n}_count_lamp_mask`])}`,
+        cm & 8 && dir,
+        cm & 16 && `pluma 1 ${PLUMA_SENSOR_TXT[b[`s${n}_count_pluma1`]] ?? ''}`,
+        cm & 32 && `pluma 2 ${PLUMA_SENSOR_TXT[b[`s${n}_count_pluma2`]] ?? ''}`,
+      ].filter(Boolean);
+      L.push(`S${n} al llegar a ${b[`count_s${n}`]}: ${acciones.join(' · ')} (enclavado hasta nueva configuración o Reset)`);
+    }
   }
   if (b.torreta_run)  L.push(`Luz ${colores(b.torreta_run)} con la banda corriendo`);
   if (b.torreta_idle) L.push(`Luz ${colores(b.torreta_idle)} con la banda detenida`);

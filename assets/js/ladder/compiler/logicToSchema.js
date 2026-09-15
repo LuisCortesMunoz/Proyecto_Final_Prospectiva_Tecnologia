@@ -400,6 +400,12 @@ function bandSymbols(symbols) {
   put('%R61', 'Pluma2Cmd', 'Comando manual pluma 2: 0 stop · 1 subir · 2 bajar', 'INT', 'holding_reg');
   put('EffPluma1Cmd', 'EffPluma1Cmd', 'Comando efectivo de la pluma 1 (I3 > S2 > S1 > manual)', 'INT');
   put('EffPluma2Cmd', 'EffPluma2Cmd', 'Comando efectivo de la pluma 2 (I3 > S2 > S1 > manual)', 'INT');
+  put('CountBandStopLatch', 'CountBandStopLatch', 'Contador: banda detenida y enclavada hasta nueva configuración o Reset (%R80)');
+  put('CountSystemStopLatch', 'CountSystemStopLatch', 'Contador: proceso detenido (banda, eventos y plumas) hasta nueva configuración o Reset (%R81)');
+  put('CountLampVerde', 'CountLampGreen', 'Contador: luz verde enclavada (%R82 bit 0)');
+  put('CountLampAmarilla', 'CountLampYellow', 'Contador: luz amarilla enclavada (%R82 bit 1)');
+  put('CountLampRoja', 'CountLampRed', 'Contador: luz roja enclavada (%R82 bit 2)');
+  put('DirCmd', 'DirCmd', 'Dirección de la banda (%R2): 1 derecha · 2 izquierda', 'INT', 'holding_reg');
 }
 // null/''/undefined = "no se pidió". Number(null) vale 0, y eso hacía que
 // cada campo en null del JSON de la IA dibujara sensores de 0 s y "0 Hz".
@@ -484,9 +490,15 @@ function compileBand(band, ctx) {
     if (acc == null && wait != null) acc = 2;
     if (acc == null && (plumas.some(Boolean) || mask)) acc = 0;
     if (acc == null && band[`count_s${n}`] != null) acc = 0;
+    if (acc == null && num(band[`s${n}_count_action_mask`])) acc = 0;
     const modo = Number(band[`s${n}_band_mode`]) === 1 ? 1 : 0;
     return {
       n, acc, on: acc != null, wait, plumas, mask, modo,
+      // Acciones enclavadas al alcanzar el conteo (§14c).
+      cmask: num(band[`s${n}_count_action_mask`]) || 0,
+      cLuces: num(band[`s${n}_count_lamp_mask`]) || 0,
+      cDir: num(band[`s${n}_count_dir`]) || 0,
+      cP: [bandSensorPluma(band[`s${n}_count_pluma1`]), bandSensorPluma(band[`s${n}_count_pluma2`])],
       temporizado: acc === 2 || acc === 4,
       pausa: acc != null && acc > 0 && modo === 0,
       count: num(band[`count_s${n}`]) || 0,
@@ -516,6 +528,8 @@ function compileBand(band, ctx) {
     const fuentes = ['I3 (siempre)'];
     if (stopMode === 1 || stopMode === 3) { alts.push([{ t: 'nc', a: 'I2' }]); fuentes.push('I2'); }
     if (stopMode === 2 || stopMode === 3) { alts.push([{ t: 'cmp', a: '%R10', v: 1 }]); fuentes.push('paro software %R10'); }
+    if (S.some(s => s.cmask & 1)) { alts.push([{ t: 'no', a: 'CountBandStopLatch' }]); fuentes.push('contador (banda)'); }
+    if (S.some(s => s.cmask & 2)) { alts.push([{ t: 'no', a: 'CountSystemStopLatch' }]); fuentes.push('contador (proceso)'); }
     rungs.push(bandRungOr(
       `Paro de banda · StopMode ${stopMode} (${STOP_MODE_TXT[stopMode]}): ${fuentes.join(' · ')} → borra BandEnable y detiene el VFD · I3 además cancela eventos y plumas`,
       alts, bandOut('coil', 'GenStop', ctx), ctx));
@@ -589,6 +603,42 @@ function compileBand(band, ctx) {
           bandOut('coil', q, ctx), ctx));
       }
     });
+
+    // Acciones al alcanzar el conteo (§14c): una sola vez y ENCLAVADAS hasta una
+    // nueva configuración o un Reset. El contador gana sobre los eventos.
+    if (s.cmask && s.count > 0) {
+      const alLlegar = [{ t: 'pe', a: s.done }];
+      const cuando = `${Sn} llega a ${s.count}`;
+      const hasta = 'enclavado hasta nueva configuración o Reset';
+      if (s.cmask & 1) {
+        rungs.push(bandRungSerie(`${cuando} → detiene la banda (${hasta})`,
+          alLlegar, bandOut('coil_s', 'CountBandStopLatch', ctx), ctx));
+      }
+      if (s.cmask & 2) {
+        rungs.push(bandRungSerie(`${cuando} → detiene el proceso: banda, eventos y plumas (${hasta})`,
+          alLlegar, bandOut('coil_s', 'CountSystemStopLatch', ctx), ctx));
+      }
+      if (s.cmask & 4) {
+        for (const [bit, nombre, bitLamp] of [[1, 'verde', 'CountLampVerde'], [2, 'amarilla', 'CountLampAmarilla'], [4, 'roja', 'CountLampRoja']]) {
+          if (!(s.cLuces & bit)) continue;
+          rungs.push(bandRungSerie(`${cuando} → enclava la luz ${nombre}`,
+            alLlegar, bandOut('coil_s', bitLamp, ctx), ctx));
+        }
+      }
+      if (s.cmask & 8 && s.cDir) {
+        rungs.push(bandRungSerie(
+          `${cuando} → ${s.cDir === 3 ? 'invierte la dirección' : `cambia a dirección ${s.cDir}`} (si corre: STOP, 1 s y cambia)`,
+          alLlegar, bandOut('block_mov', 'DirCmd', ctx, { band: { title: 'MOV', sub: s.cDir === 3 ? 'INV' : `IN ${s.cDir}` } }), ctx));
+      }
+      [16, 32].forEach((bit, k) => {
+        const c = s.cP[k];
+        if (!(s.cmask & bit) || !c) return;
+        const p = PLUMA_Q[k + 1];
+        const accion = c === 1 ? `sube (${p.sube})` : c === 2 ? `baja (${p.baja})` : 'stop';
+        rungs.push(bandRungSerie(`${cuando} → pluma ${k + 1} ${accion} enclavada · gana sobre los eventos`,
+          alLlegar, bandOut('block_mov', `EffPluma${k + 1}Cmd`, ctx, { band: { title: 'MOV', sub: `IN ${c === 3 ? 0 : c}` } }), ctx));
+      });
+    }
   }
 
   // 5) Paro automático por tiempo (§14b): solo con movimiento.
@@ -638,6 +688,12 @@ function compileBand(band, ctx) {
     if (torIdle & bit) { alts.push([...previas, { t: 'cmp', a: '%R3', v: 0 }]); fuentes.push('banda detenida (BandStatus = 0)'); }
     // §15b: sigue a I1 (NA) mientras esté presionado, sin enclavar; I3 la apaga.
     if (torI1 & bit) { alts.push([{ t: 'no', a: 'I1' }, { t: 'nc', a: 'I3' }]); fuentes.push('mientras I1 esté presionado'); }
+    // Luces enclavadas por el contador: se suman a la torreta; I3 las apaga.
+    const lampCont = { 1: 'CountLampVerde', 2: 'CountLampAmarilla', 4: 'CountLampRoja' }[bit];
+    if (S.some(s => (s.cmask & 4) && (s.cLuces & bit))) {
+      alts.push([{ t: 'no', a: lampCont }, { t: 'nc', a: 'I3' }]);
+      fuentes.push('enclavada por el contador');
+    }
     if (!alts.length) continue;
     rungs.push(bandRungOr(`Torreta ${nombre} (${q}): ${fuentes.join(' · ')}`,
       alts, bandOut('coil', q, ctx, { lamp_color: lampColor }), ctx));

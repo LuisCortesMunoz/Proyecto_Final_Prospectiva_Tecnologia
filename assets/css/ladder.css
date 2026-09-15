@@ -1215,6 +1215,13 @@ body.sim-mode .rung-svg  { cursor: default; }
 
 .bc-step.is-skip { opacity: 0.45; text-decoration: line-through; }
 
+/* Subbloque "Al alcanzar el conteo" dentro de cada sensor */
+.bc-subhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin: 10px 0 6px; padding-top: 8px; border-top: 1px dashed var(--border);
+  font-family: var(--font-ui); font-size: 11px; font-weight: 600; color: var(--text-secondary);
+}
+
 /* Aviso de arranque: tarjeta flotante, no bloquea la aplicación */
 .band-start {
   position: fixed; right: 20px; bottom: 20px; z-index: 2000;

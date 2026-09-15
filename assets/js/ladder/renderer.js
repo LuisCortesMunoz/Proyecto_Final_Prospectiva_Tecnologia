@@ -569,6 +569,14 @@ export function renderBandPanel(container, program) {
   }
   if (s1.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S1${s1.seconds != null ? ` · ${s1.seconds} s` : ''}</span>`);
   if (s2.activo) chips.push(`<span class="bp-chip"><i class="ti ti-eye"></i> S2${s2.seconds != null ? ` · ${s2.seconds} s` : ''}</span>`);
+  // Acciones enclavadas al alcanzar el conteo (%R70/%R75).
+  for (const n of [1, 2]) {
+    const cm = Number(band[`s${n}_count_action_mask`]) || 0;
+    if (!cm) continue;
+    const qué = [cm & 1 && 'para banda', cm & 2 && 'para proceso', cm & 4 && 'luces',
+      cm & 8 && 'dirección', cm & 48 && 'plumas'].filter(Boolean).join(' · ');
+    chips.push(`<span class="bp-chip"><i class="ti ti-numbers"></i> Contador S${n}: ${qué}</span>`);
+  }
   if (pluma1 || pluma2)
     chips.push(`<span class="bp-chip"><i class="ti ti-arrows-vertical"></i> Plumas</span>`);
 

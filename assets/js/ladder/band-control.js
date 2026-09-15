@@ -159,7 +159,8 @@ function construirBand() {
     if (!on) {
       // Sensor apagado: sin acción declarada, el backend lo deshabilita.
       for (const k of [`s${n}_action`, `s${n}_band_mode`, `wait_s${n}_s`, `count_s${n}`, `torreta_s${n}`,
-                       `s${n}_pluma1`, `s${n}_pluma2`]) {
+                       `s${n}_pluma1`, `s${n}_pluma2`, `s${n}_count_action_mask`, `s${n}_count_lamp_mask`,
+                       `s${n}_count_dir`, `s${n}_count_pluma1`, `s${n}_count_pluma2`]) {
         band[k] = null;
       }
       continue;
@@ -172,6 +173,15 @@ function construirBand() {
     band[`s${n}_pluma1`]  = entero(`bcS${n}P1`, 0);
     band[`s${n}_pluma2`]  = entero(`bcS${n}P2`, 0);
     band[`s${n}_band_mode`] = entero(`bcS${n}Mode`, 0);
+    // Acciones al alcanzar el conteo: la máscara se arma con lo elegido (se suman).
+    const cLuces = leerMascara(`bcS${n}CLamps`);
+    const cDir = entero(`bcS${n}CDir`, 0), cP1 = entero(`bcS${n}CP1`, 0), cP2 = entero(`bcS${n}CP2`, 0);
+    band[`s${n}_count_action_mask`] = ($(`bcS${n}CBand`)?.checked ? 1 : 0) + ($(`bcS${n}CProc`)?.checked ? 2 : 0)
+      + (cLuces ? 4 : 0) + (cDir ? 8 : 0) + (cP1 ? 16 : 0) + (cP2 ? 32 : 0);
+    band[`s${n}_count_lamp_mask`] = cLuces;
+    band[`s${n}_count_dir`] = cDir;
+    band[`s${n}_count_pluma1`] = cP1;
+    band[`s${n}_count_pluma2`] = cP2;
   }
   return band;
 }
@@ -197,6 +207,10 @@ function revisar(band) {
       errores.push(`El sensor ${n} detiene la banda por tiempo: pon más de 0 segundos.`);
     if (band[`count_s${n}`] < 0)
       errores.push(`El conteo del sensor ${n} no puede ser negativo.`);
+    if (band[`s${n}_count_action_mask`] && !(band[`count_s${n}`] > 0))
+      errores.push(`Sensor ${n}: las acciones al llegar al conteo necesitan un conteo objetivo mayor que 0.`);
+    if (band[`s${n}_count_dir`] && !band.enable)
+      errores.push(`Sensor ${n}: cambiar la dirección al contar necesita "Mover la banda".`);
   }
   return errores;
 }
@@ -229,6 +243,8 @@ const FASE = {
   paro_i3:          { txt: 'Paro I3 activo',          clase: 'is-err',  icono: 'ti-hand-stop' },
   paro_i2:          { txt: 'Paro I2 activo',          clase: 'is-err',  icono: 'ti-hand-stop' },
   paro_software:    { txt: 'Paro software activo',    clase: 'is-err',  icono: 'ti-lock' },
+  paro_contador_proceso: { txt: 'Proceso detenido por el contador', clase: 'is-err', icono: 'ti-numbers' },
+  paro_contador_banda:   { txt: 'Banda detenida por el contador',   clase: 'is-err', icono: 'ti-numbers' },
   esperando_config: { txt: 'Esperando configuración', clase: 'is-off',  icono: 'ti-settings' },
   sin_marcha:       { txt: 'Lista · sin movimiento', clase: 'is-ok', icono: 'ti-circle-check' },
   configurando:     { txt: 'Configurando VFD…',       clase: 'is-wait', icono: 'ti-loader' },
@@ -354,6 +370,20 @@ function pintarEstado(est) {
     chip(`bcS${n}Done`, `Objetivo alcanzado: ${siNo(s.count_done)}`, s.count_done ? 'is-ok' : '');
   }
 
+  // Contador (%R80..%R87): acciones enclavadas al alcanzar el conteo.
+  const ct = est.contador || {};
+  const detalle = [
+    ct.proceso_detenido && 'proceso detenido',
+    ct.banda_detenida && 'banda detenida',
+    ct.luces && `luces ${ct.luces_nombre}`,
+    ct.cambio_direccion && 'cambiando dirección',
+    ct.pluma1 && `pluma 1 ${['', 'sube', 'baja', 'stop'][ct.pluma1] ?? ct.pluma1}`,
+    ct.pluma2 && `pluma 2 ${['', 'sube', 'baja', 'stop'][ct.pluma2] ?? ct.pluma2}`,
+  ].filter(Boolean);
+  chip('bcCount', ct.activo
+    ? `Contador ${ct.origen_texto}: ${detalle.join(' · ') || 'acciones aplicadas'} (enclavado)`
+    : 'Contador: sin acciones enclavadas', ct.proceso_detenido || ct.banda_detenida ? 'is-err' : ct.activo ? 'is-wait' : '');
+
   // Torreta: salidas físicas reales (monitores R110..R112).
   const L = est.lamparas || {};
   chip('bcQ3', `Verde Q3: ${L.verde ? 'encendida' : 'apagada'}`, L.verde ? 'is-ok' : '');
@@ -382,6 +412,11 @@ function pintarEstado(est) {
   if (est.hard_stop) {
     alerta('Paro I3 activo: el PLC mantiene detenidos la banda, el VFD y las plumas. '
          + 'Suelta I3 y pulsa I1 para volver a arrancar.');
+  } else if (est.fase === 'paro_contador_proceso' || est.fase === 'paro_contador_banda') {
+    alerta(`${est.stop_reason_texto}: ${est.fase === 'paro_contador_proceso'
+      ? 'el proceso completo (banda, eventos y plumas) quedó detenido'
+      : 'la banda quedó detenida'} al alcanzar el conteo. Queda enclavado hasta enviar la `
+      + 'configuración otra vez o pulsar "Reset (VFD y contador)".');
   } else if (est.aux_stop) {
     alerta('Paro I2 activo (el modo de paro incluye I2). Suelta I2 y pulsa I1 para volver a arrancar.');
   } else if (est.soft_stop) {
@@ -587,7 +622,7 @@ function instalar() {
     conBoton($('bcReset'), 'Reiniciando el VFD…', async () => {
       const d = await postear('/banda/reset', {}, 25000);
       d.mensaje = d.cfg_ready
-        ? 'VFD reiniciado. Pulsa I1 para habilitar la banda.'
+        ? 'Reset aplicado: acciones del contador liberadas. Pulsa I1 para habilitar la banda.'
         : 'Reset enviado. El PLC aún no confirma la configuración.';
       return d;
     }));
@@ -691,6 +726,14 @@ export function cargarBandDesdePrograma(program) {
     setValor(`bcS${n}P1`, band[`s${n}_pluma1`] || 0);
     setValor(`bcS${n}P2`, band[`s${n}_pluma2`] || 0);
     setValor(`bcS${n}Mode`, band[`s${n}_band_mode`] || 0);
+    const cm = Number(band[`s${n}_count_action_mask`]) || 0;
+    const cBand = $(`bcS${n}CBand`), cProc = $(`bcS${n}CProc`);
+    if (cBand) cBand.checked = !!(cm & 1);
+    if (cProc) cProc.checked = !!(cm & 2);
+    pintarMascara(`bcS${n}CLamps`, cm & 4 ? band[`s${n}_count_lamp_mask`] || 0 : 0);
+    setValor(`bcS${n}CDir`, cm & 8 ? band[`s${n}_count_dir`] || 0 : 0);
+    setValor(`bcS${n}CP1`, cm & 16 ? band[`s${n}_count_pluma1`] || 0 : 0);
+    setValor(`bcS${n}CP2`, cm & 32 ? band[`s${n}_count_pluma2`] || 0 : 0);
   }
   pintarMascara('bcTorRun',  band.torreta_run  || 0);
   pintarMascara('bcTorIdle', band.torreta_idle || 0);

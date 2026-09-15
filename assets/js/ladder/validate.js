@@ -201,6 +201,20 @@ function validarBanda(band, errors) {
     }
   }
   // Paros (%R9) y paro automatico (%R11/%R15), mismas reglas que §3 del ST.
+  // Acciones al alcanzar el conteo (%R70..%R79), mismas reglas que §3 del ST.
+  for (const n of [1, 2]) {
+    const cm = band[`s${n}_count_action_mask`];
+    if (cm == null) continue;
+    rangoEntero(cm, 0, 63, 'band', `s${n}_count_action_mask`, errors);
+    const m = Number(cm) || 0;
+    if (!m) continue;
+    if (!(Number(band[`count_s${n}`]) > 0)) errors.push(`S${n}: las acciones al contar necesitan un conteo objetivo mayor que 0.`);
+    if (m & 4 && !(Number(band[`s${n}_count_lamp_mask`]) > 0)) errors.push(`S${n}: elige las luces que se encienden al contar.`);
+    if (m & 8 && !(Number(band[`s${n}_count_dir`]) > 0)) errors.push(`S${n}: elige la dirección al contar.`);
+    if (m & 8 && band.enable === false) errors.push(`S${n}: cambiar la dirección al contar necesita que la banda se mueva.`);
+    if (m & 16 && !(Number(band[`s${n}_count_pluma1`]) > 0)) errors.push(`S${n}: elige el comando de la pluma 1 al contar.`);
+    if (m & 32 && !(Number(band[`s${n}_count_pluma2`]) > 0)) errors.push(`S${n}: elige el comando de la pluma 2 al contar.`);
+  }
   // Efecto de cada sensor en la banda (%R16/%R17): 0 puede pausarla · 1 solo evento.
   for (const n of [1, 2]) {
     if (band[`s${n}_band_mode`] != null) rangoEntero(band[`s${n}_band_mode`], 0, 1, 'band', `s${n}_band_mode`, errors);
