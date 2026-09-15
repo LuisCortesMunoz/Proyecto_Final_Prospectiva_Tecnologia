@@ -622,7 +622,7 @@
             <div class="bc-field">
               <label>Conteo objetivo</label>
               <input type="number" id="bcS1Count" min="0" step="1" value="0">
-              <span class="bc-hint">0 = el evento ocurre en cada detección. Con un objetivo, el evento (luces, plumas y pausa) ocurre una sola vez al llegar a él.</span>
+              <span class="bc-hint">El evento de arriba ocurre en cada detección. Con un objetivo, además se ejecutan las acciones de abajo al llegar a él.</span>
             </div>
             <div class="bc-field">
               <label>Luces durante el evento</label>
@@ -658,8 +658,8 @@
           <div class="bc-grid">
             <div class="bc-field">
               <label>Detener</label>
-              <label class="bc-switch"><input type="checkbox" id="bcS1CBand"> Solo la banda</label>
-              <label class="bc-switch"><input type="checkbox" id="bcS1CProc"> Todo el proceso</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS1CBand"> Pausar la banda</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS1CProc"> Detener todo el proceso</label>
             </div>
             <div class="bc-field">
               <label>Luces que quedan encendidas</label>
@@ -697,13 +697,28 @@
               </select>
             </div>
           </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Pausa, luces y plumas del contador</label>
+              <select id="bcS1CHold">
+                <option value="0">Enclavadas hasta Reset</option>
+                <option value="1">Durante un tiempo</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Segundos</label>
+              <input type="number" id="bcS1CHoldS" min="1" step="1" value="5">
+            </div>
+          </div>
           <div class="bc-note">
-            Se ejecutan una sola vez al llegar al conteo, se pueden combinar y quedan enclavadas
-            hasta enviar la configuración o pulsar Reset. I3 sigue siendo el paro prioritario.
+            Se ejecutan una vez al llegar al conteo, en paralelo a lo que hace cada detección, y se
+            pueden combinar. Detener todo el proceso siempre queda enclavado y el cambio de dirección
+            es permanente. I3 sigue siendo el paro prioritario.
           </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS1Det">Detectando: —</span>
             <span class="bc-chip" id="bcS1Evt">Evento: —</span>
+            <span class="bc-chip" id="bcS1CAct">Acciones al contar: —</span>
             <span class="bc-chip" id="bcS1Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS1Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS1Done">Objetivo alcanzado: —</span>
@@ -745,7 +760,7 @@
             <div class="bc-field">
               <label>Conteo objetivo</label>
               <input type="number" id="bcS2Count" min="0" step="1" value="0">
-              <span class="bc-hint">0 = el evento ocurre en cada detección. Con un objetivo, el evento (luces, plumas y pausa) ocurre una sola vez al llegar a él.</span>
+              <span class="bc-hint">El evento de arriba ocurre en cada detección. Con un objetivo, además se ejecutan las acciones de abajo al llegar a él.</span>
             </div>
             <div class="bc-field">
               <label>Luces durante el evento</label>
@@ -781,8 +796,8 @@
           <div class="bc-grid">
             <div class="bc-field">
               <label>Detener</label>
-              <label class="bc-switch"><input type="checkbox" id="bcS2CBand"> Solo la banda</label>
-              <label class="bc-switch"><input type="checkbox" id="bcS2CProc"> Todo el proceso</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS2CBand"> Pausar la banda</label>
+              <label class="bc-switch"><input type="checkbox" id="bcS2CProc"> Detener todo el proceso</label>
             </div>
             <div class="bc-field">
               <label>Luces que quedan encendidas</label>
@@ -820,13 +835,28 @@
               </select>
             </div>
           </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Pausa, luces y plumas del contador</label>
+              <select id="bcS2CHold">
+                <option value="0">Enclavadas hasta Reset</option>
+                <option value="1">Durante un tiempo</option>
+              </select>
+            </div>
+            <div class="bc-field">
+              <label>Segundos</label>
+              <input type="number" id="bcS2CHoldS" min="1" step="1" value="5">
+            </div>
+          </div>
           <div class="bc-note">
-            Se ejecutan una sola vez al llegar al conteo, se pueden combinar y quedan enclavadas
-            hasta enviar la configuración o pulsar Reset. I3 sigue siendo el paro prioritario.
+            Se ejecutan una vez al llegar al conteo, en paralelo a lo que hace cada detección, y se
+            pueden combinar. Detener todo el proceso siempre queda enclavado y el cambio de dirección
+            es permanente. I3 sigue siendo el paro prioritario.
           </div>
           <div class="bc-feedback">
             <span class="bc-chip" id="bcS2Det">Detectando: —</span>
             <span class="bc-chip" id="bcS2Evt">Evento: —</span>
+            <span class="bc-chip" id="bcS2CAct">Acciones al contar: —</span>
             <span class="bc-chip" id="bcS2Cnt">Conteo: —</span>
             <span class="bc-chip" id="bcS2Tmr">Temporizador: — s</span>
             <span class="bc-chip" id="bcS2Done">Objetivo alcanzado: —</span>
@@ -877,7 +907,31 @@
             <button type="button" class="bc-btn bc-btn-ghost" id="bcTorApply">
               <i class="ti ti-bulb"></i> Aplicar torreta ahora
             </button>
-            <span class="bc-hint">Cambia solo %R40/%R41/%R50, sin detener la banda. Prioridad del PLC: S2 → S1 → RUN → IDLE.</span>
+            <span class="bc-hint">Cambia solo %R40/%R41/%R50, sin detener la banda. Las fuentes de luz se suman; I3 apaga todas.</span>
+          </div>
+          <div class="bc-subhead">
+            <span><i class="ti ti-clock"></i> Lámpara temporizada</span>
+            <span class="bc-reg">%R96 · %R97 · %R98 → %R99</span>
+          </div>
+          <div class="bc-grid">
+            <div class="bc-field">
+              <label>Luces</label>
+              <div class="bc-lamps" id="bcTimedLamps">
+                <label class="bc-lamp bc-lamp-v"><input type="checkbox" value="1"> Verde</label>
+                <label class="bc-lamp bc-lamp-a"><input type="checkbox" value="2"> Amarilla</label>
+                <label class="bc-lamp bc-lamp-r"><input type="checkbox" value="4"> Roja</label>
+              </div>
+            </div>
+            <div class="bc-field">
+              <label>Segundos</label>
+              <input type="number" id="bcTimedS" min="1" step="1" value="5">
+            </div>
+          </div>
+          <div class="bc-feedback">
+            <button type="button" class="bc-btn bc-btn-ghost" id="bcTimedApply">
+              <i class="ti ti-clock-play"></i> Encender ahora
+            </button>
+            <span class="bc-chip" id="bcTimedState">Lámpara temporizada: —</span>
           </div>
         </div>
 

@@ -115,6 +115,8 @@ export const BAND_FIELDS = [
   // Acciones enclavadas al alcanzar el conteo (§14c, %R70..%R79).
   's1_count_action_mask', 's1_count_lamp_mask', 's1_count_dir', 's1_count_pluma1', 's1_count_pluma2',
   's2_count_action_mask', 's2_count_lamp_mask', 's2_count_dir', 's2_count_pluma1', 's2_count_pluma2',
+  // Duración de las acciones del contador y lámpara temporizada (ST v5).
+  's1_count_hold_s', 's2_count_hold_s', 'timed_lamp_mask', 'timed_lamp_s',
 ];
 
 // S_CountActionMask: 1 detener banda · 2 detener proceso · 4 luces · 8 dirección
@@ -193,6 +195,8 @@ export function canonicalBand(raw) {
     out[`s${n}_count_dir`] = nulo0(codigo(b[`s${n}_count_dir`], COUNT_DIR_CODES, 0, 3));
     out[`s${n}_count_pluma1`] = nulo0(codigo(b[`s${n}_count_pluma1`], SENSOR_PLUMA_CODES, 0, 3));
     out[`s${n}_count_pluma2`] = nulo0(codigo(b[`s${n}_count_pluma2`], SENSOR_PLUMA_CODES, 0, 3));
+    // null = acciones del contador enclavadas; N = duran N segundos.
+    out[`s${n}_count_hold_s`] = cmask ? nulo0(entero(b[`s${n}_count_hold_s`])) : null;
     out[`s${n}_action`] = acc;
     out[`s${n}_band_mode`] = acc == null ? null : (codigo(b[`s${n}_band_mode`], {}, 0, 1) ?? 0);
     // El tiempo solo existe para los eventos temporizados (2 y 4).
@@ -203,6 +207,8 @@ export function canonicalBand(raw) {
     out[`s${n}_pluma2`] = p2;
   }
   for (const k of ['torreta_run', 'torreta_idle', 'torreta_i1']) out[k] = nulo0(entero(b[k]));
+  out.timed_lamp_mask = nulo0(entero(b.timed_lamp_mask));
+  out.timed_lamp_s = out.timed_lamp_mask ? nulo0(entero(b.timed_lamp_s)) : null;
   for (const n of [1, 2]) out[`pluma${n}`] = codigo(b[`pluma${n}`], PLUMA_CODES, 0, 2);
 
   const ordenado = {};
@@ -236,8 +242,8 @@ export function describeBand(band) {
     const w = b[`wait_s${n}_s`];
     const temporizado = acc === 2 || acc === 4;
     const pausa = b[`s${n}_band_mode`] !== 1 && acc > 0;
-    let s = `S${n}${b[`count_s${n}`] ? ` al contar ${b[`count_s${n}`]}` : ''}: `
-      + (temporizado ? `evento de ${w} s` : 'evento mientras detecta')
+    let s = `S${n}: `
+      + (temporizado ? `en cada detección, evento de ${w} s` : 'en cada detección, evento mientras detecta')
       + (pausa ? ' · pausa la banda y continúa' : ' · no afecta la banda');
     if (b[`torreta_s${n}`]) s += ` · luz ${colores(b[`torreta_s${n}`])}`;
     for (const m of [1, 2]) {
@@ -249,19 +255,23 @@ export function describeBand(band) {
     if (cm) {
       const dir = { 1: 'dirección 1', 2: 'dirección 2', 3: 'invierte la dirección' }[b[`s${n}_count_dir`]];
       const acciones = [
-        cm & 1 && 'detiene la banda',
+        cm & 1 && 'pausa la banda',
         cm & 2 && 'detiene el proceso',
         cm & 4 && `enciende ${colores(b[`s${n}_count_lamp_mask`])}`,
         cm & 8 && dir,
         cm & 16 && `pluma 1 ${PLUMA_SENSOR_TXT[b[`s${n}_count_pluma1`]] ?? ''}`,
         cm & 32 && `pluma 2 ${PLUMA_SENSOR_TXT[b[`s${n}_count_pluma2`]] ?? ''}`,
       ].filter(Boolean);
-      L.push(`S${n} al llegar a ${b[`count_s${n}`]}: ${acciones.join(' · ')} (enclavado hasta nueva configuración o Reset)`);
+      const dura = b[`s${n}_count_hold_s`]
+        ? `pausa, luces y plumas duran ${b[`s${n}_count_hold_s`]} s`
+        : 'enclavado hasta nueva configuración o Reset';
+      L.push(`S${n} al llegar a ${b[`count_s${n}`]}: ${acciones.join(' · ')} (${dura})`);
     }
   }
   if (b.torreta_run)  L.push(`Luz ${colores(b.torreta_run)} con la banda corriendo`);
   if (b.torreta_idle) L.push(`Luz ${colores(b.torreta_idle)} con la banda detenida`);
   if (b.torreta_i1)   L.push(`Luz ${colores(b.torreta_i1)} mientras I1 esté presionado`);
+  if (b.timed_lamp_mask) L.push(`Luz ${colores(b.timed_lamp_mask)} durante ${b.timed_lamp_s} s al cargar`);
   for (const n of [1, 2]) {
     const p = b[`pluma${n}`];
     if (p != null) L.push(`Pluma ${n}: ${['stop', 'subir', 'bajar'][p] ?? p}`);

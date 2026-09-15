@@ -529,7 +529,8 @@ export function renderBandPanel(container, program) {
   const s1 = sensor(1), s2 = sensor(2);
 
   // Lámparas: las que nombra la instrucción o alguna máscara de torreta.
-  const mascaras = ['torreta_run', 'torreta_idle', 'torreta_s1', 'torreta_s2', 'torreta_i1']
+  const mascaras = ['torreta_run', 'torreta_idle', 'torreta_s1', 'torreta_s2', 'torreta_i1',
+    's1_count_lamp_mask', 's2_count_lamp_mask', 'timed_lamp_mask']
     .reduce((m, k) => m | (Number(band[k]) || 0), 0);
   const lamps = {};
   for (const [color, L] of Object.entries(BAND_LAMP)) lamps[color] = !!u[color] || !!(mascaras & L.bit);
@@ -573,9 +574,12 @@ export function renderBandPanel(container, program) {
   for (const n of [1, 2]) {
     const cm = Number(band[`s${n}_count_action_mask`]) || 0;
     if (!cm) continue;
-    const qué = [cm & 1 && 'para banda', cm & 2 && 'para proceso', cm & 4 && 'luces',
+    const qué = [cm & 1 && 'pausa banda', cm & 2 && 'para proceso', cm & 4 && 'luces',
       cm & 8 && 'dirección', cm & 48 && 'plumas'].filter(Boolean).join(' · ');
     chips.push(`<span class="bp-chip"><i class="ti ti-numbers"></i> Contador S${n}: ${qué}</span>`);
+  }
+  if (Number(band.timed_lamp_mask)) {
+    chips.push(`<span class="bp-chip"><i class="ti ti-clock"></i> Lámpara ${band.timed_lamp_s} s</span>`);
   }
   if (pluma1 || pluma2)
     chips.push(`<span class="bp-chip"><i class="ti ti-arrows-vertical"></i> Plumas</span>`);
@@ -665,7 +669,7 @@ export function paintBandLive(container, est, opts = {}) {
   }
 
   // Torreta: salidas físicas REALES Q3..Q5 (monitores R110..R112). El PLC ya
-  // resolvió prioridades (S2 → S1 → RUN → IDLE, I1, paro).
+  // sumó todas las fuentes (RUN/IDLE, eventos, I1, contador, lámpara temporizada; I3 apaga).
   const L = est.lamparas || {};
   for (const color of Object.keys(BAND_LAMP)) on(`lamp-${color}`, L[color]);
 }

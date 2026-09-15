@@ -214,6 +214,14 @@ function validarBanda(band, errors) {
     if (m & 8 && band.enable === false) errors.push(`S${n}: cambiar la dirección al contar necesita que la banda se mueva.`);
     if (m & 16 && !(Number(band[`s${n}_count_pluma1`]) > 0)) errors.push(`S${n}: elige el comando de la pluma 1 al contar.`);
     if (m & 32 && !(Number(band[`s${n}_count_pluma2`]) > 0)) errors.push(`S${n}: elige el comando de la pluma 2 al contar.`);
+    if (band[`s${n}_count_hold_s`] != null) rangoEntero(band[`s${n}_count_hold_s`], 0, 32767, 'band', `s${n}_count_hold_s`, errors);
+  }
+  // Lámpara temporizada (%R96/%R97): máscara 0..7 y segundos > 0 si hay luces.
+  if (band.timed_lamp_mask != null) {
+    rangoEntero(band.timed_lamp_mask, 0, 7, 'band', 'timed_lamp_mask', errors);
+    if (Number(band.timed_lamp_mask) > 0 && !(Number(band.timed_lamp_s) > 0)) {
+      errors.push('La lámpara temporizada necesita segundos mayor que 0.');
+    }
   }
   // Efecto de cada sensor en la banda (%R16/%R17): 0 puede pausarla · 1 solo evento.
   for (const n of [1, 2]) {

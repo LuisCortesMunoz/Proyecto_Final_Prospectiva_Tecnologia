@@ -400,7 +400,11 @@ function bandSymbols(symbols) {
   put('%R61', 'Pluma2Cmd', 'Comando manual pluma 2: 0 stop · 1 subir · 2 bajar', 'INT', 'holding_reg');
   put('EffPluma1Cmd', 'EffPluma1Cmd', 'Comando efectivo de la pluma 1 (I3 > S2 > S1 > manual)', 'INT');
   put('EffPluma2Cmd', 'EffPluma2Cmd', 'Comando efectivo de la pluma 2 (I3 > S2 > S1 > manual)', 'INT');
-  put('CountBandStopLatch', 'CountBandStopLatch', 'Contador: banda detenida y enclavada hasta nueva configuración o Reset (%R80)');
+  put('CountBandStopLatch', 'CountBandStopLatch', 'Contador: banda pausada; enclavada o por tiempo, no quita BandEnable (%R80)');
+  put('TimedLampActive', 'TimedLampActive', 'Lámpara temporizada encendida (%R99)');
+  put('%R98', 'TimedLampTrigger', 'Disparo de la lámpara temporizada (cambio de valor)', 'INT', 'holding_reg');
+  put('S1_CountActionActive', 'S1_CountActionActive', 'Acciones del contador de S1 activas (%R91)');
+  put('S2_CountActionActive', 'S2_CountActionActive', 'Acciones del contador de S2 activas (%R95)');
   put('CountSystemStopLatch', 'CountSystemStopLatch', 'Contador: proceso detenido (banda, eventos y plumas) hasta nueva configuración o Reset (%R81)');
   put('CountLampVerde', 'CountLampGreen', 'Contador: luz verde enclavada (%R82 bit 0)');
   put('CountLampAmarilla', 'CountLampYellow', 'Contador: luz amarilla enclavada (%R82 bit 1)');
@@ -498,6 +502,7 @@ function compileBand(band, ctx) {
       cmask: num(band[`s${n}_count_action_mask`]) || 0,
       cLuces: num(band[`s${n}_count_lamp_mask`]) || 0,
       cDir: num(band[`s${n}_count_dir`]) || 0,
+      hold: num(band[`s${n}_count_hold_s`]) || 0,
       cP: [bandSensorPluma(band[`s${n}_count_pluma1`]), bandSensorPluma(band[`s${n}_count_pluma2`])],
       temporizado: acc === 2 || acc === 4,
       pausa: acc != null && acc > 0 && modo === 0,
@@ -514,6 +519,8 @@ function compileBand(band, ctx) {
   const torRun  = num(band.torreta_run) || 0;
   const torIdle = num(band.torreta_idle) || 0;
   const torI1   = num(band.torreta_i1) || 0;
+  const timedMask = num(band.timed_lamp_mask) || 0;
+  const timedS    = num(band.timed_lamp_s) || 0;
 
   // Representación COMPACTA: solo lo que pide la configuración. Lo que el ST
   // hace siempre (reset con ResetCmd/NewCfgFlag, CfgValid, velocidad real
@@ -528,7 +535,6 @@ function compileBand(band, ctx) {
     const fuentes = ['I3 (siempre)'];
     if (stopMode === 1 || stopMode === 3) { alts.push([{ t: 'nc', a: 'I2' }]); fuentes.push('I2'); }
     if (stopMode === 2 || stopMode === 3) { alts.push([{ t: 'cmp', a: '%R10', v: 1 }]); fuentes.push('paro software %R10'); }
-    if (S.some(s => s.cmask & 1)) { alts.push([{ t: 'no', a: 'CountBandStopLatch' }]); fuentes.push('contador (banda)'); }
     if (S.some(s => s.cmask & 2)) { alts.push([{ t: 'no', a: 'CountSystemStopLatch' }]); fuentes.push('contador (proceso)'); }
     rungs.push(bandRungOr(
       `Paro de banda · StopMode ${stopMode} (${STOP_MODE_TXT[stopMode]}): ${fuentes.join(' · ')} → borra BandEnable y detiene el VFD · I3 además cancela eventos y plumas`,
@@ -556,72 +562,75 @@ function compileBand(band, ctx) {
   for (const s of S) {
     if (!s.on) continue;
     const Sn = `S${s.n}`;
-    const soloCuenta = s.acc === 0 && !s.mask && !s.plumas.some(Boolean) && !s.count;
-    if (s.count > 0 || soloCuenta) {
+    const soloCuenta = s.acc === 0 && !s.mask && !s.plumas.some(Boolean);
+    if (s.count > 0 || (soloCuenta && !s.cmask)) {
       rungs.push(bandRungSerie(
         s.count > 0 ? `${Sn} (${s.io}) cuenta detecciones: objetivo ${s.count}` : `${Sn} (${s.io}) cuenta detecciones`,
         [{ t: 'ne', a: s.io }, { t: 'nc', a: 'I3' }],
         bandOut('block_ctu', s.cnt, ctx, { preset: s.count, band: { title: 'CTU' } }), ctx));
     }
-    if (soloCuenta) continue;
+    if (!soloCuenta) {
 
-    const disparo = s.count > 0 ? { t: 'pe', a: s.done } : { t: 'ne', a: s.io };
-    const cuando  = s.count > 0 ? `al llegar a ${s.count} detecciones` : 'detecta';
-    const fin     = s.temporizado ? { t: 'nc', a: `${s.tmr}.DN` } : { t: 'nc', a: s.io };
-    rungs.push(bandRungSerie(
-      `${Sn} ${cuando} → evento ${s.temporizado ? `de ${s.wait || 0} s` : 'mientras detecta'}`
-        + `${s.pausa ? ' · pausa la banda y continúa sola' : ' · no afecta la banda'}`,
-      [disparo, { t: 'nc', a: 'I3' }, fin],
-      bandOut('coil', s.evento, ctx), ctx,
-      [{ col: 0, c: { t: 'no', a: s.evento } }]));
-    if (s.temporizado) {
+      // ST v5: el evento se dispara en CADA detección, aunque haya conteo.
+    const disparo = { t: 'ne', a: s.io };
+      const cuando  = 'detecta (cada detección)';
+      const fin     = s.temporizado ? { t: 'nc', a: `${s.tmr}.DN` } : { t: 'nc', a: s.io };
       rungs.push(bandRungSerie(
-        `Duración del evento de ${Sn}: ${s.wait || 0} s`,
-        [{ t: 'no', a: s.evento }],
-        bandOut('block_ton', s.tmr, ctx, { preset_ms: (s.wait || 0) * 1000, band: { title: 'TON' } }), ctx));
-    }
-    if (s.pausa && mover) {
-      rungs.push(bandRungSerie(
-        `${Sn} en evento → pausa la banda (BandEnable sigue activo)`,
-        [{ t: 'no', a: s.evento }],
-        bandOut('coil', s.latch, ctx), ctx));
-    }
-    // Plumas del evento (§17): mientras dura el evento, con prioridad S2 > S1 > manual.
-    s.plumas.forEach((c, k) => {
-      if (!c) return;
-      const p = PLUMA_Q[k + 1];
-      if (c === 3) {
+        `${Sn} ${cuando} → evento ${s.temporizado ? `de ${s.wait || 0} s` : 'mientras detecta'}`
+          + `${s.pausa ? ' · pausa la banda y continúa sola' : ' · no afecta la banda'}`,
+        [disparo, { t: 'nc', a: 'I3' }, fin],
+        bandOut('coil', s.evento, ctx), ctx,
+        [{ col: 0, c: { t: 'no', a: s.evento } }]));
+      if (s.temporizado) {
         rungs.push(bandRungSerie(
-          `${Sn} en evento → fuerza STOP de la pluma ${k + 1} (${p.sube}/${p.baja} apagadas)`,
+          `Duración del evento de ${Sn}: ${s.wait || 0} s`,
           [{ t: 'no', a: s.evento }],
-          bandOut('block_mov', `EffPluma${k + 1}Cmd`, ctx, { band: { title: 'MOV', sub: 'IN 0' } }), ctx));
-      } else {
-        const q = c === 1 ? p.sube : p.baja;
-        rungs.push(bandRungSerie(
-          `${Sn} en evento → pluma ${k + 1} ${c === 1 ? 'sube' : 'baja'} (${q}) · al terminar vuelve al comando manual`,
-          [{ t: 'no', a: s.evento }, { t: 'nc', a: 'I3' }],
-          bandOut('coil', q, ctx), ctx));
+          bandOut('block_ton', s.tmr, ctx, { preset_ms: (s.wait || 0) * 1000, band: { title: 'TON' } }), ctx));
       }
-    });
+      if (s.pausa && mover) {
+        rungs.push(bandRungSerie(
+          `${Sn} en evento → pausa la banda (BandEnable sigue activo)`,
+          [{ t: 'no', a: s.evento }],
+          bandOut('coil', s.latch, ctx), ctx));
+      }
+      // Plumas del evento (§17): mientras dura el evento, con prioridad S2 > S1 > manual.
+      s.plumas.forEach((c, k) => {
+        if (!c) return;
+        const p = PLUMA_Q[k + 1];
+        if (c === 3) {
+          rungs.push(bandRungSerie(
+            `${Sn} en evento → fuerza STOP de la pluma ${k + 1} (${p.sube}/${p.baja} apagadas)`,
+            [{ t: 'no', a: s.evento }],
+            bandOut('block_mov', `EffPluma${k + 1}Cmd`, ctx, { band: { title: 'MOV', sub: 'IN 0' } }), ctx));
+        } else {
+          const q = c === 1 ? p.sube : p.baja;
+          rungs.push(bandRungSerie(
+            `${Sn} en evento → pluma ${k + 1} ${c === 1 ? 'sube' : 'baja'} (${q}) · al terminar vuelve al comando manual`,
+            [{ t: 'no', a: s.evento }, { t: 'nc', a: 'I3' }],
+            bandOut('coil', q, ctx), ctx));
+        }
+      });
+    }
 
-    // Acciones al alcanzar el conteo (§14c): una sola vez y ENCLAVADAS hasta una
-    // nueva configuración o un Reset. El contador gana sobre los eventos.
+    // Acciones al alcanzar el conteo (§14c, ST v5): segunda capa en paralelo al
+    // evento. Pausa, luces y plumas quedan enclavadas o duran CountHoldPreset s;
+    // detener el proceso siempre se enclava. El contador gana sobre los eventos.
     if (s.cmask && s.count > 0) {
       const alLlegar = [{ t: 'pe', a: s.done }];
       const cuando = `${Sn} llega a ${s.count}`;
-      const hasta = 'enclavado hasta nueva configuración o Reset';
+      const hasta = s.hold ? `durante ${s.hold} s` : 'enclavado hasta nueva configuración o Reset';
       if (s.cmask & 1) {
-        rungs.push(bandRungSerie(`${cuando} → detiene la banda (${hasta})`,
+        rungs.push(bandRungSerie(`${cuando} → pausa la banda (${hasta}) · no quita BandEnable`,
           alLlegar, bandOut('coil_s', 'CountBandStopLatch', ctx), ctx));
       }
       if (s.cmask & 2) {
-        rungs.push(bandRungSerie(`${cuando} → detiene el proceso: banda, eventos y plumas (${hasta})`,
+        rungs.push(bandRungSerie(`${cuando} → detiene el proceso: banda, eventos y plumas (enclavado hasta nueva configuración o Reset)`,
           alLlegar, bandOut('coil_s', 'CountSystemStopLatch', ctx), ctx));
       }
       if (s.cmask & 4) {
         for (const [bit, nombre, bitLamp] of [[1, 'verde', 'CountLampVerde'], [2, 'amarilla', 'CountLampAmarilla'], [4, 'roja', 'CountLampRoja']]) {
           if (!(s.cLuces & bit)) continue;
-          rungs.push(bandRungSerie(`${cuando} → enclava la luz ${nombre}`,
+          rungs.push(bandRungSerie(`${cuando} → enciende la luz ${nombre} (${hasta})`,
             alLlegar, bandOut('coil_s', bitLamp, ctx), ctx));
         }
       }
@@ -630,12 +639,17 @@ function compileBand(band, ctx) {
           `${cuando} → ${s.cDir === 3 ? 'invierte la dirección' : `cambia a dirección ${s.cDir}`} (si corre: STOP, 1 s y cambia)`,
           alLlegar, bandOut('block_mov', 'DirCmd', ctx, { band: { title: 'MOV', sub: s.cDir === 3 ? 'INV' : `IN ${s.cDir}` } }), ctx));
       }
+      if (s.hold && (s.cmask & (1 | 4 | 16 | 32))) {
+        rungs.push(bandRungSerie(`Duración de las acciones al contar de ${Sn}: ${s.hold} s`,
+          [{ t: 'no', a: `S${s.n}_CountActionActive` }],
+          bandOut('block_ton', s.n === 1 ? '%R90' : '%R94', ctx, { preset_ms: s.hold * 1000, band: { title: 'TON' } }), ctx));
+      }
       [16, 32].forEach((bit, k) => {
         const c = s.cP[k];
         if (!(s.cmask & bit) || !c) return;
         const p = PLUMA_Q[k + 1];
         const accion = c === 1 ? `sube (${p.sube})` : c === 2 ? `baja (${p.baja})` : 'stop';
-        rungs.push(bandRungSerie(`${cuando} → pluma ${k + 1} ${accion} enclavada · gana sobre los eventos`,
+        rungs.push(bandRungSerie(`${cuando} → pluma ${k + 1} ${accion} (${hasta}) · gana sobre los eventos`,
           alLlegar, bandOut('block_mov', `EffPluma${k + 1}Cmd`, ctx, { band: { title: 'MOV', sub: `IN ${c === 3 ? 0 : c}` } }), ctx));
       });
     }
@@ -644,6 +658,7 @@ function compileBand(band, ctx) {
   // 5) Paro automático por tiempo (§14b): solo con movimiento.
   if (mover && autoMode > 0) {
     const pausas = autoMode === 1 ? S.filter(s => s.pausa).map(s => ({ t: 'nc', a: s.latch })) : [];
+    if (autoMode === 1 && S.some(s => s.cmask & 1)) pausas.push({ t: 'nc', a: 'CountBandStopLatch' });
     rungs.push(bandRungSerie(
       `Paro automático: ${autoS} s ${autoMode === 1
         ? 'de movimiento real (una pausa por sensor detiene el conteo)'
@@ -659,16 +674,22 @@ function compileBand(band, ctx) {
   // 6) Marcha → VFD (§16): MOV 18/34 a %R500. Sin marcha el ST escribe 1.
   if (mover) {
     const paroSensor = S.filter(s => s.pausa).map(s => ({ t: 'nc', a: s.latch }));
+    // Pausa por contador (v5): detiene el VFD sin quitar BandEnable.
+    if (S.some(s => s.cmask & 1)) paroSensor.push({ t: 'nc', a: 'CountBandStopLatch' });
     rungs.push(bandRungSerie(
       `Banda Dirección ${dirN} (${dir}): MOV ${cmd} → %R500${paroSensor.length ? ' · una pausa por sensor la detiene sin quitar BandEnable' : ''} · sin marcha el ST escribe 1`,
       [{ t: 'no', a: 'BandEnable' }, { t: 'nc', a: 'GenStop' }, ...paroSensor],
       bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: `IN ${cmd}` } }), ctx));
   }
 
-  // 7) Torreta (§15). Prioridad evento S2 → evento S1 → RUN → IDLE: una fuente
-  //    de mayor prioridad activa bloquea a las de menor. La máscara de un
-  //    sensor funciona con cualquier acción mientras dura su evento. Solo I3
+  // 7) Torreta (§15, ST v5): las fuentes se SUMAN (RUN/IDLE, eventos S1/S2, I1,
+  //    contador y lámpara temporizada); ya no hay prioridad entre ellas. Solo I3
   //    apaga la torreta.
+  if (timedMask && timedS) {
+    rungs.push(bandRungSerie(`Lámpara temporizada: al cargar se enciende ${timedS} s (TimedLampTrigger cambia de valor)`,
+      [{ t: 'pe', a: '%R98' }],
+      bandOut('block_ton', 'TimedLampActive', ctx, { preset_ms: timedS * 1000, band: { title: 'TON' } }), ctx));
+  }
   const eventos = S.filter(s => s.on && s.mask).sort((a, b) => b.n - a.n);
   const LAMPARAS = [
     ['Q3', 'green', 1, 'verde'],
@@ -676,23 +697,26 @@ function compileBand(band, ctx) {
     ['Q5', 'red', 4, 'roja'],
   ];
   for (const [q, lampColor, bit, nombre] of LAMPARAS) {
-    const alts = [], fuentes = [], previas = [];
+    const alts = [], fuentes = [];
     for (const s of eventos) {
       if (s.mask & bit) {
-        alts.push([...previas, { t: 'no', a: s.evento }]);
+        alts.push([{ t: 'no', a: s.evento }]);
         fuentes.push(`evento de S${s.n}`);
       }
-      previas.push({ t: 'nc', a: s.evento });
     }
-    if (torRun & bit)  { alts.push([...previas, { t: 'no', a: 'BandRunning' }]);  fuentes.push('banda corriendo'); }
-    if (torIdle & bit) { alts.push([...previas, { t: 'cmp', a: '%R3', v: 0 }]); fuentes.push('banda detenida (BandStatus = 0)'); }
+    if (torRun & bit)  { alts.push([{ t: 'no', a: 'BandRunning' }]);  fuentes.push('banda corriendo'); }
+    if (torIdle & bit) { alts.push([{ t: 'cmp', a: '%R3', v: 0 }]); fuentes.push('banda detenida (BandStatus = 0)'); }
     // §15b: sigue a I1 (NA) mientras esté presionado, sin enclavar; I3 la apaga.
     if (torI1 & bit) { alts.push([{ t: 'no', a: 'I1' }, { t: 'nc', a: 'I3' }]); fuentes.push('mientras I1 esté presionado'); }
     // Luces enclavadas por el contador: se suman a la torreta; I3 las apaga.
     const lampCont = { 1: 'CountLampVerde', 2: 'CountLampAmarilla', 4: 'CountLampRoja' }[bit];
     if (S.some(s => (s.cmask & 4) && (s.cLuces & bit))) {
       alts.push([{ t: 'no', a: lampCont }, { t: 'nc', a: 'I3' }]);
-      fuentes.push('enclavada por el contador');
+      fuentes.push('por el contador');
+    }
+    if (timedMask & bit) {
+      alts.push([{ t: 'no', a: 'TimedLampActive' }, { t: 'nc', a: 'I3' }]);
+      fuentes.push(`lámpara temporizada ${timedS} s`);
     }
     if (!alts.length) continue;
     rungs.push(bandRungOr(`Torreta ${nombre} (${q}): ${fuentes.join(' · ')}`,
