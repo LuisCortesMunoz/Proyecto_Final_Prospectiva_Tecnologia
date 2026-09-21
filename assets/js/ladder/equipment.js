@@ -106,15 +106,17 @@ export function detectEquipment(text) {
   if (mal && !band) return { equipment: 'maletin', reason: 'terminos exclusivos del maletin' };
   if (band && mal)  return { equipment: null,      reason: 'mezcla terminos de los dos equipos' };
 
-  // Sin términos exclusivos de ningún equipo: un proceso industrial
-  // (empaquetado, clasificación, paletizado, "tipo PepsiCo"…) solo lo puede
-  // ejecutar la banda. Nivel NUEVO, por debajo de todo lo anterior.
-  if (hits(t, PROCESO_TERMS)) return { equipment: 'banda', reason: 'describe un proceso industrial de linea' };
-
   // Sin términos exclusivos: solo se pregunta si hay algo que de verdad pueda
   // ir en cualquiera de los dos. Si no hay ninguna señal, se conserva el
   // comportamiento actual (el backend del maletín se encarga).
   if (hits(t, SHARED_TERMS)) return { equipment: null, reason: 'solo terminos comunes a los dos equipos' };
+
+  // Último nivel, por debajo de TODO lo anterior: sin un solo término de ningún
+  // equipo, un proceso industrial (empaquetado, clasificación, paletizado,
+  // "tipo PepsiCo"…) solo lo puede ejecutar la banda. Va aquí a propósito: si la
+  // frase trae vocabulario común se sigue preguntando, como siempre.
+  if (hits(t, PROCESO_TERMS)) return { equipment: 'banda', reason: 'describe un proceso industrial de linea' };
+
   return { equipment: 'maletin', reason: 'sin senales de banda: flujo actual' };
 }
 
