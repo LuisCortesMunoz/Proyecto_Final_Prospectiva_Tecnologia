@@ -696,6 +696,9 @@ function buildPayload(message) {
     message,
     model: cfg.model.value.trim() || 'llama3.2:3b',
     copilot_profile: currentProfile,
+    // El backend usa el modo solo para elegir el modelo (Aprendizaje tiene el
+    // suyo); el comportamiento lo sigue marcando system_prompt.
+    copilot_mode: currentMode,
     system_prompt: effectiveSystemPrompt() || null,
     temperature: parseFloat(cfg.temperature.value),
     top_p: parseFloat(cfg.topP.value),
