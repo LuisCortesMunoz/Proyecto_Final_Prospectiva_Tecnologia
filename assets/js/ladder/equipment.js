@@ -55,6 +55,29 @@ const SHARED_TERMS = [
   /\bbot(?:on|ones)\b/, /\bpulsador/, /\bselector/,
 ];
 
+
+// PROCESO INDUSTRIAL (capa B, contexto industrial): vocabulario CONCEPTUAL que
+// solo tiene sentido sobre una línea transportadora. Espejo de PROCESO_TERMS en
+// device_router.py. Se consulta DESPUÉS de los términos exclusivos de los dos
+// equipos, así que ninguna instrucción que antes iba al maletín cambia.
+const PROCESO_TERMS = [
+  /\bempaqu/, /\bempac/, /\bembalaj/, /\bencajad/,
+  /\bpaletiz/, /\bpalletiz/, /\bpallets?\b/, /\btarimas?\b/,
+  /\bclasific/, /\bsorting\b/, /\bdesviador/, /\bdesvi[ao]\b/,
+  /\balmacen/, /\bbodega/, /\blogistic/, /\bpaqueteria/,
+  /\blotes?\b/, /\bbatch\b/, /\bproduccion\b/, /\bmanufactur/,
+  /\btransport/, /\bembotell/, /\benvasad/, /\bllenad/,
+  /\binspeccion/, /\brechaz/, /\bbuffer\b/, /\bacumula/,
+  /\bcongestion/, /\bestacion(?:es)?\b/, /\bautomotriz\b/, /\bautomotive\b/,
+  /\bcajas?\b/, /\bpaquetes?\b/, /\bbotellas?\b/,
+  // Referencias conceptuales por industria: solo infieren industria y
+  // arquetipos, nunca copian el proceso real de esa empresa.
+  /\bpepsico\b/, /\bpepsi\b/, /\bcoca[\s-]?cola\b/, /\bnestle\b/, /\bbimbo\b/,
+  /\bamazon\b/, /\bdhl\b/, /\bfedex\b/, /\bups\b/,
+  /\btoyota\b/, /\bford\b/, /\bvolkswagen\b/, /\bbmw\b/,
+  /\bsamsung\b/, /\bfoxconn\b/,
+];
+
 // Nombre explícito del equipo (regla prioritaria; espejo de device_router.py).
 const NOMBRE_BANDA   = /\bbandas?\b|\btransportadora?s?\b/;
 const NOMBRE_MALETIN = /\bmaletin(?:es)?\b/;
@@ -82,6 +105,11 @@ export function detectEquipment(text) {
   if (band && !mal) return { equipment: 'banda',   reason: 'terminos exclusivos de la banda' };
   if (mal && !band) return { equipment: 'maletin', reason: 'terminos exclusivos del maletin' };
   if (band && mal)  return { equipment: null,      reason: 'mezcla terminos de los dos equipos' };
+
+  // Sin términos exclusivos de ningún equipo: un proceso industrial
+  // (empaquetado, clasificación, paletizado, "tipo PepsiCo"…) solo lo puede
+  // ejecutar la banda. Nivel NUEVO, por debajo de todo lo anterior.
+  if (hits(t, PROCESO_TERMS)) return { equipment: 'banda', reason: 'describe un proceso industrial de linea' };
 
   // Sin términos exclusivos: solo se pregunta si hay algo que de verdad pueda
   // ir en cualquiera de los dos. Si no hay ninguna señal, se conserva el

@@ -68,11 +68,33 @@ function telemetryHtml(t) {
 const OUTPUT_NAMES = { Q10: 'Verde', Q11: 'Amarilla', Q12: 'Roja' };
 const MODE_LABELS  = { directo: 'directo', enclavado: 'enclavado', combinacional: 'combinacional', off: 'apagado' };
 
+// Lectura conceptual de la banda (capa B: contexto industrial). Va ANTES de la
+// configuración porque explica POR QUÉ quedó así; no sustituye a describeBand,
+// que sigue siendo lo que el PLC va a ejecutar. Si la IA no mandó capa
+// semántica (instrucción específica de siempre), no se pinta nada.
+function semanticaHtml(sem) {
+  if (!sem || typeof sem !== 'object') return '';
+  const L = [];
+  const pr = sem.process_reference || {};
+  if (pr.industry) L.push(`Industria de referencia: ${pr.industry}`);
+  if (pr.reference) L.push(`Referencia conceptual: ${pr.reference} (no se copia el proceso real de esa empresa)`);
+  if (Array.isArray(sem.archetypes) && sem.archetypes.length)
+    L.push(`Arquetipos de proceso: ${sem.archetypes.join(', ')}`);
+  for (const s of sem.supuestos || []) L.push(`Supuesto: ${s}`);
+  for (const s of sem.unsupported_capability || []) L.push(`Fuera del alcance del hardware (se adaptó): ${s}`);
+  for (const s of sem.parametros_faltantes || []) L.push(`Falta por definir: ${s.campo || s.pregunta || ''}`);
+  for (const s of sem.conflictos || []) L.push(`Conflicto: ${s}`);
+  if (!L.length) return '';
+  const rows = L.map(t => `<tr><td>${esc(t)}</td></tr>`).join('');
+  return `<details class="cmsg-logic" open><summary>Lectura del proceso (contexto industrial)</summary><table>${rows}</table></details>`;
+}
+
 function logicSummaryHtml(logic) {
   // Banda: resumen de la configuración canónica (lo que hará su PLC).
   if (logic?.band && typeof logic.band === 'object') {
     const rows = describeBand(logic.band).map(t => `<tr><td>${esc(t)}</td></tr>`).join('');
-    return `<details class="cmsg-logic" open><summary>¿Qué entendió la IA? (banda)</summary><table>${rows}</table></details>`;
+    return semanticaHtml(logic.semantica)
+      + `<details class="cmsg-logic" open><summary>¿Qué entendió la IA? (banda)</summary><table>${rows}</table></details>`;
   }
   if (!logic || !Array.isArray(logic.outputs) || !logic.outputs.length) return '';
   const rows = logic.outputs.map(o => {
