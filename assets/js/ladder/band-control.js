@@ -362,8 +362,17 @@ function pintarEstado(est) {
   if (barra) barra.style.width = autoOn && preset > 0 ? `${Math.min(100, (acc / preset) * 100)}%` : '0';
 
   // Sensores: detección real, conteo actual/objetivo y temporizador.
+  // Con el motor configurable los eventos/conteos v5 no corren (valen 0): sus
+  // timers y contadores se muestran en la caja del motor.
+  const motorActivo = est.engine_mode === 1 && !!est.motor_configurable?.disponible;
   for (const n of [1, 2]) {
     const s = est.sensores?.[`s${n}`] || {};
+    if (motorActivo) {
+      chip(`bcS${n}Det`, `Detectando: ${siNo(s.detecta)}`, s.detecta ? 'is-ok' : '');
+      for (const k of ['Evt', 'CAct', 'Cnt', 'Tmr', 'Done'])
+        chip(`bcS${n}${k}`, k === 'Evt' ? 'Lógica: motor configurable (ver timers arriba)' : '—');
+      continue;
+    }
     const enPausa = Number(est.stop_reason) === (n === 1 ? 5 : 6);
     chip(`bcS${n}Det`, `Detectando: ${siNo(s.detecta)}${enPausa ? ' · pausa activa' : ''}`,
          enPausa ? 'is-wait' : s.detecta ? 'is-ok' : '');
@@ -462,7 +471,10 @@ function pintarEstado(est) {
   }
   pintarMotor(est);
   pintarDiagnostico(est);
-  paintBandLive($('bandPanel'), est, { paro: !!est.gen_stop });
+  paintBandLive($('bandPanel'), est, {
+    paro: !!est.gen_stop,
+    motorSensores: motorActivo ? timersPorSensor(est.motor_configurable) : null,
+  });
 }
 
 // ST v6: estado del motor configurable (%R460..%R499) leido del PLC.
@@ -490,6 +502,63 @@ function pintarMotor(est) {
     clase = mc.motor === 'en marcha' ? 'is-run' : mc.motor === 'detenido' ? 'is-off' : 'is-wait';
   }
   badge('bcMotorTxt', texto, clase, 'ti-cpu');
+  pintarBloquesMotor(activo && mc.valido ? mc : null);
+}
+
+// Bloques definidos en el programa abierto ({T1: {...}}), para mostrar presets.
+function bloquesDelPrograma(clave) {
+  const out = {};
+  for (const b of bandaMotor?.engine?.[clave] || []) {
+    if (b && b.id) out[String(b.id).toUpperCase()] = b;
+  }
+  return out;
+}
+
+const fmtS = (s) => (Math.round(Number(s) * 10) / 10).toString();
+
+// Timers, contadores y memorias del motor en vivo (ES[11..13], ES[16..31]).
+// Se muestra un bloque si el programa abierto lo define o si el PLC lo tiene activo.
+function pintarBloquesMotor(mc) {
+  const cont = $('bcMotorBlocks');
+  if (!cont) return;
+  if (!mc) { cont.innerHTML = ''; return; }
+  const timers = bloquesDelPrograma('timers');
+  const conts = bloquesDelPrograma('contadores');
+  const mems = bloquesDelPrograma('memorias');
+  const chips = [];
+  (mc.timers_s || []).forEach((acc, i) => {
+    const id = `T${i + 1}`, def = timers[id], dn = mc.timers?.[i];
+    if (!def && !acc && !dn) return;
+    const preset = def?.segundos != null ? `/${fmtS(def.segundos)}` : '';
+    const clase = dn ? 'is-ok' : acc > 0 ? 'is-wait' : '';
+    chips.push([`${id}${def?.tipo ? ` ${def.tipo}` : ''}: ${fmtS(acc)}${preset} s${dn ? ' ✓' : ''}`, clase]);
+  });
+  (mc.contadores_acc || []).forEach((acc, i) => {
+    const id = `CT${i + 1}`, def = conts[id], dn = mc.contadores?.[i];
+    if (!def && !acc && !dn) return;
+    chips.push([`${id}: ${acc}${def?.preset != null ? `/${def.preset}` : ''}${dn ? ' ✓' : ''}`,
+                dn ? 'is-ok' : acc > 0 ? 'is-wait' : '']);
+  });
+  (mc.memorias || []).forEach((on, i) => {
+    const id = `M${i + 1}`;
+    if (!mems[id] && !on) return;
+    chips.push([`${id}: ${on ? 'activa' : 'inactiva'}`, on ? 'is-ok' : '']);
+  });
+  cont.innerHTML = chips.map(([t, c]) =>
+    `<span class="bc-chip${c ? ' ' + c : ''}">${t}</span>`).join('');
+}
+
+// Por sensor, el timer del motor que ese sensor dispara (para el esquema SVG).
+function timersPorSensor(mc) {
+  const out = {};
+  if (!mc?.disponible) return out;
+  for (const [id, t] of Object.entries(bloquesDelPrograma('timers'))) {
+    const n = { S1: 1, S2: 2 }[String(t.entrada || '').trim().toUpperCase()];
+    const i = Number(id.slice(1)) - 1;
+    if (!n || !(i >= 0 && i < 8) || out[n]) continue;
+    out[n] = { id, s: Number(mc.timers_s?.[i]) || 0, dn: !!mc.timers?.[i] };
+  }
+  return out;
 }
 
 // Botones virtuales APP1/APP2: activos MIENTRAS se mantienen presionados.

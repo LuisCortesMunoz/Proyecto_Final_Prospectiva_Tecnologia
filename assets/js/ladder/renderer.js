@@ -651,6 +651,14 @@ export function paintBandLive(container, est, opts = {}) {
 
   // Sensores: detección real (R108/R109) y evento activo (R18/R19).
   for (const n of [1, 2]) {
+    if (opts.motorSensores) {
+      // Motor configurable: el timer que dispara este sensor (T1 12.5 s / ✓).
+      const m = opts.motorSensores[n];
+      on(`s${n}`, !!m && m.s > 0 && !m.dn, 'is-wait');
+      on(`s${n}`, est[`s${n}_detecta`] === true, 'is-detect');
+      setTxt(`s${n}-live`, m ? `${m.id} ${m.dn ? '✓' : `${m.s} s`}` : '');
+      continue;
+    }
     const tmr = Number(est[`s${n}_timer_s`]) || 0;
     const enEvento = est[`s${n}_event_active`] === true || Number(est.stop_reason) === (n === 1 ? 5 : 6);
     on(`s${n}`, enEvento || tmr > 0, 'is-wait');

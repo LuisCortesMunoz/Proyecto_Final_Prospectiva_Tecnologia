@@ -1242,4 +1242,6 @@ body.sim-mode .rung-svg  { cursor: default; }
 /* ST v6 — motor configurable: estado y botones virtuales APP1/APP2 */
 .bc-motor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }
 .bc-motor .bc-btn { padding: 3px 10px; font-size: 11px; }
+.bc-motor-blocks { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
+.bc-motor-blocks:empty { display: none; }
 .bc-motor .bc-btn.is-held { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
