@@ -244,7 +244,96 @@ export function canonicalBand(raw) {
   const ordenado = {};
   for (const k of BAND_FIELDS) ordenado[k] = out[k] ?? null;
   ordenado.enable = out.enable;
+  // ST v6: el motor configurable viaja tal cual (lo valida y compila el
+  // backend, banda_motor.py). Sin esto, la carga al PLC lo perdería.
+  if (b.engine && typeof b.engine === 'object') ordenado.engine = JSON.parse(JSON.stringify(b.engine));
   return ordenado;
+}
+
+/** ¿El bloque "band" usa el motor configurable (ST v6)? */
+export function isBandEngine(band) {
+  return !!band && typeof band === 'object' && !!band.engine && typeof band.engine === 'object';
+}
+
+// ── Motor configurable (ST v6): descripción legible ────────────
+// Espejo corto de banda_motor.describir_motor (backend).
+const SIG_TXT = {
+  I1: 'botón I1', I2: 'botón I2', I3: 'paro I3', S1: 'sensor S1', S2: 'sensor S2',
+  BANDA_CORRIENDO: 'banda corriendo', BANDA_DETENIDA: 'banda detenida', DIR_1: 'dirección 1',
+  DIR_2: 'dirección 2', INVIRTIENDO: 'invirtiendo', APP1: 'botón 1 de la app',
+  APP2: 'botón 2 de la app', SIEMPRE: 'siempre', VFD_CERO: 'VFD en cero', CFG_LISTA: 'configuración lista',
+};
+function sigTxt(s) {
+  if (s == null || s === '') return '—';
+  const m = String(s).trim().match(/^(NOT\s+|NO\s+|!|~)\s*(.+)$/i);
+  const base = (m ? m[2] : String(s)).trim().toUpperCase().replace(/\s+/g, '_');
+  const txt = SIG_TXT[base] || base;
+  return m ? `NO ${txt}` : txt;
+}
+const lista = (v) => (Array.isArray(v) ? v : v == null ? [] : [v]);
+const TIMER_TXT = {
+  TON: (e, s) => `termina si ${e} sigue activo ${s} s`,
+  TOF: (e, s) => `sigue activo ${s} s después de que ${e} se apaga`,
+  PULSO: (e, s) => `pulso de ${s} s cada vez que se activa ${e}`,
+  RETARDO: (e, s) => `termina ${s} s después de que se activa ${e}`,
+};
+const TIMER_CANON = { ton: 'TON', on_delay: 'TON', tof: 'TOF', off_delay: 'TOF', pulso: 'PULSO', tp: 'PULSO',
+  retardo: 'RETARDO', delay: 'RETARDO', espera: 'RETARDO' };
+
+export function describeBandEngine(band) {
+  const e = band.engine || {};
+  const L = [];
+  if (band.enable !== false) {
+    L.push(`Motor configurable: banda hacia la ${band.direction === 'izquierda' ? 'izquierda (dir 2)' : 'derecha (dir 1)'}`
+      + `${band.freq_hz != null ? ` a ${band.freq_hz} Hz` : ''}`);
+  } else {
+    L.push('Motor configurable sin movimiento (solo torreta y plumas)');
+  }
+  const m = e.motor || {};
+  if (m.arranque) L.push(`Arranca con ${sigTxt(m.arranque)}${String(m.modo).toLowerCase() === 'mientras' ? ' (mientras esté activo)' : ' y se queda en marcha'}`);
+  if (m.paro) L.push(`Se detiene con ${sigTxt(m.paro)}`);
+  if (m.pausa) L.push(`Pausa mientras ${sigTxt(m.pausa)}`);
+  if (m.dir_1) L.push(`Dirección 1 con ${sigTxt(m.dir_1)}`);
+  if (m.dir_2) L.push(`Dirección 2 con ${sigTxt(m.dir_2)}`);
+  if (m.invertir) L.push(`Invierte el sentido con ${sigTxt(m.invertir)} (para ${m.paro_inversion_s ?? 2} s antes)`);
+  for (const c of lista(e.condiciones)) {
+    const or = /^(or|o)$/i.test(String(c.op || 'and'));
+    L.push(`${c.id}: ${lista(c.entradas).map(sigTxt).join(or ? ' O ' : ' Y ')}`
+      + (/sub|flanco/i.test(String(c.flanco || '')) ? ' (al activarse)' : /baj/i.test(String(c.flanco || '')) ? ' (al desactivarse)' : ''));
+  }
+  for (const t of lista(e.timers)) {
+    const tipo = TIMER_CANON[String(t.tipo || '').toLowerCase()] || String(t.tipo || '?').toUpperCase();
+    const f = TIMER_TXT[tipo];
+    L.push(`${t.id} (${tipo}): ${f ? f(sigTxt(t.entrada), t.segundos) : ''}${t.reset ? ` · reset con ${sigTxt(t.reset)}` : ''}`);
+  }
+  for (const c of lista(e.contadores)) {
+    L.push(`${c.id}: cuenta ${sigTxt(c.entrada)} hasta ${c.preset}`
+      + (/cicl|rearme|cada/i.test(String(c.modo || '')) ? ' y vuelve a empezar' : '')
+      + (c.reset ? ` · reset con ${sigTxt(c.reset)}` : ''));
+  }
+  for (const x of lista(e.memorias)) L.push(`${x.id}: se activa con ${sigTxt(x.set)} y se apaga con ${sigTxt(x.reset)}`);
+  for (const [k, v] of Object.entries(e.salidas || {})) if (v) L.push(`${k.replace(/_/g, ' ')}: con ${sigTxt(v)}`);
+  const sq = e.secuencia;
+  if (sq && lista(sq.pasos).length) {
+    L.push(`Secuencia de ${sq.pasos.length} pasos: inicia con ${sigTxt(sq.inicio)}`
+      + (/cicl|loop/i.test(String(sq.modo || '')) ? ', se repite' : '')
+      + (sq.paro ? `, se detiene con ${sigTxt(sq.paro)}` : '')
+      + (sq.reset ? `, reinicia con ${sigTxt(sq.reset)}` : ''));
+    sq.pasos.forEach((p, i) => {
+      const av = String(p.avanza || (p.senal ? 'flanco' : 'tiempo')).toLowerCase();
+      const cuando = av === 'tiempo' ? `a los ${p.segundos} s`
+        : av === 'flanco' ? `cuando se active ${sigTxt(p.senal)}`
+        : av === 'senal' ? `mientras ${sigTxt(p.senal)}`
+        : av === 'tiempo_y_senal' ? `a los ${p.segundos} s si ${sigTxt(p.senal)}`
+        : `con ${sigTxt(p.senal)} o a los ${p.segundos} s`;
+      L.push(`  Paso ${i + 1}: ${lista(p.acciones).join(', ').replace(/_/g, ' ') || 'nada'} · avanza ${cuando}`
+        + (p.siguiente ? ` → paso ${p.siguiente}` : ''));
+    });
+  }
+  const op = e.opciones || {};
+  if (op.pluma_max_s) L.push(`Plumas: se cortan tras ${op.pluma_max_s} s moviéndose`);
+  if (lista(op.luces_paro).length) L.push(`Con el paro I3 enciende: ${lista(op.luces_paro).join(', ')}`);
+  return L;
 }
 
 // ── Descripción legible (resumen del chat) ─────────────────────
@@ -255,6 +344,7 @@ const PLUMA_SENSOR_TXT = { 1: 'sube', 2: 'baja', 3: 'stop forzado' };
 /** Lista de frases cortas con lo que hará el PLC con este bloque "band". */
 export function describeBand(band) {
   const b = canonicalBand(band);
+  if (isBandEngine(b)) return describeBandEngine(b);
   const L = [];
   if (b.enable) {
     L.push(`Avanza en dirección ${b.direction === 'izquierda' ? '2 (izquierda)' : '1 (derecha)'}`

@@ -49,7 +49,7 @@ function bandaTarget() {
 // Esquema SVG de la banda: solo se le pasa la lectura para pintarla.
 import { paintBandLive } from './renderer.js';
 // Misma forma canónica del bloque "band" que usa el asistente.
-import { canonicalBand } from './equipment.js';
+import { canonicalBand, isBandEngine } from './equipment.js';
 
 const POLL_MS = 1500;
 // Segundos que puede estar CfgReady=0 con una configuración válida antes de
@@ -60,6 +60,7 @@ let timer = null;
 let enVuelo = false;          // evita solapar peticiones si el PLC va lento
 let sinCfgDesde = null;       // instante en que CfgReady pasó a 0
 let ultimoEstado = null;
+let bandaMotor = null;        // programa abierto del motor configurable (ST v6)
 
 const $ = (id) => document.getElementById(id);
 
@@ -459,8 +460,57 @@ function pintarEstado(est) {
   } else {
     alerta('');
   }
+  pintarMotor(est);
   pintarDiagnostico(est);
   paintBandLive($('bandPanel'), est, { paro: !!est.gen_stop });
+}
+
+// ST v6: estado del motor configurable (%R460..%R499) leido del PLC.
+function pintarMotor(est) {
+  const caja = $('bcMotor'), txt = $('bcMotorTxt');
+  if (!caja || !txt) return;
+  const mc = est.motor_configurable || {};
+  const activo = mc.disponible && est.engine_mode === 1;
+  caja.hidden = !(activo || bandaMotor);
+  if (caja.hidden) return;
+  let texto, clase = '';
+  if (bandaMotor && !mc.disponible) {
+    texto = 'El PLC tiene el ST v5: descarga el ST v6 (motor configurable) para usar este programa.';
+    clase = 'is-err';
+  } else if (!activo) {
+    texto = 'Motor configurable listo en el PLC: carga el programa para activarlo.';
+    clase = 'is-off';
+  } else if (!mc.valido) {
+    texto = `Motor configurable: el PLC rechaza ${mc.error || 'un campo'}.`;
+    clase = 'is-err';
+  } else {
+    texto = `Motor: ${mc.motor} · dirección ${mc.direccion}`
+      + (mc.secuencia_activa ? ` · paso ${mc.paso} (${mc.paso_tiempo_s} s)` : '')
+      + (mc.falla_plumas ? ' · falla de pluma' : '');
+    clase = mc.motor === 'en marcha' ? 'is-run' : mc.motor === 'detenido' ? 'is-off' : 'is-wait';
+  }
+  badge('bcMotorTxt', texto, clase, 'ti-cpu');
+}
+
+// Botones virtuales APP1/APP2: activos MIENTRAS se mantienen presionados.
+function instalarBotonesApp() {
+  for (const n of [1, 2]) {
+    const btn = $(`bcApp${n}`);
+    if (!btn) continue;
+    let presionado = false;
+    const enviar = async (activo) => {
+      if (presionado === activo) return;
+      presionado = activo;
+      btn.classList.toggle('is-held', activo);
+      try {
+        await postear('/banda/boton-app', { boton: n, activo }, 8000);
+      } catch (e) {
+        mensaje(`APP${n}: ${e.message}`, 'err');
+      }
+    };
+    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); enviar(true); });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, () => enviar(false));
+  }
 }
 
 // ── Polling ────────────────────────────────────────────────────
@@ -528,7 +578,10 @@ async function enviarConfig() {
   const crudo = construirBand();
   const errores = revisar(crudo);
   if (errores.length) { mensaje(errores[0], 'err'); return; }
-  const band = canonicalBand(crudo);
+  let band = canonicalBand(crudo);
+  // ST v6: si el programa abierto es del motor configurable, el formulario
+  // solo ajusta movimiento/frecuencia/paros; la logica viaja intacta.
+  if (bandaMotor) band = { ...band, engine: JSON.parse(JSON.stringify(bandaMotor.engine)) };
 
   // Cambio de frecuencia = caso especial. El backend siempre para la banda,
   // reescribe los parámetros, dispara NewCfgFlag y espera CfgReady, así que
@@ -574,6 +627,7 @@ function cerrarAvisoStart() {
 }
 
 function instalar() {
+  instalarBotonesApp();
   // Dirección: si el PLC ya tiene la configuración armada, el cambio de
   // sentido se aplica en el acto (el ST lee DirCmd en vivo y no necesita
   // reset). Si todavía no lo está, solo queda seleccionado para el envío.
@@ -731,6 +785,9 @@ export function cargarBandDesdePrograma(program) {
   const crudo = program?.metadata?.engine_config?.band;
   if (!crudo || !$('bandControl')) return;
   const band = canonicalBand(crudo);
+  bandaMotor = isBandEngine(band) ? band : null;
+  const caja = $('bcMotor');
+  if (caja) caja.hidden = !bandaMotor;
 
   const mov = $('bcMove');
   if (mov) mov.checked = band.enable !== false;

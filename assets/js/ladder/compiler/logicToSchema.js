@@ -470,7 +470,183 @@ function bandOut(type, addr, ctx, params) {
   };
 }
 
+// ── Motor configurable de la banda (ST v6, band.engine) → rungs ──
+// Vista Ladder CONCEPTUAL de los bloques que el backend compila a %R200..%R459
+// (banda_motor.py). Cada bloque es un rung: condiciones (serie = AND,
+// paralelo = OR), timers, contadores, memorias, motor, salidas y pasos.
+// El PLC ejecuta el motor genérico del ST v6; esto solo lo dibuja.
+const ENG_FISICA = { I1: 'I1', I2: 'I2', I3: 'I3', S1: 'I4', S2: 'I5' };
+const ENG_ALIAS = { BOTON_ARRANQUE: 'I1', BOTON_VERDE: 'I1', BOTON_AUX: 'I2', SENSOR1: 'S1', SENSOR_1: 'S1',
+  SENSOR2: 'S2', SENSOR_2: 'S2', I4: 'S1', I5: 'S2', CORRIENDO: 'BANDA_CORRIENDO', DETENIDA: 'BANDA_DETENIDA' };
+const ENG_SALIDA = {
+  verde: { q: 'Q3', lamp: 'green' }, amarilla: { q: 'Q4', lamp: 'yellow' }, roja: { q: 'Q5', lamp: 'red' },
+  pluma1_sube: { q: 'Q8' }, pluma1_baja: { q: 'Q9' }, pluma2_sube: { q: 'Q6' }, pluma2_baja: { q: 'Q7' },
+};
+const ENG_TIMER = { ton: 'TON', on_delay: 'TON', tof: 'TOF', off_delay: 'TOF', pulso: 'TP', tp: 'TP',
+  retardo: 'RETARDO', delay: 'RETARDO', espera: 'RETARDO' };
+
+function engLista(v) { return Array.isArray(v) ? v : v == null ? [] : [v]; }
+
+// Señal simbólica → contacto. NOT X es un contacto NC; el flanco de NOT X es
+// el flanco de bajada de X.
+function engSig(nombre, tipo = 'no') {
+  let s = String(nombre ?? '').trim().toUpperCase();
+  const m = s.match(/^(NOT\s+|NO\s+|!|~|\/)\s*(.+)$/);
+  const neg = !!m;
+  if (m) s = m[2].trim();
+  s = s.replace(/\s+/g, '_');
+  s = ENG_ALIAS[s] || s;
+  const t = neg ? (tipo === 'pe' ? 'ne' : 'nc') : tipo;
+  return { t, a: ENG_FISICA[s] || s };
+}
+
+function engUsa(eng, nombre) {
+  return JSON.stringify(eng).toUpperCase().includes(`"${nombre}`)
+      || JSON.stringify(eng).toUpperCase().includes(`NOT ${nombre}`);
+}
+
+function compileBandEngine(band, ctx) {
+  const eng = band.engine || {};
+  const rungs = [];
+  const mover = band.enable !== false;
+  const dir = bandDir(band.direction);
+  const freq = num(band.freq_hz);
+  const serie = (comment, contactos, term) => rungs.push(bandRungSerie(comment, contactos, term, ctx));
+
+  // Condiciones: AND en serie, OR en paralelo.
+  for (const c of engLista(eng.condiciones)) {
+    const ent = engLista(c.entradas).filter(x => x != null && x !== '');
+    if (!ent.length) continue;
+    const or = /^(or|o)$/i.test(String(c.op || 'and'));
+    const fl = String(c.flanco || 'nivel').toLowerCase();
+    const flTxt = /sub|flanco/.test(fl) ? ' · al activarse (flanco)' : /baj/.test(fl) ? ' · al desactivarse (flanco)' : '';
+    const comment = `${c.id}: ${ent.join(or ? ' OR ' : ' AND ')}${flTxt}`;
+    const term = bandOut('coil', c.id, ctx);
+    rungs.push(or ? bandRungOr(comment, ent.map(e => [engSig(e)]), term, ctx)
+                  : bandRungSerie(comment, ent.map(e => engSig(e)), term, ctx));
+  }
+
+  // Timers (base 0.1 s en el PLC).
+  for (const t of engLista(eng.timers)) {
+    const tipo = ENG_TIMER[String(t.tipo || '').toLowerCase()] || String(t.tipo || '?').toUpperCase();
+    const seg = Number(t.segundos) || 0;
+    const que = { TON: 'activo si la entrada sigue activa', TOF: 'sigue activo tras apagarse la entrada',
+                  TP: 'pulso al activarse la entrada', RETARDO: 'se activa N s después del flanco y se queda' }[tipo] || '';
+    serie(`${t.id} ${tipo} ${seg} s: ${que}`,
+      [engSig(t.entrada, tipo === 'TP' || tipo === 'RETARDO' ? 'pe' : 'no')],
+      bandOut(tipo === 'TOF' ? 'block_tof' : 'block_ton', t.id, ctx,
+              { preset_ms: Math.round(seg * 1000), band: { title: tipo, sub: `${seg} s` } }));
+    if (t.reset) serie(`${t.id}: reset con ${t.reset}`, [engSig(t.reset)], bandOut('coil_r', t.id, ctx));
+  }
+
+  // Contadores (flancos de subida de cualquier señal).
+  for (const c of engLista(eng.contadores)) {
+    const ciclico = /cicl|rearme|cada/i.test(String(c.modo || ''));
+    serie(`${c.id}: cuenta ${c.entrada} hasta ${c.preset}${ciclico ? ' · pulso y vuelve a 0 (cada N)' : ' · se queda hasta reset'}`,
+      [engSig(c.entrada, 'pe')],
+      bandOut('block_ctu', c.id, ctx, { preset: Number(c.preset) || 0, band: { title: 'CTU', sub: `PV ${c.preset}` } }));
+    if (c.reset) serie(`${c.id}: reset con ${c.reset}`, [engSig(c.reset)], bandOut('coil_r', c.id, ctx));
+  }
+
+  // Memorias set / reset.
+  for (const x of engLista(eng.memorias)) {
+    const prio = String(x.prioridad || 'reset').toLowerCase() === 'set' ? 'gana set' : 'gana reset';
+    if (x.set) serie(`${x.id}: set con ${x.set} (${prio})`, [engSig(x.set)], bandOut('coil_s', x.id, ctx));
+    if (x.reset) serie(`${x.id}: reset con ${x.reset}`, [engSig(x.reset)], bandOut('coil_r', x.id, ctx));
+  }
+
+  // Secuencia: un rung por paso (paso activo + transición → siguiente paso).
+  const sq = eng.secuencia;
+  const pasos = engLista(sq?.pasos);
+  if (sq && pasos.length) {
+    serie(`Secuencia: inicia con ${sq.inicio}${/cicl|loop/i.test(String(sq.modo || '')) ? ' · cíclica' : ' · una vez'}`
+      + `${sq.exclusiva === false ? '' : ' · manda sola sobre motor y salidas'}`,
+      [engSig(sq.inicio, 'pe')], bandOut('block_mov', 'PASO', ctx, { band: { title: 'MOV', sub: 'IN 1' } }));
+    if (sq.paro) serie(`Secuencia: se detiene con ${sq.paro}`, [engSig(sq.paro)], bandOut('block_mov', 'PASO', ctx, { band: { title: 'MOV', sub: 'IN 0' } }));
+    if (sq.reset) serie(`Secuencia: reinicia con ${sq.reset}`, [engSig(sq.reset)], bandOut('block_mov', 'PASO', ctx, { band: { title: 'MOV', sub: 'IN 0' } }));
+    pasos.forEach((p, i) => {
+      const n = i + 1;
+      const av = String(p.avanza || (p.senal ? 'flanco' : 'tiempo')).toLowerCase();
+      const contactos = [{ t: 'no', a: `PASO${n}` }];
+      if (av !== 'tiempo' && p.senal) contactos.push(engSig(p.senal, av === 'flanco' ? 'pe' : 'no'));
+      const sig = p.siguiente ? Number(p.siguiente) : (n < pasos.length ? n + 1 : (/cicl|loop/i.test(String(sq.modo || '')) ? 1 : 0));
+      const cuando = av === 'tiempo' ? `a los ${p.segundos} s` : av === 'flanco' ? `al activarse ${p.senal}`
+        : av === 'senal' ? `con ${p.senal}` : av === 'tiempo_y_senal' ? `a los ${p.segundos} s y ${p.senal}`
+        : `con ${p.senal} o a los ${p.segundos} s`;
+      serie(`Paso ${n}: ${engLista(p.acciones).join(', ').replace(/_/g, ' ') || 'sin acciones'} · avanza ${cuando}`,
+        contactos,
+        bandOut(av === 'tiempo' || av === 'tiempo_y_senal' || av === 'senal_o_tiempo' ? 'block_ton' : 'block_mov',
+                av === 'tiempo' || av === 'tiempo_y_senal' || av === 'senal_o_tiempo' ? `PASO${n}_T` : 'PASO', ctx,
+                av === 'tiempo' || av === 'tiempo_y_senal' || av === 'senal_o_tiempo'
+                  ? { preset_ms: Math.round((Number(p.segundos) || 0) * 1000), band: { title: 'TON', sub: `→ paso ${sig || 'fin'}` } }
+                  : { band: { title: 'MOV', sub: `IN ${sig}` } }));
+    });
+  }
+
+  // Motor: una sola máquina de estados (paro > pausa > dirección > marcha).
+  const m = eng.motor || {};
+  const marchaEnPasos = pasos.some(p => engLista(p.acciones).includes('marcha'));
+  const arranque = m.arranque || (mover && !marchaEnPasos && !m.paro && !m.invertir && !m.dir_1 && !m.dir_2 && !m.pausa ? 'I1' : null);
+  if (mover) {
+    const mientras = String(m.modo || '').toLowerCase() === 'mientras';
+    if (arranque) {
+      serie(`Marcha ${mientras ? 'mientras' : 'enclavada'}: ${arranque}${m.paro ? ` · paro ${m.paro}` : ''} · I3 siempre para`,
+        [engSig(arranque, mientras ? 'no' : 'pe'), ...(m.paro ? [engSig(`NOT ${m.paro}`)] : []), { t: 'nc', a: 'I3' }],
+        bandOut(mientras ? 'coil' : 'coil_s', 'RunLatch', ctx));
+    }
+    if (m.paro && !mientras) serie(`Paro de la banda: ${m.paro}`, [engSig(m.paro)], bandOut('coil_r', 'RunLatch', ctx));
+    if (m.pausa) serie(`Pausa mientras ${m.pausa} (reanuda sola)`, [engSig(m.pausa)], bandOut('coil', 'Pausa', ctx));
+    const rev = Number(m.paro_inversion_s) || 2;
+    for (const [k, sub, txt] of [['dir_1', 'IN 1', 'dirección 1'], ['dir_2', 'IN 2', 'dirección 2'], ['invertir', 'invierte', 'invierte el sentido']]) {
+      if (m[k]) serie(`${txt} con ${m[k]} · para ${rev} s y espera velocidad cero antes de girar`,
+        [engSig(m[k], 'pe')], bandOut('block_mov', 'DirTarget', ctx, { band: { title: 'MOV', sub } }));
+    }
+    serie(`VFD: ${dir === 'izquierda' ? 'MOV 34 (dir 2)' : 'MOV 18 (dir 1)'} → %R500 · ${freq ?? '?'} Hz × 100 → %R504`,
+      [{ t: 'no', a: 'RunLatch' }, ...(m.pausa ? [{ t: 'nc', a: 'Pausa' }] : []), { t: 'nc', a: 'I3' }],
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: dir === 'izquierda' ? 'IN 34' : 'IN 18' } }));
+  }
+
+  // Salidas: torreta y plumas.
+  const sal = eng.salidas || {};
+  for (const [k, info] of Object.entries(ENG_SALIDA)) {
+    if (!sal[k]) continue;
+    serie(`${k.replace(/_/g, ' ')} (${info.q}) con ${sal[k]}`, [engSig(sal[k])],
+      bandOut('coil', info.q, ctx, info.lamp ? { lamp_color: info.lamp } : undefined));
+  }
+  if (sq && pasos.length) {
+    for (const [k, info] of Object.entries(ENG_SALIDA)) {
+      const en = pasos.map((p, i) => (engLista(p.acciones).includes(k) ? i + 1 : 0)).filter(Boolean);
+      if (!en.length || sal[k]) continue;
+      rungs.push(bandRungOr(`${k.replace(/_/g, ' ')} (${info.q}) en los pasos ${en.join(', ')}`,
+        en.map(n => [{ t: 'no', a: `PASO${n}` }]),
+        bandOut('coil', info.q, ctx, info.lamp ? { lamp_color: info.lamp } : undefined), ctx));
+    }
+  }
+
+  if (!rungs.length) {
+    serie('Motor configurable sin bloques: el PLC no hace nada', [],
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: 'IN 1' } }));
+  }
+
+  const usaPluma = (n) => !!(sal[`pluma${n}_sube`] || sal[`pluma${n}_baja`])
+    || pasos.some(p => engLista(p.acciones).some(a => String(a).startsWith(`pluma${n}`)));
+  const view = {
+    enable: true, mover, engine: true,
+    direction: dir, vfd_cmd: dir === 'izquierda' ? 34 : 18, freq_hz: freq,
+    start_button: arranque ? String(arranque).toUpperCase() : 'secuencia',
+    stop_mode: [1, 2, 3].includes(Number(band.stop_mode)) ? Number(band.stop_mode) : 0,
+    auto_stop_mode: 0, auto_stop_s: null, wait_s1_s: null, wait_s2_s: null,
+    uses: {
+      banda: true, vfd: mover, freq: freq != null,
+      s1: engUsa(eng, 'S1'), s2: engUsa(eng, 'S2'),
+      torreta: true, pluma1: usaPluma(1), pluma2: usaPluma(2),
+    },
+  };
+  return { rungs, view };
+}
+
 function compileBand(band, ctx) {
+  if (band && band.engine && typeof band.engine === 'object') return compileBandEngine(band, ctx);
   const rungs = [];
   const dir      = bandDir(band.direction);
   const dirN     = dir === 'izquierda' ? 2 : 1;

@@ -141,6 +141,19 @@ export function bandaActiva(band) {
 // _validar_banda en plc_maestro.py: mismos campos y mismos rangos.
 function validarBanda(band, errors) {
   if (typeof band !== 'object') { errors.push('"band" no es un objeto.'); return; }
+  // ST v6 — motor configurable: la validación completa la hace el backend
+  // (banda_motor.validar_motor) antes de escribir; aquí solo la forma.
+  if (band.engine != null) {
+    if (typeof band.engine !== 'object' || Array.isArray(band.engine)) {
+      errors.push('"band.engine" debe ser un objeto.');
+      return;
+    }
+    for (const k of ['condiciones', 'timers', 'contadores', 'memorias']) {
+      if (band.engine[k] != null && !Array.isArray(band.engine[k])) errors.push(`"band.engine.${k}" debe ser una lista.`);
+    }
+    if (band.enable !== false && band.freq_hz != null) rangoEntero(band.freq_hz, 1, 327, 'band', 'freq_hz', errors);
+    return;
+  }
   // 1..327 Hz: el programa maestro ST multiplica la consigna por 100 sobre un
   // INT de 16 bits, asi que fuera de ese rango declara la configuracion
   // invalida (CfgValid = FALSE) y el VFD no arranca.
