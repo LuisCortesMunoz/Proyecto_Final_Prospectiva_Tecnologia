@@ -36,6 +36,8 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let logic = null;
   let source = 'backend';
   let ejemplo_id = '';
+  let confirmacion = null;
+  let analysis = {};
   let equipo = normalizeDevice(device);
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
@@ -83,6 +85,25 @@ export async function generateProgram(text, profile, { signal, context, onProgre
           telemetry: { source: 'backend', latency_ms: Math.round(ahora() - t0) },
         };
       }
+      // Motor v7: no hay alternativa segura -> se informa, no se dibuja nada.
+      if (data.status === 'not_supported') {
+        return {
+          notSupported: true,
+          analysis: data.analysis || {},
+          warnings: Array.isArray(data.warnings) ? data.warnings : [],
+          telemetry: { source: 'backend', latency_ms: Math.round(ahora() - t0) },
+        };
+      }
+      // Motor v7: alternativa que cambia lo pedido. Se compila para poder
+      // revisarla, pero el llamador NO la aplica sin confirmacion explicita y
+      // el backend no la carga al PLC mientras confirmado !== true.
+      if (data.status === 'needs_confirmation') {
+        confirmacion = {
+          questions: Array.isArray(data.questions) ? data.questions : [],
+          compatibilidad: data.analysis?.compatibilidad || {},
+        };
+      }
+      analysis = data.analysis || {};
       logic = data.logic || data;
       ejemplo_id = data.ejemplo_id || '';
       if (data.device) equipo = data.device;
@@ -126,7 +147,24 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       repairs: nv.repairs.length,
     },
     ejemplo_id,
+    analysis,
+    // Motor v7: presente solo si es una alternativa que requiere confirmacion.
+    needsConfirmation: !!confirmacion,
+    confirmation: confirmacion,
   };
+}
+
+/**
+ * Marca una alternativa del motor v7 como ACEPTADA por el usuario. Solo asi
+ * /aplicar-plc la carga al PLC (el backend responde 409 si falta).
+ */
+export function confirmarAlternativa(program) {
+  const cfg = program?.metadata?.engine_config;
+  if (cfg && typeof cfg === 'object') {
+    cfg.confirmado = true;
+    if (cfg.band?.engine && typeof cfg.band.engine === 'object') cfg.band.engine.confirmado = true;
+  }
+  return program;
 }
 
 /**

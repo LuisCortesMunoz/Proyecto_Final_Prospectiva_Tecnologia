@@ -137,6 +137,63 @@ export function bandaActiva(band) {
   return !!band && typeof band === 'object' && (band.enable === undefined || !!band.enable);
 }
 
+// Motor LAVO v7: recursos FÍSICOS de la banda (espejo de lavo_motor.HW_BANDA).
+// El editor no dibuja lógica que el PLC no puede ejecutar: una salida o
+// entrada que no existe, I3 como arranque o una pluma que sube y baja a la
+// vez se rechazan aquí igual que en el backend y en el PLC.
+const V7_SALIDAS = new Set(['Q3', 'Q4', 'Q5', 'Q6', 'Q7', 'Q8', 'Q9']);
+const V7_LAMPARAS = new Set(['Q3', 'Q4', 'Q5']);
+const V7_ENTRADAS = new Set(['I1', 'I2', 'I3', 'I4', 'I5']);
+const V7_PARES = [['Q8', 'Q9', 'pluma 1'], ['Q6', 'Q7', 'pluma 2']];
+const v7Q = (q) => {
+  const k = String(q || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const a = { verde: 'Q3', amarilla: 'Q4', roja: 'Q5', pluma1_sube: 'Q8', pluma1_baja: 'Q9', pluma2_sube: 'Q6', pluma2_baja: 'Q7' };
+  if (a[k]) return a[k];
+  const m = k.match(/^%?q_?0*(\d+)$/);
+  return m ? `Q${Number(m[1])}` : String(q).toUpperCase();
+};
+function v7Base(s) {
+  let t = String(s ?? '').trim().replace(/^(NOT\s+|NO\s+|!|~|\/)\s*/i, '').toUpperCase().replace(/[\s.-]+/g, '_');
+  if (/^1[1-5]$/.test(t)) t = `I${t[1]}`;
+  return ({ S1: 'I4', S2: 'I5' })[t] || t.replace(/^([IQ])_?0*(\d+)$/, '$1$2');
+}
+function validarMotorV7(band, errors) {
+  const e = band.engine;
+  for (const [k, v] of Object.entries(e.salidas || {})) {
+    const q = v7Q(k);
+    if (!V7_SALIDAS.has(q)) errors.push(`salidas.${k}: ${q} no está cableada en la banda (Q3..Q9).`);
+    if (v7Base(v) && /^I\d+$/.test(v7Base(v)) && !V7_ENTRADAS.has(v7Base(v))) errors.push(`salidas.${k}: la entrada ${v7Base(v)} no existe (I1..I5).`);
+  }
+  const senales = [];
+  const m = e.motor || {};
+  for (const k of ['arranque', 'paro', 'pausa', 'dir_1', 'dir_2', 'invertir']) if (m[k]) senales.push([`motor.${k}`, m[k]]);
+  for (const c of e.condiciones || []) for (const x of c.entradas || []) senales.push([`${c.id}`, x]);
+  for (const t of e.timers || []) for (const k of ['entrada', 'reset']) if (t[k]) senales.push([`${t.id}.${k}`, t[k]]);
+  for (const c of e.contadores || []) for (const k of ['entrada', 'descuenta', 'reset']) if (c[k]) senales.push([`${c.id}.${k}`, c[k]]);
+  for (const x of e.memorias || []) for (const k of ['set', 'reset']) if (x[k]) senales.push([`${x.id}.${k}`, x[k]]);
+  for (const [tag, s] of senales) {
+    const b = v7Base(s);
+    if (/^I\d+$/.test(b) && !V7_ENTRADAS.has(b)) errors.push(`${tag}: la entrada ${b} no existe en la banda (I1..I5).`);
+    if (/^Q\d+$/.test(b) && !V7_SALIDAS.has(b)) errors.push(`${tag}: la salida ${b} no existe en la banda.`);
+  }
+  if (v7Base(m.arranque) === 'I3') errors.push('motor.arranque: I3 es el paro de emergencia; no puede arrancar la banda.');
+  if ((e.secuencias || []).length > 2) errors.push('Máximo 2 secuencias (SQ1 y SQ2).');
+  for (const sq of e.secuencias || []) {
+    if (v7Base(sq.inicio) === 'I3') errors.push(`${sq.id}.inicio: I3 es el paro de emergencia; no inicia secuencias.`);
+    const pasos = sq.pasos || [];
+    if (!pasos.length || pasos.length > 16) errors.push(`${sq.id}: necesita entre 1 y 16 pasos.`);
+    pasos.forEach((p, i) => {
+      const qs = (p.salidas || []).map(v7Q);
+      for (const q of qs) if (!V7_SALIDAS.has(q)) errors.push(`${sq.id} paso ${i + 1}: ${q} no está cableada en la banda.`);
+      for (const [a, b, n] of V7_PARES) if (qs.includes(a) && qs.includes(b)) errors.push(`${sq.id} paso ${i + 1}: ${n} no puede subir y bajar a la vez.`);
+      if ((p.motor || []).length && band.enable === false) errors.push(`${sq.id} paso ${i + 1}: mueve la banda pero el programa no tiene movimiento.`);
+    });
+  }
+  for (const q of (e.opciones?.luces_paro || []).map(v7Q)) {
+    if (!V7_LAMPARAS.has(q)) errors.push(`opciones.luces_paro: ${q} no es una lámpara (Q3, Q4, Q5).`);
+  }
+}
+
 // Valida el bloque "band" (banda transportadora + VFD). Espejo de
 // _validar_banda en plc_maestro.py: mismos campos y mismos rangos.
 function validarBanda(band, errors) {
@@ -148,10 +205,11 @@ function validarBanda(band, errors) {
       errors.push('"band.engine" debe ser un objeto.');
       return;
     }
-    for (const k of ['condiciones', 'timers', 'contadores', 'memorias']) {
+    for (const k of ['condiciones', 'timers', 'contadores', 'memorias', 'secuencias']) {
       if (band.engine[k] != null && !Array.isArray(band.engine[k])) errors.push(`"band.engine.${k}" debe ser una lista.`);
     }
     if (band.enable !== false && band.freq_hz != null) rangoEntero(band.freq_hz, 1, 327, 'band', 'freq_hz', errors);
+    if (String(band.engine.version) === '7') validarMotorV7(band, errors);
     return;
   }
   // 1..327 Hz: el programa maestro ST multiplica la consigna por 100 sobre un

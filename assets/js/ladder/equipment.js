@@ -280,7 +280,90 @@ const TIMER_TXT = {
 const TIMER_CANON = { ton: 'TON', on_delay: 'TON', tof: 'TOF', off_delay: 'TOF', pulso: 'PULSO', tp: 'PULSO',
   retardo: 'RETARDO', delay: 'RETARDO', espera: 'RETARDO' };
 
+// ── Motor LAVO v7: descripción legible (espejo de lavo_motor.describir_motor) ──
+const V7_SIG_TXT = { ...SIG_TXT, I4: 'sensor S1', I5: 'sensor S2', PRIMER_CICLO: 'al cargar el programa',
+  APP3: 'botón 3 de la app', APP4: 'botón 4 de la app', PARO_SOFTWARE: 'paro por software',
+  Q3: 'torreta verde encendida', Q4: 'torreta amarilla encendida', Q5: 'torreta roja encendida' };
+const V7_Q_TXT = { Q3: 'Q3 torreta verde', Q4: 'Q4 torreta amarilla', Q5: 'Q5 torreta roja',
+  Q6: 'Q6 pluma 2 sube', Q7: 'Q7 pluma 2 baja', Q8: 'Q8 pluma 1 sube', Q9: 'Q9 pluma 1 baja' };
+const V7_Q_ALIAS = { verde: 'Q3', amarilla: 'Q4', roja: 'Q5', pluma1_sube: 'Q8', pluma1_baja: 'Q9',
+  pluma2_sube: 'Q6', pluma2_baja: 'Q7' };
+function v7SigTxt(s) {
+  if (s == null || s === '') return '—';
+  const m = String(s).trim().match(/^(NOT\s+|NO\s+|!|~)\s*(.+)$/i);
+  let base = (m ? m[2] : String(s)).trim().toUpperCase().replace(/[\s.-]+/g, '_');
+  if (/^1[1-5]$/.test(base)) base = `I${base[1]}`;
+  base = ({ S1: 'I4', S2: 'I5' })[base] || base;
+  const txt = V7_SIG_TXT[base] || base.replace(/_/g, ' ');
+  return m ? `NO ${txt}` : txt;
+}
+const v7QTxt = (q) => { const k = V7_Q_ALIAS[String(q).toLowerCase()] || String(q).toUpperCase(); return V7_Q_TXT[k] || k; };
+const V7_TIMER_TXT = {
+  ...TIMER_TXT,
+  TONR: (e, s) => `acumula el tiempo de ${e} y se activa a los ${s} s (no se borra al soltar)`,
+  INTERMITENTE: (e, s, off) => `parpadea mientras ${e}: ${s} s encendido / ${off} s apagado`,
+};
+const V7_TIMER_CANON = { ...TIMER_CANON, tonr: 'TONR', retentivo: 'TONR', acumulado: 'TONR',
+  intermitente: 'INTERMITENTE', parpadeo: 'INTERMITENTE', blink: 'INTERMITENTE', oscilador: 'INTERMITENTE' };
+
+export function describeBandEngineV7(band) {
+  const e = band.engine || {};
+  const L = [];
+  L.push(band.enable !== false
+    ? `Motor LAVO v7: banda hacia la ${band.direction === 'izquierda' ? 'izquierda (dir 2)' : 'derecha (dir 1)'}${band.freq_hz != null ? ` a ${band.freq_hz} Hz` : ''}`
+    : 'Motor LAVO v7 sin movimiento de banda (torreta, plumas y lógica)');
+  const m = e.motor || {};
+  if (m.arranque) L.push(`Arranca con ${v7SigTxt(m.arranque)}${String(m.modo).toLowerCase() === 'mientras' ? ' (mientras esté activo)' : ' y se queda en marcha'}`);
+  if (m.paro) L.push(`Se detiene con ${v7SigTxt(m.paro)}`);
+  if (m.pausa) L.push(`Pausa mientras ${v7SigTxt(m.pausa)}`);
+  if (m.dir_1) L.push(`Dirección 1 con ${v7SigTxt(m.dir_1)}`);
+  if (m.dir_2) L.push(`Dirección 2 con ${v7SigTxt(m.dir_2)}`);
+  if (m.invertir) L.push(`Invierte el sentido con ${v7SigTxt(m.invertir)} (frena ${m.paro_inversion_s ?? 2} s antes)`);
+  for (const c of lista(e.condiciones)) {
+    const op = String(c.op || 'AND').toUpperCase();
+    const sep = { AND: ' Y ', Y: ' Y ', OR: ' O ', O: ' O ', XOR: ' XOR ', NAND: ' Y ', NOR: ' O ' }[op] || ' Y ';
+    const txt = lista(c.entradas).map(v7SigTxt).join(sep);
+    L.push(`${c.id}: ${op === 'NAND' || op === 'NOR' ? `NO (${txt})` : txt}`
+      + (/sub|flanco/i.test(String(c.flanco || '')) ? ' (al activarse)' : /baj/i.test(String(c.flanco || '')) ? ' (al desactivarse)' : ''));
+  }
+  for (const x of lista(e.memorias)) L.push(`${x.id} (memoria): se activa con ${v7SigTxt(x.set)} y se apaga con ${v7SigTxt(x.reset)}`);
+  for (const t of lista(e.timers)) {
+    const tipo = V7_TIMER_CANON[String(t.tipo || '').toLowerCase()] || String(t.tipo || '?').toUpperCase();
+    const f = V7_TIMER_TXT[tipo];
+    L.push(`${t.id} (${tipo}): ${f ? f(v7SigTxt(t.entrada), t.segundos, t.segundos_off ?? t.segundos) : ''}${t.reset ? ` · reset con ${v7SigTxt(t.reset)}` : ''}`);
+  }
+  for (const c of lista(e.contadores)) {
+    const modo = String(c.modo || 'una_vez').toLowerCase();
+    L.push(`${c.id}: cuenta ${v7SigTxt(c.entrada)}${c.descuenta ? ` y descuenta ${v7SigTxt(c.descuenta)}` : ''} hasta ${c.preset}`
+      + (/cicl|rearme|cada/.test(modo) ? ' y vuelve a empezar' : /nivel/.test(modo) ? ' (activo mientras la cuenta ≥ preset)' : ' y se queda activo')
+      + (c.reset ? ` · reset con ${v7SigTxt(c.reset)}` : ''));
+  }
+  for (const [k, v] of Object.entries(e.salidas || {})) if (v) L.push(`${v7QTxt(k)}: con ${v7SigTxt(v)}`);
+  for (const sq of lista(e.secuencias)) {
+    const modo = String(sq.modo || 'una_vez').toLowerCase();
+    L.push(`${sq.id}: ${lista(sq.pasos).length} pasos, inicia con ${v7SigTxt(sq.inicio)}`
+      + (/infin|cicl|loop/.test(modo) ? ', se repite sin fin' : /repet|veces/.test(modo) ? `, se repite ${sq.repeticiones} veces` : ', una vez')
+      + (sq.paro ? `, se detiene con ${v7SigTxt(sq.paro)}` : '') + (sq.reset ? `, reinicia con ${v7SigTxt(sq.reset)}` : '')
+      + (sq.pausa ? `, pausa con ${v7SigTxt(sq.pausa)}` : ''));
+    lista(sq.pasos).forEach((p, i) => {
+      const av = String(p.avanza || (p.senal ? 'flanco' : 'tiempo')).toLowerCase();
+      const cuando = av === 'tiempo' ? `a los ${p.segundos} s` : av === 'flanco' ? `cuando se active ${v7SigTxt(p.senal)}`
+        : av === 'senal' ? `mientras ${v7SigTxt(p.senal)}` : av === 'tiempo_y_senal' ? `a los ${p.segundos} s si ${v7SigTxt(p.senal)}`
+        : `con ${v7SigTxt(p.senal)} o a los ${p.segundos} s`;
+      const acc = [...lista(p.salidas).map(v7QTxt), ...lista(p.motor)].join(', ') || 'nada';
+      const alt = p.alternativa && p.alternativa.senal ? ` · si ${v7SigTxt(p.alternativa.senal)} → ${String(p.alternativa.ir_a).toLowerCase() === 'fin' ? 'fin' : `paso ${p.alternativa.ir_a}`}` : '';
+      L.push(`  Paso ${i + 1}: ${acc} · avanza ${cuando}${p.siguiente ? ` → ${String(p.siguiente).toLowerCase() === 'fin' ? 'fin' : `paso ${p.siguiente}`}` : ''}${alt}`);
+    });
+  }
+  const op = e.opciones || {};
+  if (op.pluma_max_s) L.push(`Plumas: se cortan tras ${op.pluma_max_s} s moviéndose`);
+  if (lista(op.luces_paro).length) L.push(`Con el paro I3 quedan encendidas: ${lista(op.luces_paro).map(v7QTxt).join(', ')}`);
+  L.push('Siempre: I3 detiene motor, secuencias y plumas, y borra memorias y timers');
+  return L;
+}
+
 export function describeBandEngine(band) {
+  if (String(band?.engine?.version) === '7') return describeBandEngineV7(band);
   const e = band.engine || {};
   const L = [];
   if (band.enable !== false) {

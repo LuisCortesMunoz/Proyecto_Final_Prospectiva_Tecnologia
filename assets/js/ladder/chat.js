@@ -5,7 +5,7 @@
  * la IA devuelve el JSON lógico simple (ver CONTRACT.md), el front lo valida,
  * compila a geometría y lo aplica al editor vía window.LadderEditor.
  */
-import { generateProgram } from './generate.js';
+import { generateProgram, confirmarAlternativa } from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
 import { describeBand } from './equipment.js';
 
@@ -46,6 +46,8 @@ function body(text, opts) {
   }
   let html = `<div class="cmsg-text">${esc(text)}</div>`;
   if (opts.clarify)  html += clarifyHtml(opts.clarify);
+  if (opts.compat)   html += compatHtml(opts.compat);
+  if (opts.altId)    html += altButtonsHtml(opts.altId);
   if (opts.logic)    html += logicSummaryHtml(opts.logic);
   if (opts.telemetry) html += telemetryHtml(opts.telemetry);
   if (opts.warnings && opts.warnings.length) html += listHtml(`${opts.warnings.length} aviso(s)`, opts.warnings);
@@ -116,6 +118,30 @@ function logicSummaryHtml(logic) {
   return `<details class="cmsg-logic" open><summary>¿Qué entendió la IA?</summary><table>${rows}</table></details>`;
 }
 
+// ── Motor v7: compatibilidad de la solicitud (punto 1) ─────────
+// Que se conservo, modifico o simplifico y que no se puede hacer.
+function compatHtml(c) {
+  if (!c || typeof c !== 'object') return '';
+  const filas = [];
+  if (c.intencion) filas.push(['Intención', c.intencion]);
+  for (const [k, t] of [['conservado', 'Se conserva'], ['modificado', 'Se modifica'],
+                        ['simplificado', 'Se simplifica'], ['no_soportado', 'No es posible']]) {
+    for (const x of c[k] || []) filas.push([t, x]);
+  }
+  if (!filas.length) return '';
+  const rows = filas.map(([a, b]) => `<tr><td class="cml-out">${esc(a)}</td><td>${esc(b)}</td></tr>`).join('');
+  return `<details class="cmsg-logic" open><summary>Compatibilidad: ${esc(c.compatibilidad || '')}</summary><table>${rows}</table></details>`;
+}
+
+const ALT_BTN = 'margin:3px;padding:5px 12px;border-radius:12px;border:1px solid var(--border,#3a3a4a);cursor:pointer;';
+function altButtonsHtml(altId) {
+  return `<div class="cmsg-actions" data-alt-id="${esc(altId)}">
+    <button type="button" class="alt-btn" data-accion="usar" style="${ALT_BTN}background:var(--accent,#2E7DE1);color:#fff;">Usar la alternativa</button>
+    <button type="button" class="alt-btn" data-accion="cancelar" style="${ALT_BTN}background:transparent;color:inherit;">Cancelar</button>
+  </div>`;
+}
+const _alternativas = new Map();
+
 // ── Aclaración de prompts ambiguos (Fase 1 del agente) ────────
 // El backend devolvió status:needs_clarification con preguntas. Se pintan
 // como chips; al pulsar uno, su valor se agrega al input (ver el handler en
@@ -178,6 +204,23 @@ async function onSend() {
       input.focus();
       return;
     }
+    // Motor v7: sin alternativa segura -> solo se explica la limitacion.
+    if (out.notSupported) {
+      thinking.update('No es posible hacerlo de forma segura con este hardware:', {
+        compat: out.analysis?.compatibilidad, warnings: out.warnings,
+      });
+      return;
+    }
+    // Motor v7: alternativa que cambia lo pedido -> NO se aplica hasta que el
+    // usuario la acepte (y el PLC tampoco la acepta sin esa confirmacion).
+    if (out.needsConfirmation) {
+      const altId = 'alt' + Date.now().toString(36);
+      _alternativas.set(altId, out);
+      thinking.update('Propuesta alternativa (revísala antes de usarla):', {
+        compat: out.confirmation?.compatibilidad, logic: out.logic, warnings: out.warnings, altId,
+      });
+      return;
+    }
     bridge()?.setProgram(out.program);
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
     thinking.update(
@@ -231,6 +274,24 @@ document.addEventListener('DOMContentLoaded', () => {
         body: JSON.stringify({ ejemplo_id: ejemploId, status }),
       });
     } catch { /* feedback es best-effort */ }
+  });
+
+  // Motor v7: aceptar o cancelar una alternativa propuesta.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.alt-btn');
+    if (!btn) return;
+    const wrap = btn.closest('.cmsg-actions');
+    const out = _alternativas.get(wrap?.dataset.altId);
+    if (!out) return;
+    _alternativas.delete(wrap.dataset.altId);
+    wrap.querySelectorAll('.alt-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
+    if (btn.dataset.accion === 'usar') {
+      bridge()?.setProgram(confirmarAlternativa(out.program));
+      bridge()?.log('ok', `Alternativa aceptada y aplicada al editor (${out.program.rungs.length} rungs). Revísala antes de cargarla al PLC.`);
+      addMsg('ai', 'Alternativa aceptada. Quedó en el editor; se cargará al PLC solo cuando pulses Cargar.');
+    } else {
+      addMsg('ai', 'Alternativa descartada: el editor no cambió.');
+    }
   });
 
   // Chips de aclaración (Fase 1): al pulsar, agrega el valor al input para

@@ -667,6 +667,21 @@ async function sendLadderRequest(message) {
       return;
     }
 
+    // Motor v7: sin alternativa segura -> se explica, no hay programa.
+    if (out.notSupported) {
+      const c = out.analysis?.compatibilidad || {};
+      addErrorMessage('No es posible hacerlo de forma segura con este hardware: '
+        + [...(c.no_soportado || []), ...(out.warnings || [])].join(' · '));
+      setBackendStatus('ok', 'Backend conectado');
+      return;
+    }
+    // Motor v7: alternativa -> se muestra, pero el PLC no la acepta hasta
+    // confirmarla en el editor (Asistente IA > "Usar la alternativa").
+    if (out.needsConfirmation) {
+      const c = out.confirmation?.compatibilidad || {};
+      addErrorMessage('Propuesta ALTERNATIVA (requiere confirmación en el editor antes de cargarla): '
+        + [...(c.modificado || []), ...(c.simplificado || []), ...(c.no_soportado || [])].join(' · '));
+    }
     addLadderMessage(out);
     lastLadderProgram = out.program;
     ladderPrompts.push(message);

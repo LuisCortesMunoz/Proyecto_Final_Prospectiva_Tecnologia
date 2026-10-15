@@ -364,7 +364,7 @@ function pintarEstado(est) {
   // Sensores: detección real, conteo actual/objetivo y temporizador.
   // Con el motor configurable los eventos/conteos v5 no corren (valen 0): sus
   // timers y contadores se muestran en la caja del motor.
-  const motorActivo = est.engine_mode === 1 && !!est.motor_configurable?.disponible;
+  const motorActivo = (est.engine_mode === 1 && !!est.motor_configurable?.disponible) || est.engine_mode === 7;
   for (const n of [1, 2]) {
     const s = est.sensores?.[`s${n}`] || {};
     if (motorActivo) {
@@ -477,10 +477,42 @@ function pintarEstado(est) {
   });
 }
 
+// Motor LAVO v7: estado leido de LSTA (%R1700..%R1799).
+const esV7 = (band) => String(band?.engine?.version) === '7';
+function pintarMotorV7(est) {
+  const caja = $('bcMotor');
+  const v7 = est.motor_v7 || {};
+  caja.hidden = false;
+  for (const id of ['bcApp3', 'bcApp4', 'bcV7Paro', 'bcV7Reset']) { const b = $(id); if (b) b.hidden = !v7.disponible; }
+  let texto, clase = '';
+  if (!v7.disponible) {
+    texto = 'El PLC no tiene el programa maestro v7: descarga LAVO_Main_ST.txt para usar este programa.';
+    clase = 'is-err';
+  } else if (v7.transaccion === 'rechazada') {
+    texto = `El PLC rechazó la última configuración: ${v7.error}. Sigue la anterior.`;
+    clase = 'is-err';
+  } else if (!v7.activo) {
+    texto = `Motor v7 listo en el PLC (${v7.transaccion}): carga el programa para activarlo.`;
+    clase = 'is-off';
+  } else {
+    const seqs = (v7.secuencias || []).map((s, i) => s.estado === 'inactiva' ? '' :
+      ` · SQ${i + 1} ${s.estado}${s.paso ? ` paso ${s.paso} (${s.paso_tiempo_s} s)` : ''}${s.ciclos ? `, ${s.ciclos} ciclo(s)` : ''}`).join('');
+    texto = `Config ${v7.config_activa} · motor ${v7.motor}${v7.motivo_paro ? ` (${v7.motivo_paro})` : ''}${seqs}`
+      + (v7.falla_plumas ? ' · falla de pluma' : '')
+      + (v7.ciclo_ms ? ` · ciclo ${v7.ciclo_ms} ms` : '');
+    clase = v7.motor === 'en marcha' ? 'is-run' : v7.motivo_paro ? 'is-wait' : 'is-off';
+  }
+  badge('bcMotorTxt', texto, clase, 'ti-cpu');
+  const paro = $('bcV7Paro');
+  if (paro) paro.classList.toggle('is-held', v7.motivo_paro === 'paro por software');
+  pintarBloquesMotor(v7.activo ? v7 : null);
+}
+
 // ST v6: estado del motor configurable (%R460..%R499) leido del PLC.
 function pintarMotor(est) {
   const caja = $('bcMotor'), txt = $('bcMotorTxt');
   if (!caja || !txt) return;
+  if (est.st_version === 7 || esV7(bandaMotor)) { pintarMotorV7(est); return; }
   const mc = est.motor_configurable || {};
   const activo = mc.disponible && est.engine_mode === 1;
   caja.hidden = !(activo || bandaMotor);
@@ -561,9 +593,25 @@ function timersPorSensor(mc) {
   return out;
 }
 
-// Botones virtuales APP1/APP2: activos MIENTRAS se mantienen presionados.
+// Botones virtuales APP1/APP2 (v6) y APP1..APP4 (v7): activos MIENTRAS se
+// mantienen presionados. Paro por software y reinicio del motor v7.
 function instalarBotonesApp() {
-  for (const n of [1, 2]) {
+  let paroSw = false;
+  $('bcV7Paro')?.addEventListener('click', async () => {
+    paroSw = !paroSw;
+    try {
+      await postear('/banda/v7/paro', { activo: paroSw }, 8000);
+      mensaje(paroSw ? 'Paro por software activo: motor, secuencias y plumas detenidos.'
+                     : 'Paro por software liberado (nada arranca solo).', paroSw ? 'err' : 'ok');
+    } catch (e) { paroSw = !paroSw; mensaje(`Paro SW: ${e.message}`, 'err'); }
+  });
+  $('bcV7Reset')?.addEventListener('click', async () => {
+    try {
+      await postear('/banda/v7/reset', {}, 8000);
+      mensaje('Motor reiniciado: timers, contadores, memorias y secuencias en cero.', 'ok');
+    } catch (e) { mensaje(`Reiniciar: ${e.message}`, 'err'); }
+  });
+  for (const n of [1, 2, 3, 4]) {
     const btn = $(`bcApp${n}`);
     if (!btn) continue;
     let presionado = false;

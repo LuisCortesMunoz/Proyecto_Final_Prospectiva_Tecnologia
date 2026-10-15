@@ -645,7 +645,265 @@ function compileBandEngine(band, ctx) {
   return { rungs, view };
 }
 
+// ── Motor LAVO v7 (programa maestro general, band.engine.version = 7) ──
+// Cada rung representa EXACTAMENTE lo que ejecuta el ST v7 (§L2):
+//   condiciones  AND = serie · OR = paralelo · NAND = paralelo de NC ·
+//                NOR = serie de NC · XOR (2 entradas) = A·/B + /A·B
+//   memorias     bobina S / R (la prioridad decide cuál gana)
+//   timers       bloque con su tipo (TON, TOF, TP, RETARDO, TONR, BLINK)
+//   contadores   CTU (flanco de subida) + CTD si descuenta + reset
+//   secuencias   un rung por transición (paso activo + condición → MOV paso)
+//   salidas      fuente OR pasos de las secuencias; una secuencia exclusiva
+//                activa manda sola sobre las salidas que usa
+//   motor        marcha enclavada / mientras, pausa, dirección y VFD; I3
+//                (paro de emergencia) siempre en serie.
+const V7_SALIDA = {
+  Q3: { txt: 'torreta verde', lamp: 'green' }, Q4: { txt: 'torreta amarilla', lamp: 'yellow' },
+  Q5: { txt: 'torreta roja', lamp: 'red' }, Q6: { txt: 'pluma 2 sube' }, Q7: { txt: 'pluma 2 baja' },
+  Q8: { txt: 'pluma 1 sube' }, Q9: { txt: 'pluma 1 baja' },
+};
+const V7_TIMER = { ton: 'TON', on_delay: 'TON', tof: 'TOF', off_delay: 'TOF', pulso: 'TP', tp: 'TP',
+  retardo: 'RETARDO', delay: 'RETARDO', espera: 'RETARDO', tonr: 'TONR', retentivo: 'TONR', acumulado: 'TONR',
+  intermitente: 'BLINK', parpadeo: 'BLINK', blink: 'BLINK', oscilador: 'BLINK' };
+const V7_TIMER_TXT = {
+  TON: 'activo si la entrada sigue activa', TOF: 'sigue activo tras soltar la entrada',
+  TP: 'pulso al activarse la entrada', RETARDO: 'se activa N s después del flanco y se queda',
+  TONR: 'acumula el tiempo (no se borra al soltar)', BLINK: 'parpadea mientras la entrada',
+};
+const V7_SEQ_MODO = { una_vez: 'una vez', once: 'una vez', infinita: 'se repite sin fin', ciclica: 'se repite sin fin',
+  ciclico: 'se repite sin fin', loop: 'se repite sin fin', repetir: 'se repite N veces', n_veces: 'se repite N veces' };
+
+// Señal v7 → contacto. Normaliza alias de la voz y de la banda (S1 → I4).
+function v7Sig(nombre, tipo = 'no') {
+  let s = String(nombre ?? '').trim();
+  const m = s.match(/^(NOT\s+|NO\s+|!|~|\/)\s*(.+)$/i);
+  const neg = !!m;
+  if (m) s = m[2].trim();
+  s = s.toUpperCase().replace(/[\s.-]+/g, '_');
+  const alias = { S1: 'I4', S2: 'I5', SENSOR1: 'I4', SENSOR_1: 'I4', SENSOR2: 'I5', SENSOR_2: 'I5',
+    BOTON_VERDE: 'I1', BOTON_ROJO: 'I2', CORRIENDO: 'BANDA_CORRIENDO', DETENIDA: 'BANDA_DETENIDA',
+    VERDE: 'Q3', AMARILLA: 'Q4', ROJA: 'Q5' };
+  if (/^1[1-5]$/.test(s)) s = `I${s[1]}`;
+  s = alias[s] || s;
+  let p = s.match(/^(?:SQ_?(\d)_?)?(?:PASO|P|STEP)_?(\d+)$/);
+  if (p) s = `SQ${p[1] || 1}_PASO${Number(p[2])}`;
+  p = s.match(/^(C|M|T|CT|Q|I)_?0*(\d+)$/);
+  if (p) s = `${p[1]}${Number(p[2])}`;
+  const t = neg ? (tipo === 'pe' ? 'ne' : 'nc') : tipo;
+  return { t, a: s };
+}
+const v7Out = (q) => {
+  const k = String(q || '').toLowerCase().replace(/[\s-]+/g, '_');
+  const alias = { verde: 'Q3', amarilla: 'Q4', roja: 'Q5', pluma1_sube: 'Q8', pluma1_baja: 'Q9',
+    pluma2_sube: 'Q6', pluma2_baja: 'Q7', luz_verde: 'Q3', luz_amarilla: 'Q4', luz_roja: 'Q5' };
+  if (alias[k]) return alias[k];
+  const m = k.match(/^%?q_?0*(\d+)$/);
+  return m ? `Q${Number(m[1])}` : String(q).toUpperCase();
+};
+const v7Destino = (v, n) => {
+  if (v == null || v === '' || v === 0) return null;
+  if (/^(fin|end|terminar)$/i.test(String(v))) return 'fin';
+  return Number(v);
+};
+
+function compileBandEngineV7(band, ctx) {
+  const eng = band.engine || {};
+  const rungs = [];
+  const mover = band.enable !== false;
+  const dir = bandDir(band.direction);
+  const freq = num(band.freq_hz);
+  const serie = (comment, contactos, term) => rungs.push(bandRungSerie(comment, contactos, term, ctx));
+  const paralelo = (comment, alts, term) => rungs.push(bandRungOr(comment, alts, term, ctx));
+
+  // Condiciones (C1..C16).
+  for (const c of engLista(eng.condiciones)) {
+    const ent = engLista(c.entradas).filter(x => x != null && x !== '');
+    if (!ent.length) continue;
+    const op = String(c.op || 'AND').toUpperCase();
+    const fl = String(c.flanco || 'nivel').toLowerCase();
+    const flTxt = /sub|flanco/.test(fl) ? ' · flanco de subida (pulso de 1 scan)' : /baj/.test(fl) ? ' · flanco de bajada (pulso de 1 scan)' : '';
+    const term = bandOut('coil', c.id, ctx);
+    const neg = (x) => v7Sig(/^not\s+/i.test(String(x)) ? String(x).replace(/^not\s+/i, '') : `NOT ${x}`);
+    const comment = `${c.id} = ${op === 'NAND' || op === 'NOR' ? `${op} (` : ''}${ent.join(` ${op === 'NAND' ? 'AND' : op === 'NOR' ? 'OR' : op} `)}${op === 'NAND' || op === 'NOR' ? ')' : ''}${flTxt}`;
+    if (op === 'OR' || op === 'O') paralelo(comment, ent.map(e => [v7Sig(e)]), term);
+    else if (op === 'NAND') paralelo(comment, ent.map(e => [neg(e)]), term);
+    else if (op === 'NOR') serie(comment, ent.map(neg), term);
+    else if (op === 'XOR' && ent.length === 2) paralelo(comment, [[v7Sig(ent[0]), neg(ent[1])], [neg(ent[0]), v7Sig(ent[1])]], term);
+    else if (op === 'XOR') {
+      ctx.warnings.push(`${c.id}: XOR de ${ent.length} entradas se dibuja como bloque (el PLC usa paridad impar).`);
+      serie(comment + ' · paridad impar', ent.map(e => v7Sig(e)), bandOut('block_cmp', c.id, ctx, { op: 'EQ', value: 'impar', band: { title: 'XOR', sub: 'impar' } }));
+    } else serie(comment, ent.map(e => v7Sig(e)), term);
+  }
+
+  // Memorias (enclavamientos).
+  for (const x of engLista(eng.memorias)) {
+    const prio = String(x.prioridad || 'reset').toLowerCase() === 'set' ? 'gana el set' : 'gana el reset';
+    if (x.set) serie(`${x.id}: se enclava con ${x.set} (${prio}) · I3 / paro software lo borran`, [v7Sig(x.set)], bandOut('coil_s', x.id, ctx));
+    if (x.reset) serie(`${x.id}: se libera con ${x.reset}`, [v7Sig(x.reset)], bandOut('coil_r', x.id, ctx));
+  }
+
+  // Timers.
+  for (const t of engLista(eng.timers)) {
+    const tipo = V7_TIMER[String(t.tipo || '').toLowerCase()] || String(t.tipo || '?').toUpperCase();
+    const seg = Number(t.segundos) || 0;
+    const off = t.segundos_off != null ? Number(t.segundos_off) : seg;
+    const sub = tipo === 'BLINK' ? `${seg}/${off} s` : `${seg} s`;
+    serie(`${t.id} ${tipo} ${sub}: ${V7_TIMER_TXT[tipo] || ''}`,
+      [v7Sig(t.entrada, tipo === 'TP' || tipo === 'RETARDO' ? 'pe' : 'no')],
+      bandOut(tipo === 'TOF' ? 'block_tof' : 'block_ton', t.id, ctx,
+              { preset_ms: Math.round(seg * 1000), band: { title: tipo, sub } }));
+    if (t.reset) serie(`${t.id}: reset con ${t.reset}`, [v7Sig(t.reset)], bandOut('coil_r', t.id, ctx));
+  }
+
+  // Contadores.
+  for (const c of engLista(eng.contadores)) {
+    const modo = String(c.modo || 'una_vez').toLowerCase();
+    const txt = /cicl|rearme|cada/.test(modo) ? 'pulso cada N y vuelve a 0' : /nivel/.test(modo) ? 'activo mientras cuenta ≥ N' : 'activo al llegar a N hasta reset';
+    if (c.entrada) serie(`${c.id}: cuenta flancos de ${c.entrada} hasta ${c.preset} · ${txt}`, [v7Sig(c.entrada, 'pe')],
+      bandOut('block_ctu', c.id, ctx, { preset: Number(c.preset) || 0, band: { title: 'CTU', sub: `PV ${c.preset}` } }));
+    if (c.descuenta) serie(`${c.id}: descuenta con ${c.descuenta}`, [v7Sig(c.descuenta, 'pe')],
+      bandOut('block_ctu', c.id, ctx, { preset: Number(c.preset) || 0, band: { title: 'CTD', sub: '-1' } }));
+    if (c.reset) serie(`${c.id}: reset con ${c.reset}`, [v7Sig(c.reset)], bandOut('coil_r', c.id, ctx));
+  }
+
+  // Secuencias.
+  const seqs = engLista(eng.secuencias).filter(s => s && typeof s === 'object');
+  seqs.forEach((sq, k) => {
+    const id = /^SQ\d$/i.test(String(sq.id || '')) ? String(sq.id).toUpperCase() : `SQ${k + 1}`;
+    const pasos = engLista(sq.pasos);
+    const n = pasos.length;
+    const modo = String(sq.modo || 'una_vez').toLowerCase();
+    serie(`${id}: inicia con el flanco de ${sq.inicio} · ${V7_SEQ_MODO[modo] || modo}${/repet|veces/.test(modo) ? ` (${sq.repeticiones})` : ''}`
+      + `${sq.exclusiva === false ? '' : ' · exclusiva sobre sus salidas/motor'} · I3 la aborta`,
+      [v7Sig(sq.inicio, 'pe'), { t: 'nc', a: `${id}_ACTIVA` }, { t: 'nc', a: 'I3' }],
+      bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: 'IN 1' } }));
+    if (sq.paro) serie(`${id}: se detiene con ${sq.paro}`, [v7Sig(sq.paro)], bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: 'IN 0' } }));
+    if (sq.reset) serie(`${id}: reinicia (paso 0, ciclos 0) con ${sq.reset}`, [v7Sig(sq.reset)], bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: 'IN 0' } }));
+    if (sq.pausa) serie(`${id}: pausa mientras ${sq.pausa}${sq.pausa_apaga === false ? ' (conserva salidas)' : ' (apaga sus salidas y el motor)'}`,
+      [v7Sig(sq.pausa)], bandOut('coil', `${id}_PAUSADA`, ctx));
+    pasos.forEach((p, i) => {
+      const paso = `${id}_PASO${i + 1}`;
+      const av = String(p.avanza || (p.senal ? 'flanco' : 'tiempo')).toLowerCase();
+      let sig = v7Destino(p.siguiente, n);
+      if (sig == null) sig = i + 2 <= n ? i + 2 : (/infin|cicl|loop/.test(modo) || /repet|veces/.test(modo) ? 1 : 'fin');
+      const destino = sig === 'fin' ? 'fin' : `paso ${sig}`;
+      const conTiempo = ['tiempo', 'tiempo_y_senal', 'senal_o_tiempo'].includes(av);
+      const contactos = [{ t: 'no', a: paso }];
+      if (av !== 'tiempo' && p.senal) contactos.push(v7Sig(p.senal, av === 'flanco' ? 'pe' : 'no'));
+      const acciones = [...engLista(p.salidas).map(v7Out), ...engLista(p.motor)].join(', ') || 'sin acciones';
+      const cuando = av === 'tiempo' ? `a los ${p.segundos} s` : av === 'flanco' ? `al activarse ${p.senal}`
+        : av === 'senal' ? `con ${p.senal}` : av === 'tiempo_y_senal' ? `a los ${p.segundos} s y ${p.senal}` : `con ${p.senal} o a los ${p.segundos} s`;
+      if (av === 'senal_o_tiempo' && p.senal) {
+        paralelo(`${id} paso ${i + 1}: ${acciones} · avanza ${cuando} → ${destino}`,
+          [[{ t: 'no', a: paso }, v7Sig(p.senal)], [{ t: 'no', a: paso }, { t: 'no', a: `${paso}_T.DN` }]],
+          bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: sig === 'fin' ? 'IN 0' : `IN ${sig}` } }));
+        serie(`${id} paso ${i + 1}: tiempo límite ${p.segundos} s`, [{ t: 'no', a: paso }],
+          bandOut('block_ton', `${paso}_T`, ctx, { preset_ms: Math.round((Number(p.segundos) || 0) * 1000), band: { title: 'TON', sub: `${p.segundos} s` } }));
+      } else {
+        serie(`${id} paso ${i + 1}: ${acciones} · avanza ${cuando} → ${destino}`, contactos,
+          conTiempo
+            ? bandOut('block_ton', `${paso}_T`, ctx, { preset_ms: Math.round((Number(p.segundos) || 0) * 1000), band: { title: 'TON', sub: `→ ${destino}` } })
+            : bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: sig === 'fin' ? 'IN 0' : `IN ${sig}` } }));
+      }
+      const alt = p.alternativa && typeof p.alternativa === 'object' ? p.alternativa : null;
+      if (alt && alt.senal) {
+        const d = v7Destino(alt.ir_a, n);
+        serie(`${id} paso ${i + 1}: rama — si ${alt.senal} se activa salta a ${d === 'fin' ? 'fin' : `paso ${d}`} (antes que la transición normal)`,
+          [{ t: 'no', a: paso }, v7Sig(alt.senal)],
+          bandOut('block_mov', `${id}_PASO`, ctx, { band: { title: 'MOV', sub: d === 'fin' ? 'IN 0' : `IN ${d}` } }));
+      }
+    });
+  });
+
+  // Motor (VFD).
+  const m = eng.motor || {};
+  const marchaPasos = [];
+  const paroPasos = [];
+  seqs.forEach((sq, k) => {
+    const id = /^SQ\d$/i.test(String(sq.id || '')) ? String(sq.id).toUpperCase() : `SQ${k + 1}`;
+    engLista(sq.pasos).forEach((p, i) => {
+      const mot = engLista(p.motor).map(x => String(x).toLowerCase());
+      if (mot.includes('marcha')) marchaPasos.push(`${id}_PASO${i + 1}`);
+      if (mot.includes('paro')) paroPasos.push(`${id}_PASO${i + 1}`);
+    });
+  });
+  const arranque = m.arranque || (mover && !marchaPasos.length && !m.paro && !m.invertir && !m.dir_1 && !m.dir_2 && !m.pausa ? 'I1' : null);
+  if (mover) {
+    const mientras = String(m.modo || '').toLowerCase() === 'mientras';
+    if (arranque) {
+      serie(`Marcha ${mientras ? 'mientras ' + arranque + ' (tras un paro hay que soltarlo antes)' : 'enclavada con el flanco de ' + arranque}${m.paro ? ` · paro ${m.paro}` : ''} · I3 siempre para`,
+        [v7Sig(arranque, mientras ? 'no' : 'pe'), ...(m.paro ? [v7Sig(`NOT ${m.paro}`)] : []), { t: 'nc', a: 'I3' }],
+        bandOut(mientras ? 'coil' : 'coil_s', 'RunLatch', ctx));
+    }
+    if (m.paro && !(String(m.modo || '').toLowerCase() === 'mientras')) serie(`Paro de la banda: ${m.paro}`, [v7Sig(m.paro)], bandOut('coil_r', 'RunLatch', ctx));
+    if (m.pausa) serie(`Pausa mientras ${m.pausa} (reanuda sola)`, [v7Sig(m.pausa)], bandOut('coil', 'Pausa', ctx));
+    const rev = Number(m.paro_inversion_s) || 2;
+    for (const [k, sub, txt] of [['dir_1', 'IN 1', 'dirección 1'], ['dir_2', 'IN 2', 'dirección 2'], ['invertir', 'invierte', 'invierte el sentido']]) {
+      if (m[k]) serie(`${txt} con el flanco de ${m[k]} · frena ${rev} s y espera velocidad cero antes de girar`,
+        [v7Sig(m[k], 'pe')], bandOut('block_mov', 'DirTarget', ctx, { band: { title: 'MOV', sub } }));
+    }
+    const alts = [];
+    if (arranque) alts.push([{ t: 'no', a: 'RunLatch' }]);
+    marchaPasos.forEach(p => alts.push([{ t: 'no', a: p }]));
+    if (!alts.length) alts.push([{ t: 'no', a: 'RunLatch' }]);
+    const comunes = [...(m.pausa ? [{ t: 'nc', a: 'Pausa' }] : []), ...paroPasos.map(p => ({ t: 'nc', a: p })), { t: 'nc', a: 'I3' }];
+    paralelo(`VFD: ${dir === 'izquierda' ? 'MOV 34 (dir 2)' : 'MOV 18 (dir 1)'} → %R500 · ${freq ?? '?'} Hz × 100 → %R504`
+      + `${marchaPasos.length ? ` · marcha en ${marchaPasos.join(', ')}` : ''}`,
+      alts.map(a => [...a, ...comunes]),
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: dir === 'izquierda' ? 'IN 34' : 'IN 18' } }));
+  }
+
+  // Salidas: fuente OR pasos; exclusiva activa → solo la secuencia.
+  const sal = {};
+  for (const [k, v] of Object.entries(eng.salidas || {})) if (v) sal[v7Out(k)] = v;
+  const usadas = new Set(Object.keys(sal));
+  const pasosDe = {};
+  seqs.forEach((sq, k) => {
+    const id = /^SQ\d$/i.test(String(sq.id || '')) ? String(sq.id).toUpperCase() : `SQ${k + 1}`;
+    engLista(sq.pasos).forEach((p, i) => engLista(p.salidas).map(v7Out).forEach(q => {
+      usadas.add(q);
+      (pasosDe[q] = pasosDe[q] || []).push({ paso: `${id}_PASO${i + 1}`, seq: id, excl: sq.exclusiva !== false,
+        pausa: !!sq.pausa && sq.pausa_apaga !== false });
+    }));
+  });
+  for (const q of [...usadas].sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)))) {
+    const info = V7_SALIDA[q] || { txt: 'salida' };
+    const pasos = pasosDe[q] || [];
+    const duenas = [...new Set(pasos.filter(p => p.excl).map(p => p.seq))];
+    const alts = [];
+    if (sal[q]) alts.push([v7Sig(sal[q]), ...duenas.map(s => ({ t: 'nc', a: `${s}_ACTIVA` }))]);
+    pasos.forEach(p => alts.push([{ t: 'no', a: p.paso }, ...(p.pausa ? [{ t: 'nc', a: `${p.seq}_PAUSADA` }] : [])]));
+    const partes = [sal[q] ? `con ${sal[q]}${duenas.length ? ` (si ${duenas.join('/')} no está activa)` : ''}` : '',
+      pasos.length ? `en ${pasos.map(p => p.paso).join(', ')}` : ''].filter(Boolean).join(' · ');
+    const pluma = /^Q[6-9]$/.test(q) ? ' · enclavamiento: subir y bajar a la vez = ambas apagadas' : '';
+    const lamp = info.lamp ? '' : ' · I3 la apaga';
+    paralelo(`${q} (${info.txt}): ${partes}${pluma}${lamp}`, alts,
+      bandOut('coil', q, ctx, info.lamp ? { lamp_color: info.lamp } : undefined));
+  }
+
+  if (!rungs.length) {
+    serie('Motor LAVO v7 sin bloques: el PLC no hace nada', [],
+      bandOut('block_mov', '%R500', ctx, { band: { title: 'MOV', sub: 'IN 1' } }));
+  }
+
+  const json = JSON.stringify(eng).toUpperCase();
+  const usaPluma = (n) => (n === 1 ? ['Q8', 'Q9'] : ['Q6', 'Q7']).some(q => usadas.has(q));
+  const view = {
+    enable: true, mover, engine: true, engine_version: 7,
+    direction: dir, vfd_cmd: dir === 'izquierda' ? 34 : 18, freq_hz: freq,
+    start_button: arranque ? String(v7Sig(arranque).a) : (marchaPasos.length ? 'secuencia' : null),
+    stop_mode: 0, auto_stop_mode: 0, auto_stop_s: null, wait_s1_s: null, wait_s2_s: null,
+    uses: {
+      banda: true, vfd: mover, freq: freq != null,
+      s1: /"(NOT )?(S1|I4)"/.test(json), s2: /"(NOT )?(S2|I5)"/.test(json),
+      torreta: true, pluma1: usaPluma(1), pluma2: usaPluma(2),
+    },
+  };
+  return { rungs, view };
+}
+
 function compileBand(band, ctx) {
+  if (band && band.engine && typeof band.engine === 'object' && String(band.engine.version) === '7') return compileBandEngineV7(band, ctx);
   if (band && band.engine && typeof band.engine === 'object') return compileBandEngine(band, ctx);
   const rungs = [];
   const dir      = bandDir(band.direction);
