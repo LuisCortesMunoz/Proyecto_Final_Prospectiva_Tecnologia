@@ -479,6 +479,10 @@ function pintarEstado(est) {
 
 // Motor LAVO v7: estado leido de LSTA (%R1700..%R1799).
 const esV7 = (band) => String(band?.engine?.version) === '7';
+// Paro por software SEGUN EL PLC (no segun los clics): sigue bien aunque se
+// recargue la pagina o una carga nueva lo libere (LCMD[7] = 0). Con I3
+// presionado el motivo de paro es I3 y no se sabe: se conserva el ultimo valor.
+let paroSwPLC = false;
 function pintarMotorV7(est) {
   const caja = $('bcMotor');
   const v7 = est.motor_v7 || {};
@@ -504,7 +508,10 @@ function pintarMotorV7(est) {
   }
   badge('bcMotorTxt', texto, clase, 'ti-cpu');
   const paro = $('bcV7Paro');
-  if (paro) paro.classList.toggle('is-held', v7.motivo_paro === 'paro por software');
+  if (v7.motivo_paro !== 'paro de emergencia I3') {
+    paroSwPLC = !!v7.activo && v7.motivo_paro === 'paro por software';
+  }
+  if (paro) paro.classList.toggle('is-held', paroSwPLC);
   pintarBloquesMotor(v7.activo ? v7 : null);
 }
 
@@ -596,14 +603,15 @@ function timersPorSensor(mc) {
 // Botones virtuales APP1/APP2 (v6) y APP1..APP4 (v7): activos MIENTRAS se
 // mantienen presionados. Paro por software y reinicio del motor v7.
 function instalarBotonesApp() {
-  let paroSw = false;
   $('bcV7Paro')?.addEventListener('click', async () => {
-    paroSw = !paroSw;
+    const activo = !paroSwPLC;
     try {
-      await postear('/banda/v7/paro', { activo: paroSw }, 8000);
-      mensaje(paroSw ? 'Paro por software activo: motor, secuencias y plumas detenidos.'
-                     : 'Paro por software liberado (nada arranca solo).', paroSw ? 'err' : 'ok');
-    } catch (e) { paroSw = !paroSw; mensaje(`Paro SW: ${e.message}`, 'err'); }
+      await postear('/banda/v7/paro', { activo }, 8000);
+      paroSwPLC = activo;
+      $('bcV7Paro').classList.toggle('is-held', activo);
+      mensaje(activo ? 'Paro por software activo: motor, secuencias y plumas detenidos.'
+                     : 'Paro por software liberado (nada arranca solo).', activo ? 'err' : 'ok');
+    } catch (e) { mensaje(`Paro SW: ${e.message}`, 'err'); }
   });
   $('bcV7Reset')?.addEventListener('click', async () => {
     try {
