@@ -89,12 +89,10 @@ Salidas: `Q10` (LAMP_VERDE), `Q11` (LAMP_AMARILLA), `Q12` (LAMP_ROJA).
 PLC Modbus en `192.168.1.100`.
 
 > Los 7 ejemplos del PDF usan `I7` como paro general (dispositivo genérico de 8
-> entradas). En el maletín el paro es `I8`. Por eso los fixtures se compilan a
+> entradas). En el maletín el paro es `I8`. Por eso estos casos se compilan a
 > nivel de compilador (sin perfil); contra el perfil real usa los nombres del maletín.
 
 ## Los 7 casos de prueba
-
-Ver `assets/js/ladder/fixtures/logic-examples.js`.
 
 1. **directo** — "Con I1 prende Q10." → `expr: "I1"`
 2. **OR** — "Q10 debe prender con I1 o con I3." → `expr: "I1 + I3"`
