@@ -2,24 +2,6 @@
  * schema.js — Modelo de datos para programas ladder PLC
  */
 
-export const ELEMENT_TYPES = {
-  contact_no:       { label: 'Contacto NO',  category: 'contact' },
-  contact_nc:       { label: 'Contacto NC',  category: 'contact' },
-  contact_pos_edge: { label: 'Flanco +',     category: 'contact' },
-  contact_neg_edge: { label: 'Flanco −',     category: 'contact' },
-  coil:             { label: 'Bobina Q',     category: 'coil'    },
-  coil_s:           { label: 'Bobina S',     category: 'coil'    },
-  coil_r:           { label: 'Bobina R',     category: 'coil'    },
-  block_ton:        { label: 'Timer TON',    category: 'block'   },
-  block_tof:        { label: 'Timer TOF',    category: 'block'   },
-  block_osc:        { label: 'Oscilador',    category: 'block'   },
-  block_ctu:        { label: 'Contador CTU', category: 'block'   },
-  block_ctd:        { label: 'Contador CTD', category: 'block'   },
-  block_cmp:        { label: 'Comparador',   category: 'block'   },
-  block_mov:        { label: 'MOV',          category: 'block'   },
-  block_add:        { label: 'Aritmético',   category: 'block'   },
-};
-
 // Tipos que solo van en la zona derecha (salida del rung)
 export const OUTPUT_TYPES = new Set([
   'coil', 'coil_s', 'coil_r',

@@ -129,30 +129,6 @@ function layout(ast, ctx) {
   return { row0, branches, width: col };
 }
 
-// Compila un rung tipo ecuación: { coil, expr, comment, coilType? }
-export function compileEquation(rungSpec, idx, ctx) {
-  let ast;
-  try { ast = parseExpr(tokenize(rungSpec.expr || ''), ctx); }
-  catch { ctx.warnings.push(`Rung ${idx + 1}: no se pudo parsear "${rungSpec.expr}".`); ast = { type: 'lit', name: rungSpec.expr || '?', neg: false }; }
-
-  const { row0, branches, width } = layout(ast, ctx);
-
-  const coilType = rungSpec.coilType || 'output';
-  const coilAddr = ctx.resolveAddr(rungSpec.coil);
-  ctx.useAddr(coilAddr);
-  row0.push({
-    id: eid(),
-    type: coilType === 'set' ? 'coil_s' : coilType === 'reset' ? 'coil_r' : 'coil',
-    address: coilAddr,
-    pos: { col: width },
-    coil_type: coilType,
-  });
-
-  const network = [{ row: 0, elements: row0 }];
-  branches.forEach((b, k) => network.push({ row: k + 1, span: b.span, elements: b.elements }));
-  return { id: idx + 1, enabled: true, comment: rungSpec.comment || '', network };
-}
-
 // ── Engine-config → expr legible (espejo de _expr_de_logica en el backend) ──
 // La IA da `expr` para mostrar, pero derivamos la geometría desde `logic`
 // (fuente de verdad) para que el dibujo sea fiel al motor del PLC.
