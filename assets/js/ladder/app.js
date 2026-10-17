@@ -1736,6 +1736,11 @@ function onNavDropMenuClick(e) {
     case 'zoom-in':    adjustZoom(0.2);  break;
     case 'zoom-out':   adjustZoom(-0.2); break;
     case 'zoom-reset': adjustZoom(0, true); break;
+    case 'guardar-memoria':
+      // La ventana y el envío viven en chat.js (comparten la lógica del
+      // botón del chat); aquí solo se pide abrirla.
+      window.dispatchEvent(new CustomEvent('lavo:guardar-memoria'));
+      break;
     case 'open-chat': {
       const panel = document.getElementById('chatPanel');
       if (panel) panel.classList.remove('collapsed');

@@ -139,6 +139,8 @@
         <input type="file" id="input-import-ia" accept=".js" style="display:none" aria-hidden="true"/>
         <div class="tnd-item" id="btn-import-ia"><i class="ti ti-sparkles"></i> Importar programa IA</div>
         <div class="tnd-item" data-nav-action="open-chat"><i class="ti ti-message"></i> Abrir asistente IA</div>
+        <div class="tnd-sep"></div>
+        <div class="tnd-item" data-nav-action="guardar-memoria"><i class="ti ti-device-floppy"></i> Guardar lógica validada</div>
       </div>
     </div>
 
@@ -1015,6 +1017,31 @@
       <div class="band-start-title" id="bandStartTitle">Configuración lista</div>
       <p class="band-start-text">Para iniciar el proceso, presiona <b id="bandStartBtn">I1</b>.</p>
       <button type="button" class="bc-btn bc-btn-primary" id="bandStartOk">Entendido</button>
+    </div>
+  </div>
+
+  <!-- ══ GUARDAR LÓGICA VALIDADA (menú IA) ══════════════════════
+       Guarda el programa ABIERTO en la memoria validada del backend, sin
+       pasar por el asistente. Necesita engine_config (lo que entiende el PLC)
+       y una descripción, que es con lo que luego se buscan las memorias. -->
+  <div class="band-modal" id="memModal" role="dialog" aria-modal="true" aria-labelledby="memTitle" hidden>
+    <div class="band-modal-box" style="width:min(520px,100%);padding:18px 20px 16px;">
+      <button class="band-modal-close" id="memClose" type="button" title="Cerrar"><i class="ti ti-x"></i></button>
+      <div id="memTitle" style="font-weight:700;font-size:15px;margin-bottom:4px;">Guardar lógica validada</div>
+      <div id="memPrograma" style="font-size:12px;color:var(--text-secondary);margin-bottom:10px;"></div>
+      <label for="memDescripcion" style="display:block;font-size:12px;margin-bottom:4px;">
+        ¿Qué hace esta lógica? Escríbelo como se lo pedirías al asistente.
+      </label>
+      <textarea id="memDescripcion" rows="3" style="width:100%;box-sizing:border-box;resize:vertical;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg-elevated);color:var(--text-primary);font:inherit;font-size:13px;"
+        placeholder="Ej.: A 30 Hz con I1 la banda avanza 5 s, se detiene 3 s y repite hasta I2"></textarea>
+      <label style="display:block;margin:8px 0 10px;font-size:12px;cursor:pointer;">
+        <input type="checkbox" id="memFisica"> Ya la probé en el equipo físico y funcionó
+      </label>
+      <div id="memMsg" style="font-size:12px;min-height:16px;margin-bottom:10px;"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button type="button" class="bc-btn" id="memCancelar">Cancelar</button>
+        <button type="button" class="bc-btn bc-btn-primary" id="memGuardar">Guardar</button>
+      </div>
     </div>
   </div>
 

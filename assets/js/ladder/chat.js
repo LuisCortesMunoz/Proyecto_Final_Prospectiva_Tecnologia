@@ -223,21 +223,33 @@ async function guardarValidada(wrap) {
   const fisica = wrap.querySelector('.guardar-fisica')?.checked ? 'exitosa' : 'no_realizada';
   wrap.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
   msg.textContent = 'Guardando…';
+  const r = await enviarMemoria({
+    dispositivo: datos.dispositivo, instruccion: datos.instruccion, logic,
+    ejemplo_id: datos.ejemplo_id, fisica,
+  });
+  msg.textContent = r.texto;
+  if (!r.ok) {
+    wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
+    return;
+  }
+  wrap.querySelector('.guardar-btn').textContent = '✔ Lógica guardada';
+  _guardables.delete(id);
+}
+
+/** POST /memoria/validadas. Devuelve { ok, texto } listo para mostrar. */
+async function enviarMemoria({ dispositivo, instruccion, logic, ejemplo_id = '', fisica = 'no_realizada' }) {
   try {
     const res = await fetch(`${BACKEND_BASE_URL}/memoria/validadas`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        dispositivo: datos.dispositivo, instruccion: datos.instruccion, logic,
-        ejemplo_id: datos.ejemplo_id || '', prueba_fisica: fisica,
+        dispositivo, instruccion, logic, ejemplo_id: ejemplo_id || '', prueba_fisica: fisica,
       }),
     });
     const d = await res.json().catch(() => null);
     if (!res.ok) {
       const det = Array.isArray(d?.detail) ? d.detail.join(' ') : (d?.detail || `HTTP ${res.status}`);
-      msg.textContent = 'No se guardó: ' + det;
-      wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
-      return;
+      return { ok: false, texto: 'No se guardó: ' + det };
     }
     const m = d.memoria || {};
     const textos = {
@@ -245,16 +257,80 @@ async function guardarValidada(wrap) {
       nueva_version: `Guardada como versión ${m.version} (${m.id}); la anterior quedó reemplazada.`,
       duplicada: `Ya estaba guardada (${m.id}): no se duplicó.`,
     };
-    msg.textContent = (textos[d.resultado] || 'Guardada.')
+    const texto = (textos[d.resultado] || 'Guardada.')
       + ` Prueba física: ${m.prueba_fisica === 'exitosa' ? 'exitosa' : 'no realizada'}.`
       + (d.persistente ? '' : ' ⚠ El almacén del servidor no es persistente: se perderá al reiniciar.');
-    wrap.querySelector('.guardar-btn').textContent = '✔ Lógica guardada';
-    bridge()?.log('ok', msg.textContent);
-    _guardables.delete(id);
+    bridge()?.log('ok', texto);
+    return { ok: true, texto };
   } catch (e) {
-    msg.textContent = 'No se pudo contactar el backend: ' + e.message;
-    wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
+    return { ok: false, texto: 'No se pudo contactar el backend: ' + e.message };
   }
+}
+
+// ── Guardar el programa ABIERTO (menú IA → Guardar lógica validada) ──
+// Sirve aunque el programa no venga del chat (abierto de archivo, URL, o
+// generado antes). Necesita engine_config: un Ladder dibujado a mano no lo
+// tiene y no se puede reutilizar ni cargar al PLC.
+function equipoDe(cfg) {
+  const d = String(cfg?.device || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (d === 'banda' || d === 'maletin') return d;
+  return cfg?.band && typeof cfg.band === 'object' ? 'banda' : 'maletin';
+}
+
+function abrirGuardarPrograma() {
+  const modal = $('memModal');
+  if (!modal) return;
+  const prog = bridge()?.getProgram();
+  const cfg = prog?.metadata?.engine_config;
+  const cargable = cfg && typeof cfg === 'object' && (
+    (Array.isArray(cfg.outputs) && cfg.outputs.length) ||
+    (Array.isArray(cfg.sequence?.steps) && cfg.sequence.steps.length) ||
+    (cfg.band && typeof cfg.band === 'object'));
+  const msg = $('memMsg');
+  msg.textContent = '';
+  msg.style.color = '';
+  $('memFisica').checked = false;
+  const equipo = cargable ? equipoDe(cfg) : null;
+  $('memPrograma').textContent = cargable
+    ? `Programa: ${prog.metadata?.name || cfg.name || 'sin nombre'} · Equipo: ${equipo === 'banda' ? 'banda transportadora' : 'maletín'}`
+    : 'Programa abierto sin engine_config.';
+  // Si el programa abierto es la última lógica del chat, se propone su instrucción.
+  const ult = _ultimoGuardable && _guardables.get(_ultimoGuardable);
+  const mismo = ult && cargable
+    && JSON.stringify(ult.program?.metadata?.engine_config) === JSON.stringify(cfg);
+  $('memDescripcion').value = mismo ? (ult.instruccion || '') : '';
+  $('memDescripcion').disabled = !cargable;
+  $('memGuardar').disabled = !cargable;
+  if (!cargable) {
+    msg.textContent = 'No se puede guardar: este programa no tiene engine_config (por ejemplo, un Ladder dibujado a mano). '
+      + 'Solo se guardan lógicas que el PLC puede cargar: genéralas con el asistente IA o abre un programa que la tenga.';
+    msg.style.color = 'var(--danger, #e5484d)';
+  }
+  modal.dataset.equipo = equipo || '';
+  modal.hidden = false;
+  if (cargable) $('memDescripcion').focus();
+}
+
+async function guardarProgramaAbierto() {
+  const modal = $('memModal');
+  const msg = $('memMsg');
+  const cfg = bridge()?.getProgram()?.metadata?.engine_config;
+  const instruccion = $('memDescripcion').value.trim();
+  if (!instruccion) {
+    msg.textContent = 'Escribe qué hace la lógica: con esa descripción se encuentra después.';
+    msg.style.color = 'var(--danger, #e5484d)';
+    return;
+  }
+  $('memGuardar').disabled = true;
+  msg.style.color = '';
+  msg.textContent = 'Guardando…';
+  const r = await enviarMemoria({
+    dispositivo: modal.dataset.equipo, instruccion, logic: cfg,
+    fisica: $('memFisica').checked ? 'exitosa' : 'no_realizada',
+  });
+  msg.textContent = r.texto;
+  msg.style.color = r.ok ? 'var(--success, #0E9F6E)' : 'var(--danger, #e5484d)';
+  $('memGuardar').disabled = r.ok;
 }
 
 // ── Generar ───────────────────────────────────────────────────
@@ -364,6 +440,15 @@ document.addEventListener('DOMContentLoaded', () => {
       });
     } catch { /* feedback es best-effort */ }
   });
+
+  // Memoria validada desde el menú IA: guardar el programa abierto.
+  window.addEventListener('lavo:guardar-memoria', abrirGuardarPrograma);
+  const cerrarMem = () => { const m = $('memModal'); if (m) m.hidden = true; };
+  $('memClose')?.addEventListener('click', cerrarMem);
+  $('memCancelar')?.addEventListener('click', cerrarMem);
+  $('memGuardar')?.addEventListener('click', guardarProgramaAbierto);
+  $('memModal')?.addEventListener('click', (e) => { if (e.target.id === 'memModal') cerrarMem(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') cerrarMem(); });
 
   // Memoria validada: guardar la lógica actual.
   document.addEventListener('click', (e) => {
