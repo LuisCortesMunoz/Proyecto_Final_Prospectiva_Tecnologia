@@ -145,6 +145,13 @@ export async function generateProgram(text, profile, { signal, context, onProgre
       latency_ms: Math.round(ahora() - t0),
       rungs: nv.program.rungs.length,
       repairs: nv.repairs.length,
+      // Memoria validada / contexto por ramificaciones (analysis.metricas del backend).
+      fuente: analysis.fuente,
+      memoria_id: analysis.memoria_id,
+      llamadas_modelo: analysis.metricas?.llamadas_modelo,
+      tokens_prompt: analysis.metricas?.tokens_prompt_reales || analysis.metricas?.tokens_prompt_estimados,
+      t_modelo_ms: analysis.metricas?.t_modelo_ms,
+      t_memoria_ms: analysis.metricas?.t_memoria_ms,
     },
     ejemplo_id,
     analysis,

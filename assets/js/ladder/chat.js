@@ -52,6 +52,7 @@ function body(text, opts) {
   if (opts.telemetry) html += telemetryHtml(opts.telemetry);
   if (opts.warnings && opts.warnings.length) html += listHtml(`${opts.warnings.length} aviso(s)`, opts.warnings);
   if (opts.ejemploId) html += feedbackHtml(opts.ejemploId);
+  if (opts.guardarId) html += guardarHtml(opts.guardarId);
   return html;
 }
 
@@ -172,6 +173,90 @@ function feedbackHtml(ejemploId) {
   </div>`;
 }
 
+// ── Memoria validada: "Guardar lógica validada" ────────────────
+// Solo la ÚLTIMA lógica aplicada al editor se puede guardar: al generar otra,
+// los botones anteriores se desactivan (no se guardan versiones viejas). Se
+// guarda el engine_config que va al PLC, no el texto. La prueba física solo
+// se marca si el usuario la declara.
+const _guardables = new Map();   // guardarId -> { instruccion, dispositivo, program, ejemplo_id }
+let _ultimoGuardable = null;
+
+function registrarGuardable(datos) {
+  const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  _guardables.set(id, datos);
+  _ultimoGuardable = id;
+  // Las lógicas anteriores dejan de poder guardarse.
+  document.querySelectorAll('.cmsg-guardar').forEach(w => {
+    if (w.dataset.guardarId !== id) desactivarGuardar(w, 'Hay una lógica más reciente en el editor.');
+  });
+  return id;
+}
+
+function desactivarGuardar(wrap, motivo) {
+  wrap.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
+  wrap.style.opacity = '0.6';
+  const m = wrap.querySelector('.guardar-msg');
+  if (m && motivo && !m.textContent) m.textContent = motivo;
+}
+
+function guardarHtml(id) {
+  return `<div class="cmsg-guardar" data-guardar-id="${esc(id)}" style="margin-top:6px;padding:6px 8px;border:1px dashed var(--border,#3a3a4a);border-radius:6px;font-size:12px;">
+    <button type="button" class="guardar-btn" style="padding:4px 10px;border-radius:12px;border:1px solid var(--success,#0E9F6E);background:transparent;color:inherit;cursor:pointer;">💾 Guardar lógica validada</button>
+    <label style="margin-left:8px;cursor:pointer;"><input type="checkbox" class="guardar-fisica"> Ya la probé en el equipo físico y funcionó</label>
+    <div class="guardar-msg" style="margin-top:4px;opacity:.85;"></div>
+  </div>`;
+}
+
+async function guardarValidada(wrap) {
+  const id = wrap.dataset.guardarId;
+  const datos = _guardables.get(id);
+  const msg = wrap.querySelector('.guardar-msg');
+  if (!datos || id !== _ultimoGuardable) {
+    desactivarGuardar(wrap, 'Esta lógica ya no es la más reciente: no se guarda.');
+    return;
+  }
+  const logic = datos.program?.metadata?.engine_config;
+  if (!logic || typeof logic !== 'object') {
+    msg.textContent = 'Este programa no tiene engine_config: no hay JSON que guardar.';
+    return;
+  }
+  const fisica = wrap.querySelector('.guardar-fisica')?.checked ? 'exitosa' : 'no_realizada';
+  wrap.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
+  msg.textContent = 'Guardando…';
+  try {
+    const res = await fetch(`${BACKEND_BASE_URL}/memoria/validadas`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dispositivo: datos.dispositivo, instruccion: datos.instruccion, logic,
+        ejemplo_id: datos.ejemplo_id || '', prueba_fisica: fisica,
+      }),
+    });
+    const d = await res.json().catch(() => null);
+    if (!res.ok) {
+      const det = Array.isArray(d?.detail) ? d.detail.join(' ') : (d?.detail || `HTTP ${res.status}`);
+      msg.textContent = 'No se guardó: ' + det;
+      wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
+      return;
+    }
+    const m = d.memoria || {};
+    const textos = {
+      guardada: `Guardada en la memoria validada (${m.id}).`,
+      nueva_version: `Guardada como versión ${m.version} (${m.id}); la anterior quedó reemplazada.`,
+      duplicada: `Ya estaba guardada (${m.id}): no se duplicó.`,
+    };
+    msg.textContent = (textos[d.resultado] || 'Guardada.')
+      + ` Prueba física: ${m.prueba_fisica === 'exitosa' ? 'exitosa' : 'no realizada'}.`
+      + (d.persistente ? '' : ' ⚠ El almacén del servidor no es persistente: se perderá al reiniciar.');
+    wrap.querySelector('.guardar-btn').textContent = '✔ Lógica guardada';
+    bridge()?.log('ok', msg.textContent);
+    _guardables.delete(id);
+  } catch (e) {
+    msg.textContent = 'No se pudo contactar el backend: ' + e.message;
+    wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
+  }
+}
+
 // ── Generar ───────────────────────────────────────────────────
 async function onSend() {
   const input = $('chatInput');
@@ -215,7 +300,7 @@ async function onSend() {
     // usuario la acepte (y el PLC tampoco la acepta sin esa confirmacion).
     if (out.needsConfirmation) {
       const altId = 'alt' + Date.now().toString(36);
-      _alternativas.set(altId, out);
+      _alternativas.set(altId, { ...out, instruccion: prompt });
       thinking.update('Propuesta alternativa (revísala antes de usarla):', {
         compat: out.confirmation?.compatibilidad, logic: out.logic, warnings: out.warnings, altId,
       });
@@ -223,9 +308,13 @@ async function onSend() {
     }
     bridge()?.setProgram(out.program);
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
+    const guardarId = out.telemetry?.source === 'json-pegado' ? null : registrarGuardable({
+      instruccion: prompt, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
+    });
     thinking.update(
-      `Listo: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`,
-      { telemetry: out.telemetry, warnings: out.warnings, logic: out.logic, ejemploId: out.ejemplo_id },
+      `Listo: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
+        + (out.analysis?.fuente === 'memoria' ? ' (reutilizada de la memoria validada, sin llamar al modelo)' : ''),
+      { telemetry: out.telemetry, warnings: out.warnings, logic: out.logic, ejemploId: out.ejemplo_id, guardarId },
     );
   } catch (err) {
     thinking.update('No se pudo generar el programa: ' + err.message, { error: true, errors: err.logicErrors });
@@ -276,6 +365,14 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch { /* feedback es best-effort */ }
   });
 
+  // Memoria validada: guardar la lógica actual.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.guardar-btn');
+    if (!btn) return;
+    const wrap = btn.closest('.cmsg-guardar');
+    if (wrap) guardarValidada(wrap);
+  });
+
   // Motor v7: aceptar o cancelar una alternativa propuesta.
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('.alt-btn');
@@ -286,9 +383,13 @@ document.addEventListener('DOMContentLoaded', () => {
     _alternativas.delete(wrap.dataset.altId);
     wrap.querySelectorAll('.alt-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
     if (btn.dataset.accion === 'usar') {
-      bridge()?.setProgram(confirmarAlternativa(out.program));
+      const program = confirmarAlternativa(out.program);
+      bridge()?.setProgram(program);
       bridge()?.log('ok', `Alternativa aceptada y aplicada al editor (${out.program.rungs.length} rungs). Revísala antes de cargarla al PLC.`);
-      addMsg('ai', 'Alternativa aceptada. Quedó en el editor; se cargará al PLC solo cuando pulses Cargar.');
+      const guardarId = registrarGuardable({
+        instruccion: out.instruccion, dispositivo: out.device, program, ejemplo_id: out.ejemplo_id,
+      });
+      addMsg('ai', 'Alternativa aceptada. Quedó en el editor; se cargará al PLC solo cuando pulses Cargar.', { guardarId });
     } else {
       addMsg('ai', 'Alternativa descartada: el editor no cambió.');
     }
