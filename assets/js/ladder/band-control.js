@@ -487,7 +487,7 @@ function pintarMotorV7(est) {
   const caja = $('bcMotor');
   const v7 = est.motor_v7 || {};
   caja.hidden = false;
-  for (const id of ['bcApp3', 'bcApp4', 'bcV7Paro', 'bcV7Reset']) { const b = $(id); if (b) b.hidden = !v7.disponible; }
+  for (const id of ['bcV7Paro', 'bcV7Reset']) { const b = $(id); if (b) b.hidden = !v7.disponible; }
   let texto, clase = '';
   if (!v7.disponible) {
     texto = 'El PLC no tiene el programa maestro v7: descarga LAVO_Main_ST.txt para usar este programa.';
@@ -600,9 +600,9 @@ function timersPorSensor(mc) {
   return out;
 }
 
-// Botones virtuales APP1/APP2 (v6) y APP1..APP4 (v7): activos MIENTRAS se
-// mantienen presionados. Paro por software y reinicio del motor v7.
-function instalarBotonesApp() {
+// Paro por software y reinicio del motor v7. (Los botones virtuales APP1..APP4
+// se retiraron: los programas ya no pueden usarlos.)
+function instalarBotonesMotor() {
   $('bcV7Paro')?.addEventListener('click', async () => {
     const activo = !paroSwPLC;
     try {
@@ -619,23 +619,6 @@ function instalarBotonesApp() {
       mensaje('Motor reiniciado: timers, contadores, memorias y secuencias en cero.', 'ok');
     } catch (e) { mensaje(`Reiniciar: ${e.message}`, 'err'); }
   });
-  for (const n of [1, 2, 3, 4]) {
-    const btn = $(`bcApp${n}`);
-    if (!btn) continue;
-    let presionado = false;
-    const enviar = async (activo) => {
-      if (presionado === activo) return;
-      presionado = activo;
-      btn.classList.toggle('is-held', activo);
-      try {
-        await postear('/banda/boton-app', { boton: n, activo }, 8000);
-      } catch (e) {
-        mensaje(`APP${n}: ${e.message}`, 'err');
-      }
-    };
-    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); enviar(true); });
-    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) btn.addEventListener(ev, () => enviar(false));
-  }
 }
 
 // ── Polling ────────────────────────────────────────────────────
@@ -762,7 +745,7 @@ function cerrarAvisoStart() {
 }
 
 function instalar() {
-  instalarBotonesApp();
+  instalarBotonesMotor();
   // Dirección: si el PLC ya tiene la configuración armada, el cambio de
   // sentido se aplica en el acto (el ST lee DirCmd en vivo y no necesita
   // reset). Si todavía no lo está, solo queda seleccionado para el envío.
