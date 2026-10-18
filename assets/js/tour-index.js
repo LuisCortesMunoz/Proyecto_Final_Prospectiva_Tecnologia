@@ -72,7 +72,7 @@
       element: '#onav-logo-btn',
       popover: {
         title: 'Navegar entre páginas',
-        description: 'Haz clic en el logo para cambiar de página: Chat IA, Editor Ladder, Documentación del proyecto o el repositorio en GitHub.',
+        description: 'Haz clic en el logo para cambiar de página: Chat IA, Editor Ladder o el repositorio en GitHub.',
         side: 'bottom',
         align: 'start',
       },
