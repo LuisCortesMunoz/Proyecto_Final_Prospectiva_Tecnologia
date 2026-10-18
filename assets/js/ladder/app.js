@@ -1423,9 +1423,9 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
       } else {
         const boton = d.boton_start || 'I1';
         store.log(d.cfg_ready ? 'ok' : 'warn', d.cfg_ready
-          ? `Banda: configuración lista (CfgReady = 1). Pulsa el botón físico ${boton} para arrancar.`
+          ? `Banda: configuración lista (CfgReady = 1). ${d.arranque_texto || `Pulsa el botón físico ${boton} para arrancar.`}`
           : 'Banda: el PLC no confirmó CfgReady. Revisa que no haya un paro activo y abre "Ver banda transportadora" para ver su estado.');
-        if (d.cfg_ready) mostrarAvisoStart(boton);
+        if (d.cfg_ready) mostrarAvisoStart(boton, d.arranque_texto);
       }
     }
     showToast('Programa cargado al PLC', 'success');

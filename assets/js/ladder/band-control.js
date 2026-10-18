@@ -723,9 +723,9 @@ async function enviarConfig() {
       d.mensaje = !listo
         ? 'Configuración enviada. El PLC aún no confirma que esté lista (CfgReady).'
         : d.requiere_start
-          ? `Configuración lista. Pulsa ${d.boton_start || 'I1'} para iniciar.`
+          ? `Configuración lista. ${d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para iniciar.`}`
           : 'Configuración lista. Sensores, torreta y plumas activos.';
-      if (listo && d.requiere_start) mostrarAvisoStart(d.boton_start);
+      if (listo && d.requiere_start) mostrarAvisoStart(d.boton_start, d.arranque_texto);
       return d;
     });
 }
@@ -737,11 +737,21 @@ async function enviarConfig() {
  * backend decide ambas cosas (requiere_start / boton_start). No bloquea la
  * página y se cierra con "Entendido", la X o Escape.
  */
-export function mostrarAvisoStart(boton) {
+export function mostrarAvisoStart(boton, texto) {
   const box = $('bandStart');
   if (!box) return;
-  const b = $('bandStartBtn');
-  if (b) b.textContent = boton || 'I1';
+  // El backend manda la frase completa (en v7 sigue el arranque hasta
+  // I1/I2/S1/S2: "C2" no es un botón). Sin ella: "presiona <boton>".
+  const p = box.querySelector('.band-start-text');
+  if (p) {
+    p.textContent = texto || 'Para iniciar el proceso, presiona ';
+    if (!texto) {
+      const b = document.createElement('b');
+      b.id = 'bandStartBtn';
+      b.textContent = boton || 'I1';
+      p.append(b, '.');
+    }
+  }
   box.hidden = false;
   $('bandStartOk')?.focus();
 }
