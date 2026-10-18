@@ -126,7 +126,7 @@
   gap: 1rem;
   /* el padding inferior reserva la altura del composer + chips, que viven
      debajo de esta capa absoluta, para que el hero nunca se sobreponga */
-  padding: 2rem 1.5rem 10rem;
+  padding: 1.5rem 1.5rem 16rem;
   text-align: center;
   position: absolute;
   top: 52px;
@@ -958,7 +958,7 @@
   flex-direction: column;
   align-items: center;
   flex-shrink: 0;
-  padding: 0 1rem;
+  padding: 0 1rem 1rem;
   margin-top: 0.75rem;
 }
 .cp-main:not(.is-empty) .cp-chips-area { display: none; }
@@ -989,7 +989,7 @@
 /* Viewports bajos (portátiles de 768px de alto o menos): el logo cede
    espacio para que el título y la descripción sigan cabiendo */
 @media (max-height: 760px) {
-  .cp-hero-logo { height: clamp(108px, 21vh, 236px); }
+  .cp-hero-logo { height: clamp(72px, 17vh, 200px); }
   .cp-hero-center { gap: 0.85rem; }
   .cp-hero-title { margin-top: 1.15rem; }
 }
