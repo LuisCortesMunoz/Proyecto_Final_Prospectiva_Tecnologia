@@ -7,7 +7,7 @@
  */
 import { generateProgram, confirmarAlternativa } from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
-import { describeBand } from './equipment.js';
+import { describeBand, detectEquipment } from './equipment.js';
 
 const PROFILE_URL = 'assets/devices/maletin_basico.json';
 let profile = null;
@@ -19,6 +19,10 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
 // ── Estado del chat ───────────────────────────────────────────
 let _mid = 0;
 let _historialChat = [];   // prompts del usuario para contexto conversacional
+// Equipo elegido con la pregunta "¿maletín o banda?". Se usa solo cuando la
+// instrucción vuelve a ser ambigua; si nombra un equipo, manda la instrucción.
+let _equipoChat = null;
+let _pendienteEquipo = null;  // instrucción que espera esa respuesta
 
 const STAGE_LABELS = {
   fetching:   'Consultando al asistente IA...',
@@ -152,13 +156,18 @@ function chipVal(opcion) {
   return String(opcion).split(' (')[0].trim();
 }
 
+function equipoDeOpcion(opcion) {
+  const t = String(opcion).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  return t.startsWith('banda') ? 'banda' : t.startsWith('maletin') ? 'maletin' : '';
+}
+
 function clarifyHtml(questions) {
   if (!Array.isArray(questions) || !questions.length) return '';
   return questions.map(q => `
     <div class="cmsg-clarify">
       <div class="cq-pregunta">${esc(q.pregunta || '')}</div>
       <div class="cq-opciones">${(q.opciones || []).map(o =>
-        `<button type="button" class="clarify-chip" data-val="${esc(chipVal(o))}"
+        `<button type="button" class="clarify-chip" data-val="${esc(chipVal(o))}"${q.slot === 'equipo' ? ` data-equipo="${esc(equipoDeOpcion(o))}"` : ''}
            style="margin:3px;padding:4px 10px;border:1px solid var(--border,#3a3a4a);border-radius:12px;background:var(--panel,#26263a);color:inherit;cursor:pointer;font-size:12px;">${esc(o)}</button>`
       ).join('')}</div>
     </div>`).join('');
@@ -373,8 +382,12 @@ async function onSend() {
 
   const thinking = addMsg('ai', 'Consultando al asistente IA...');
   const frases = frasesPara(prompt, bridge()?.getProgram());
+  _pendienteEquipo = null;
+  // Instrucción ambigua y equipo ya elegido antes en este chat -> ese equipo.
+  const device = _equipoChat && detectEquipment(prompt).equipment === null ? _equipoChat : undefined;
   try {
     const out = await generateProgram(prompt, profile, {
+      device,
       context: {
         programa_anterior: bridge()?.getProgram() || null,
         historial: [..._historialChat],
@@ -388,6 +401,8 @@ async function onSend() {
       thinking.update('Necesito precisar un dato para no inventar:', {
         clarify: out.questions, assumptions: out.assumptions,
       });
+      // La pregunta del equipo no completa la instrucción: se reenvía tal cual.
+      if ((out.questions || []).some(q => q.slot === 'equipo')) _pendienteEquipo = prompt;
       input.value = prompt + ' ';
       input.focus();
       return;
@@ -514,6 +529,17 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!chip) return;
     const input = $('chatInput');
     if (!input) return;
+    // "¿Maletín o banda?": elige el equipo y reenvía la MISMA instrucción, sin
+    // agregarle "Banda transportadora" (así coincide con la memoria validada).
+    if (chip.dataset.equipo) {
+      if (!_pendienteEquipo) return;
+      _equipoChat = chip.dataset.equipo;
+      if (_historialChat[_historialChat.length - 1] === _pendienteEquipo) _historialChat.pop();
+      input.value = _pendienteEquipo;
+      chip.closest('.cmsg-clarify')?.querySelectorAll('.clarify-chip').forEach(c => { c.disabled = true; c.style.opacity = '0.55'; });
+      onSend();
+      return;
+    }
     const val = chip.dataset.val || '';
     input.value = (input.value.trim() ? input.value.trimEnd() + ' ' : '') + val;
     input.focus();
