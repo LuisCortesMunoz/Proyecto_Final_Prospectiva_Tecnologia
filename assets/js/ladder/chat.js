@@ -181,8 +181,35 @@ function feedbackHtml(ejemploId) {
 const _guardables = new Map();   // guardarId -> { instruccion, dispositivo, program, ejemplo_id }
 let _ultimoGuardable = null;
 
+// Frases que formaron la lógica del editor: "haz un llenado" + "cambia el
+// tiempo a 6 s" + "agrega la roja". La memoria se guarda con TODAS (la lógica
+// guardada es el programa completo), no solo con la última modificación.
+let _cadena = { cfg: null, frases: [] };
+// Espejo de memoria_validada._RX_MODIFICACION del backend.
+const RX_MODIFICACION = /\b(agrega\w*|agregar|anade\w*|quita\w*|elimina\w*|cambia\w*|modifica\w*|tambien|ademas|en vez de|en lugar de|ya no|lo mismo pero|igual pero|el mismo pero|ahora que)\b/;
+
+function cfgDe(program) {
+  return JSON.stringify(program?.metadata?.engine_config ?? null);
+}
+
+/** Frases del programa que resultará de `prompt` aplicado sobre `programaEditor`. */
+function frasesPara(prompt, programaEditor) {
+  const t = prompt.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  const sigue = _cadena.cfg && _cadena.cfg === cfgDe(programaEditor) && RX_MODIFICACION.test(t);
+  return [...(sigue ? _cadena.frases : []), prompt];
+}
+
+function unirFrases(frases) {
+  if (frases.length === 1) return frases[0];
+  return frases.map(f => f.trim().replace(/[\s.]+$/, '')).join('. ') + '.';
+}
+
 function registrarGuardable(datos) {
   const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  if (Array.isArray(datos.frases)) {
+    _cadena = { cfg: cfgDe(datos.program), frases: datos.frases };
+    datos = { ...datos, instruccion: unirFrases(datos.frases) };
+  }
   _guardables.set(id, datos);
   _ultimoGuardable = id;
   // Las lógicas anteriores dejan de poder guardarse.
@@ -346,6 +373,7 @@ async function onSend() {
   if (_historialChat.length > 6) _historialChat.shift();
 
   const thinking = addMsg('ai', 'Consultando al asistente IA...');
+  const frases = frasesPara(prompt, bridge()?.getProgram());
   try {
     const out = await generateProgram(prompt, profile, {
       context: {
@@ -376,7 +404,7 @@ async function onSend() {
     // usuario la acepte (y el PLC tampoco la acepta sin esa confirmacion).
     if (out.needsConfirmation) {
       const altId = 'alt' + Date.now().toString(36);
-      _alternativas.set(altId, { ...out, instruccion: prompt });
+      _alternativas.set(altId, { ...out, instruccion: prompt, frases });
       thinking.update('Propuesta alternativa (revísala antes de usarla):', {
         compat: out.confirmation?.compatibilidad, logic: out.logic, warnings: out.warnings, altId,
       });
@@ -385,7 +413,7 @@ async function onSend() {
     bridge()?.setProgram(out.program);
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
     const guardarId = out.telemetry?.source === 'json-pegado' ? null : registrarGuardable({
-      instruccion: prompt, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
+      instruccion: prompt, frases, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
     });
     thinking.update(
       `Listo: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
@@ -472,7 +500,7 @@ document.addEventListener('DOMContentLoaded', () => {
       bridge()?.setProgram(program);
       bridge()?.log('ok', `Alternativa aceptada y aplicada al editor (${out.program.rungs.length} rungs). Revísala antes de cargarla al PLC.`);
       const guardarId = registrarGuardable({
-        instruccion: out.instruccion, dispositivo: out.device, program, ejemplo_id: out.ejemplo_id,
+        instruccion: out.instruccion, frases: out.frases, dispositivo: out.device, program, ejemplo_id: out.ejemplo_id,
       });
       addMsg('ai', 'Alternativa aceptada. Quedó en el editor; se cargará al PLC solo cuando pulses Cargar.', { guardarId });
     } else {
