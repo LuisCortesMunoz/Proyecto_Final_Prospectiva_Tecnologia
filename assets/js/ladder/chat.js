@@ -182,11 +182,11 @@ const _guardables = new Map();   // guardarId -> { instruccion, dispositivo, pro
 let _ultimoGuardable = null;
 
 // Frases que formaron la lógica del editor: "haz un llenado" + "cambia el
-// tiempo a 6 s" + "agrega la roja". La memoria se guarda con TODAS (la lógica
-// guardada es el programa completo), no solo con la última modificación.
+// tiempo a 6 s" + "no está esperando los 5 s". Cada instrucción modifica el
+// programa del editor (va como contexto), así que la memoria se guarda con
+// TODAS, no solo con la última. Se reinicia si el editor ya tiene otro
+// programa (abierto de archivo, editado a mano...).
 let _cadena = { cfg: null, frases: [] };
-// Espejo de memoria_validada._RX_MODIFICACION del backend.
-const RX_MODIFICACION = /\b(agrega\w*|agregar|anade\w*|quita\w*|elimina\w*|cambia\w*|modifica\w*|tambien|ademas|en vez de|en lugar de|ya no|lo mismo pero|igual pero|el mismo pero|ahora que)\b/;
 
 function cfgDe(program) {
   return JSON.stringify(program?.metadata?.engine_config ?? null);
@@ -194,8 +194,7 @@ function cfgDe(program) {
 
 /** Frases del programa que resultará de `prompt` aplicado sobre `programaEditor`. */
 function frasesPara(prompt, programaEditor) {
-  const t = prompt.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-  const sigue = _cadena.cfg && _cadena.cfg === cfgDe(programaEditor) && RX_MODIFICACION.test(t);
+  const sigue = _cadena.cfg && _cadena.cfg === cfgDe(programaEditor);
   return [...(sigue ? _cadena.frases : []), prompt];
 }
 
