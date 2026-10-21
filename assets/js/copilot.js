@@ -790,13 +790,14 @@ async function ejecutarLadder(sol, { reemplazaUltima = false } = {}) {
     // Fase 1 (agente): falta un dato. Se muestran las preguntas y NO se aplica
     // programa; la respuesta se elige con los botones (el texto no se toca).
     if (out.needsClarification) {
-      const pendientes = window.LadderGen.preguntasPendientes(out.questions, sol.aclaraciones);
+      const { pendientes, sol: act, abierta } = window.LadderGen.registrarPreguntas(S, sol, out.questions);
       if (!pendientes.length) {
         addErrorMessage('El asistente volvió a preguntar algo que ya respondiste; no se reenvía en bucle. '
           + 'Cambia la respuesta o reformula la instrucción.' + conserva);
       } else {
-        const act = S?.actualizarSolicitud(sol.id, { preguntas: pendientes, estado: 'pendiente' }) || sol;
-        addClarificationMessage(pendientes, act);
+        addClarificationMessage(pendientes, act,
+          abierta ? `Necesito precisar un dato para no inventar. Escribe: ${abierta.pregunta}` : undefined);
+        respuestaAbierta = abierta;
       }
       setBackendStatus('ok', 'Backend conectado');
       return;

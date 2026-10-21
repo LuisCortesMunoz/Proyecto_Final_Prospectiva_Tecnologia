@@ -7,7 +7,7 @@
  */
 import {
   generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica,
-  claveAclaracion, preguntasPendientes, decidirRespuesta, frasesDeSolicitud,
+  claveAclaracion, decidirRespuesta, frasesDeSolicitud, registrarPreguntas,
 } from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
 import { describeBand } from './equipment.js';
@@ -473,16 +473,17 @@ async function ejecutar(sol, { reemplazaUltima = false } = {}) {
     // Fase 1 (agente): falta un dato. Se muestran las preguntas y NO se aplica
     // programa. La respuesta se elige con los chips; el texto no se toca.
     if (out.needsClarification) {
-      const pendientes = preguntasPendientes(out.questions, sol.aclaraciones);
+      const { pendientes, sol: act, abierta } = registrarPreguntas(sesion(), sol, out.questions);
       if (!pendientes.length) {
         thinking.update('El asistente volvió a preguntar algo que ya respondiste; no se reenvía en bucle.'
           + ' Cambia la respuesta o reformula la instrucción.' + conserva, { error: true });
         return;
       }
-      const act = sesion()?.actualizarSolicitud(sol.id, { preguntas: pendientes, estado: 'pendiente' }) || sol;
-      thinking.update('Necesito precisar un dato para no inventar:', {
+      thinking.update(abierta ? `Necesito precisar un dato para no inventar. Escribe: ${abierta.pregunta}`
+        : 'Necesito precisar un dato para no inventar. Elige una opción:', {
         clarify: pendientes, sol: act, assumptions: out.assumptions,
       });
+      _respuestaAbierta = abierta;
       return;
     }
     // Motor v7: sin alternativa segura -> solo se explica la limitacion.

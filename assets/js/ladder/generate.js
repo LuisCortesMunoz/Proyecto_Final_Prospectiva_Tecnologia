@@ -250,9 +250,32 @@ export function claveAclaracion(q) {
   return ALIAS_ACLARACION[k] || k;
 }
 
-/** Preguntas cuyo parámetro todavía no se respondió. */
+/**
+ * Preguntas cuyo parámetro todavía no se respondió. `reemplaza` = el backend
+ * vuelve a preguntar a propósito (p. ej. eligió la misma señal para arrancar y
+ * parar): esa sí se muestra otra vez.
+ */
 export function preguntasPendientes(questions, aclaraciones) {
-  return (questions || []).filter(q => !(claveAclaracion(q) in (aclaraciones || {})));
+  return (questions || []).filter(q => q.reemplaza || !(claveAclaracion(q) in (aclaraciones || {})));
+}
+
+/**
+ * El backend devolvió preguntas: las que quedan pendientes pasan a la
+ * solicitud (las `reemplaza` borran su respuesta anterior). `abierta` = una
+ * pregunta sin opciones (último recurso): el siguiente mensaje la responde.
+ */
+export function registrarPreguntas(sesion, sol, questions) {
+  const acl = { ...(sol.aclaraciones || {}) };
+  for (const q of questions || []) if (q.reemplaza) delete acl[claveAclaracion(q)];
+  // Ya registrada, una pregunta `reemplaza` es una más: al responderla queda respondida.
+  const pendientes = preguntasPendientes(questions, acl).map(({ reemplaza, ...q }) => q);
+  const act = sesion?.actualizarSolicitud(sol.id, { preguntas: pendientes, estado: 'pendiente', aclaraciones: acl })
+    || { ...sol, preguntas: pendientes, aclaraciones: acl };
+  const sinOpciones = pendientes.find(q => !(q.opciones || []).length);
+  return {
+    pendientes, sol: act,
+    abierta: sinOpciones ? { solId: act.id, clave: claveAclaracion(sinOpciones), pregunta: sinOpciones.pregunta || '' } : null,
+  };
 }
 
 /** Opción que pide escribir más ("Describir la secuencia paso a paso"): no es un valor. */

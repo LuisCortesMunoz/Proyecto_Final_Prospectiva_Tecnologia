@@ -8,7 +8,7 @@
  */
 import {
   generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica,
-  claveAclaracion, preguntasPendientes, decidirRespuesta,
+  claveAclaracion, preguntasPendientes, decidirRespuesta, registrarPreguntas,
 } from './generate.js';
 import { encode, fitsInURL } from './codec.js';
 
@@ -29,6 +29,7 @@ window.LadderGen = {
   claveAclaracion,
   preguntasPendientes,
   decidirRespuesta,
+  registrarPreguntas,
   // Codificación URL-safe centralizada en codec.js (antes duplicada en
   // main.js y copilot.js). Para construir ladder.html?l=…
   encodeProgramToURL: encode,

@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import vm from 'node:vm';
-import { generateProgram, decidirRespuesta, preguntasPendientes, claveAclaracion, frasesDeSolicitud }
+import { generateProgram, decidirRespuesta, preguntasPendientes, claveAclaracion, frasesDeSolicitud, registrarPreguntas }
   from '../assets/js/ladder/generate.js';
 
 const CODIGO = fs.readFileSync(new URL('../assets/js/lavo-sesion.js', import.meta.url), 'utf8');
@@ -173,6 +173,33 @@ check(out.needsClarification && claveAclaracion(out.questions[0]) === 'equipo' &
 cola.push(banda(30));
 await generateProgram('Enciende la luz verde 3 segundos', null, { aclaraciones: { equipo: { respuesta: 'Banda transportadora' } } });
 check(ultimo().device === 'banda' && ultimo().texto === 'Enciende la luz verde 3 segundos', 'equipo = banda, texto intacto');
+
+// ─────────────────────────────────────────────────────────────────
+titulo('"Quiero mover la banda": cuatro preguntas, un clic cada una');
+const CUATRO = [
+  { campo: 'arranque', pregunta: '¿Con qué arranca la banda?', opciones: ['I1 (botón verde)', 'S1 (sensor S1)'] },
+  { campo: 'direccion', pregunta: '¿Hacia dónde?', opciones: ['Derecha', 'Izquierda'] },
+  { campo: 'freq_hz', pregunta: PREG_F, opciones: OPC_F },
+  { campo: 'paro', pregunta: '¿Cómo se detiene?', opciones: ['I2 (botón rojo)', 'Temporizador'] }];
+sol = S.iniciarSolicitud({ texto: 'Quiero mover la banda', tipo: 'nueva', base: null });
+let reg = registrarPreguntas(S, sol, CUATRO);
+check(reg.pendientes.length === 4 && reg.abierta === null, 'cuatro preguntas, todas con opciones');
+const pasos = [['arranque', 'I1 (botón verde)'], ['direccion', 'Derecha'], ['freq_hz', '20 Hz'], ['paro', 'Temporizador']];
+const acciones = pasos.map(([k, v]) => decidirRespuesta(S, sol.id, k, '', v).accion);
+check(acciones.join() === 'esperar,esperar,esperar,enviar', 'espera hasta la cuarta y entonces envía');
+check(S.solicitud().texto === 'Quiero mover la banda' && Object.keys(S.solicitud().aclaraciones).length === 4,
+  'cuatro parámetros guardados, texto intacto');
+// El backend pide el tiempo del temporizador: se suma a las respuestas anteriores.
+reg = registrarPreguntas(S, S.solicitud(), [{ campo: 'tiempo_paro_s', pregunta: '¿Cuántos segundos?', opciones: ['5 s', '10 s'] }]);
+check(reg.pendientes.length === 1 && Object.keys(reg.sol.aclaraciones).length === 4, 'pregunta nueva sin perder las cuatro');
+check(decidirRespuesta(S, sol.id, 'tiempo_paro_s', '', '10 s').accion === 'enviar', 'y con el tiempo se envía');
+
+titulo('Pregunta repetida a propósito y pregunta sin opciones');
+reg = registrarPreguntas(S, S.solicitud(), [{ campo: 'paro', pregunta: '¿Cómo se detiene? (otra señal)', opciones: ['I2 (botón rojo)'], reemplaza: true }]);
+check(reg.pendientes.length === 1 && !('paro' in reg.sol.aclaraciones), 'reemplaza: borra la respuesta anterior y la vuelve a mostrar');
+check(decidirRespuesta(S, sol.id, 'paro', '', 'I2 (botón rojo)').accion === 'enviar', 'al responderla queda respondida');
+reg = registrarPreguntas(S, S.solicitud(), [{ campo: 'nombre_proceso', pregunta: '¿Cómo se llama el proceso?', opciones: [] }]);
+check(reg.abierta?.clave === 'nombre_proceso', 'sin opciones (último recurso): el siguiente mensaje la responde');
 
 // ─────────────────────────────────────────────────────────────────
 titulo('10. Refresh limpia la solicitud temporal');
