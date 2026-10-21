@@ -5,7 +5,7 @@
  * la IA devuelve el JSON lógico simple (ver CONTRACT.md), el front lo valida,
  * compila a geometría y lo aplica al editor vía window.LadderEditor.
  */
-import { generateProgram, confirmarAlternativa } from './generate.js';
+import { generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica } from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
 import { describeBand } from './equipment.js';
 
@@ -14,11 +14,13 @@ let profile = null;
 
 const $ = (id) => document.getElementById(id);
 const bridge = () => window.LadderEditor;
+// Lógica activa de la sesión (lavo-sesion.js): la comparten este chat, el
+// editor y el copiloto. Cada instrucción la edita; F5 empieza otra sesión.
+const sesion = () => window.LavoSesion;
 const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // ── Estado del chat ───────────────────────────────────────────
 let _mid = 0;
-let _historialChat = [];   // prompts del usuario para contexto conversacional
 
 const STAGE_LABELS = {
   fetching:   'Consultando al asistente IA...',
@@ -49,6 +51,9 @@ function body(text, opts) {
   if (opts.compat)   html += compatHtml(opts.compat);
   if (opts.altId)    html += altButtonsHtml(opts.altId);
   if (opts.logic)    html += logicSummaryHtml(opts.logic);
+  if (opts.json)     html += `<details class="cmsg-logic" open><summary>JSON de la lógica activa</summary><pre style="white-space:pre-wrap;max-height:320px;overflow:auto;font-size:11px;">${esc(JSON.stringify(opts.json, null, 2))}</pre></details>`;
+  if (opts.lista && opts.lista.length) html += listHtml(`${opts.lista.length} instrucción(es) en esta sesión`, opts.lista);
+  if (opts.reemplazoId) html += reemplazoHtml(opts.reemplazoId, opts.reemplazoMotivo);
   if (opts.telemetry) html += telemetryHtml(opts.telemetry);
   if (opts.warnings && opts.warnings.length) html += listHtml(`${opts.warnings.length} aviso(s)`, opts.warnings);
   if (opts.ejemploId) html += feedbackHtml(opts.ejemploId);
@@ -181,21 +186,13 @@ function feedbackHtml(ejemploId) {
 const _guardables = new Map();   // guardarId -> { instruccion, dispositivo, program, ejemplo_id }
 let _ultimoGuardable = null;
 
-// Frases que formaron la lógica del editor: "haz un llenado" + "cambia el
-// tiempo a 6 s" + "no está esperando los 5 s". Cada instrucción modifica el
-// programa del editor (va como contexto), así que la memoria se guarda con
-// TODAS, no solo con la última. Se reinicia si el editor ya tiene otro
-// programa (abierto de archivo, editado a mano...).
-let _cadena = { cfg: null, frases: [] };
-
-function cfgDe(program) {
-  return JSON.stringify(program?.metadata?.engine_config ?? null);
-}
-
-/** Frases del programa que resultará de `prompt` aplicado sobre `programaEditor`. */
-function frasesPara(prompt, programaEditor) {
-  const sigue = _cadena.cfg && _cadena.cfg === cfgDe(programaEditor);
-  return [...(sigue ? _cadena.frases : []), prompt];
+// Frases que formaron la lógica activa: "haz un llenado" + "cambia el
+// tiempo a 6 s" + "no está esperando los 5 s". Cada instrucción edita la
+// lógica activa, así que la memoria se guarda con TODAS, no solo con la
+// última. La cadena la lleva la sesión (también las del copiloto).
+function frasesPara(prompt, tipo) {
+  const previas = tipo === 'modificacion' ? (sesion()?.instrucciones() || []) : [];
+  return [...previas, prompt];
 }
 
 function unirFrases(frases) {
@@ -206,7 +203,6 @@ function unirFrases(frases) {
 function registrarGuardable(datos) {
   const id = 'g' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
   if (Array.isArray(datos.frases)) {
-    _cadena = { cfg: cfgDe(datos.program), frases: datos.frases };
     datos = { ...datos, instruccion: unirFrases(datos.frases) };
   }
   _guardables.set(id, datos);
@@ -360,6 +356,18 @@ async function guardarProgramaAbierto() {
 }
 
 // ── Generar ───────────────────────────────────────────────────
+// Instrucciones que piden reemplazar la lógica activa: esperan confirmación.
+const _reemplazos = new Map();
+
+function reemplazoHtml(id, motivo) {
+  const si = motivo === 'equipo' ? 'Sí, programar el otro equipo' : 'Sí, empezar una lógica nueva';
+  const no = motivo === 'equipo' ? 'Cancelar' : 'No, aplicarlo como cambio';
+  return `<div class="cmsg-actions" data-reemplazo-id="${esc(id)}">
+    <button type="button" class="reemp-btn" data-accion="nueva" style="${ALT_BTN}background:var(--accent,#2E7DE1);color:#fff;">${esc(si)}</button>
+    <button type="button" class="reemp-btn" data-accion="${motivo === 'equipo' ? 'cancelar' : 'modificar'}" style="${ALT_BTN}background:transparent;color:inherit;">${esc(no)}</button>
+  </div>`;
+}
+
 async function onSend() {
   const input = $('chatInput');
   const prompt = input.value.trim();
@@ -367,23 +375,60 @@ async function onSend() {
   addMsg('user', prompt);
   input.value = '';
 
-  // Acumular historial para contexto conversacional (máx 6 entradas)
-  _historialChat.push(prompt);
-  if (_historialChat.length > 6) _historialChat.shift();
+  // Con lógica activa, la instrucción la edita, la explica o la muestra.
+  const plan = planearInstruccion(prompt, sesion());
+  if (plan.accion === 'mostrar') {
+    addMsg('ai', `Lógica activa: ${sesion().nombre()} (no se regeneró).`,
+      { json: plan.program?.metadata?.engine_config || plan.program });
+    return;
+  }
+  if (plan.accion === 'explicar') {
+    await explicar(prompt, plan.program);
+    return;
+  }
+  if (plan.accion === 'confirmar_reemplazo') {
+    const id = 'r' + Date.now().toString(36);
+    _reemplazos.set(id, prompt);
+    addMsg('ai', plan.motivo === 'equipo'
+      ? `Esa instrucción es para el otro equipo: programarlo reemplaza la lógica activa «${sesion().nombre()}». ¿Continuar?`
+      : `Pides una lógica nueva: reemplazaría la lógica activa «${sesion().nombre()}». ¿La reemplazo?`,
+      { reemplazoId: id, reemplazoMotivo: plan.motivo });
+    return;
+  }
+  await generar(prompt, plan.context, plan.tipo);
+}
 
-  const thinking = addMsg('ai', 'Consultando al asistente IA...');
-  const frases = frasesPara(prompt, bridge()?.getProgram());
+async function explicar(prompt, program) {
+  const thinking = addMsg('ai', 'Revisando la lógica activa (no se modifica)...');
+  try {
+    const texto = await explicarLogica(prompt, program);
+    thinking.update(texto || 'El asistente no devolvió una explicación.');
+  } catch (err) {
+    thinking.update(`No se pudo explicar la lógica: ${err.message} La lógica activa no cambió.`, { error: true });
+  }
+}
+
+/** Versión nueva y válida: va al editor y pasa a ser la lógica activa. */
+function aplicarResultado(program, { instruccion, tipo, device }) {
+  bridge()?.setProgram(program);
+  try { sesion()?.aplicar(program, { instruccion, tipo, device }); } catch (e) { bridge()?.log('err', e.message); }
+}
+
+/** tipo 'nueva' (sin contexto) o 'modificacion' (edita la lógica activa). */
+async function generar(prompt, context, tipo) {
+  const input = $('chatInput');
+  const thinking = addMsg('ai', tipo === 'modificacion'
+    ? 'Aplicando el cambio sobre la lógica activa...' : 'Consultando al asistente IA...');
+  const frases = frasesPara(prompt, tipo);
+  const conserva = sesion()?.tieneLogica() ? ' La lógica activa no cambió.' : '';
   try {
     const out = await generateProgram(prompt, profile, {
-      context: {
-        programa_anterior: bridge()?.getProgram() || null,
-        historial: [..._historialChat],
-      },
+      context,
       onProgress: (stage) => thinking.update(STAGE_LABELS[stage] || stage),
     });
     // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
-    // las preguntas y NO se aplica programa (aún no hay lógica). Se repone el
-    // prompt para que las respuestas del usuario se agreguen a su instrucción.
+    // las preguntas y NO se aplica programa. Se repone el prompt para que las
+    // respuestas del usuario se agreguen a su instrucción.
     if (out.needsClarification) {
       thinking.update('Necesito precisar un dato para no inventar:', {
         clarify: out.questions, assumptions: out.assumptions,
@@ -394,7 +439,7 @@ async function onSend() {
     }
     // Motor v7: sin alternativa segura -> solo se explica la limitacion.
     if (out.notSupported) {
-      thinking.update('No es posible hacerlo de forma segura con este hardware:', {
+      thinking.update('No es posible hacerlo de forma segura con este hardware.' + conserva, {
         compat: out.analysis?.compatibilidad, warnings: out.warnings,
       });
       return;
@@ -403,24 +448,24 @@ async function onSend() {
     // usuario la acepte (y el PLC tampoco la acepta sin esa confirmacion).
     if (out.needsConfirmation) {
       const altId = 'alt' + Date.now().toString(36);
-      _alternativas.set(altId, { ...out, instruccion: prompt, frases });
-      thinking.update('Propuesta alternativa (revísala antes de usarla):', {
+      _alternativas.set(altId, { ...out, instruccion: prompt, frases, tipo });
+      thinking.update('Propuesta alternativa (revísala antes de usarla):' + conserva, {
         compat: out.confirmation?.compatibilidad, logic: out.logic, warnings: out.warnings, altId,
       });
       return;
     }
-    bridge()?.setProgram(out.program);
+    aplicarResultado(out.program, { instruccion: prompt, tipo, device: out.device });
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
     const guardarId = out.telemetry?.source === 'json-pegado' ? null : registrarGuardable({
       instruccion: prompt, frases, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
     });
     thinking.update(
-      `Listo: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
+      `${tipo === 'modificacion' ? 'Cambio aplicado' : 'Listo'}: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
         + (out.analysis?.fuente === 'memoria' ? ' (reutilizada de la memoria validada, sin llamar al modelo)' : ''),
       { telemetry: out.telemetry, warnings: out.warnings, logic: out.logic, ejemploId: out.ejemplo_id, guardarId },
     );
   } catch (err) {
-    thinking.update('No se pudo generar el programa: ' + err.message, { error: true, errors: err.logicErrors });
+    thinking.update('No se pudo generar el programa: ' + err.message + conserva, { error: true, errors: err.logicErrors });
     bridge()?.log('err', err.message);
   }
 }
@@ -496,7 +541,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wrap.querySelectorAll('.alt-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
     if (btn.dataset.accion === 'usar') {
       const program = confirmarAlternativa(out.program);
-      bridge()?.setProgram(program);
+      aplicarResultado(program, { instruccion: out.instruccion, tipo: out.tipo, device: out.device });
       bridge()?.log('ok', `Alternativa aceptada y aplicada al editor (${out.program.rungs.length} rungs). Revísala antes de cargarla al PLC.`);
       const guardarId = registrarGuardable({
         instruccion: out.instruccion, frases: out.frases, dispositivo: out.device, program, ejemplo_id: out.ejemplo_id,
@@ -520,5 +565,38 @@ document.addEventListener('DOMContentLoaded', () => {
     chip.style.opacity = '0.55';
   });
 
-  addMsg('ai', 'Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector, y se apaga con el paro de emergencia").');
+  // Instrucción que pedía reemplazar la lógica activa: el usuario decide.
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('.reemp-btn');
+    if (!btn) return;
+    const wrap = btn.closest('.cmsg-actions');
+    const prompt = _reemplazos.get(wrap?.dataset.reemplazoId);
+    if (prompt == null) return;
+    _reemplazos.delete(wrap.dataset.reemplazoId);
+    wrap.querySelectorAll('.reemp-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
+    const accion = btn.dataset.accion;
+    if (accion === 'nueva') generar(prompt, null, 'nueva');
+    else if (accion === 'modificar') generar(prompt, sesion()?.contexto() || null, 'modificacion');
+    else addMsg('ai', 'Cancelado: la lógica activa no cambió.');
+  });
+
+  // Lógica activa de la sesión: al volver a esta pantalla se sigue sobre ella.
+  const s = sesion();
+  if (s?.tieneLogica()) {
+    const prog = s.programa();
+    const guardarId = prog?.metadata?.engine_config && s.instrucciones().length ? registrarGuardable({
+      instruccion: '', frases: s.instrucciones(), dispositivo: s.device(), program: prog, ejemplo_id: '',
+    }) : null;
+    addMsg('ai', `Sigues trabajando sobre la lógica activa «${s.nombre()}». Las próximas instrucciones la modifican; `
+      + 'recarga la página (F5) para empezar desde cero.', { lista: s.instrucciones(), guardarId });
+  } else {
+    addMsg('ai', 'Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector, y se apaga con el paro de emergencia").');
+  }
+  s?.suscribir((st, origen) => {
+    if (origen === 'otra_pestana' && st?.program) {
+      const ult = st.instrucciones?.at(-1)?.texto;
+      addMsg('ai', `La lógica activa cambió en el copiloto: «${st.program.metadata?.name || 'programa'}»`
+        + (ult ? ` (${ult})` : '') + '. Las próximas instrucciones parten de esa versión.');
+    }
+  });
 });

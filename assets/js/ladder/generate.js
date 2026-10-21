@@ -19,7 +19,7 @@
 import { BACKEND_BASE_URL } from './config.js';
 import { compileLogicToSchema } from './compiler/logicToSchema.js';
 import { validateLogicJson, normalizeAndValidate } from './validate.js';
-import { detectEquipment, equipmentQuestion, canonicalBand } from './equipment.js';
+import { detectEquipment, equipmentQuestion, canonicalBand, describeBand, equipoNombrado } from './equipment.js';
 
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
@@ -49,7 +49,10 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     if (pasted.band) logic = { ...pasted, band: canonicalBand(pasted.band) };
   } else {
     // ── Selección de equipo (maletín / banda transportadora) ────
-    // Prioridad: el equipo que ya eligió el usuario > lo que diga el texto.
+    // Prioridad: el equipo que ya eligió el usuario > el de la lógica activa
+    // que se está editando > lo que diga el texto. "Cambia el último tiempo a
+    // 8 s" no nombra equipo: es del que ya se está programando, no se pregunta.
+    if (!equipo) equipo = equipoDeLaLogica(context?.programa_anterior);
     if (!equipo) {
       const det = detectEquipment(text);
       if (det.equipment === null) {
@@ -202,6 +205,77 @@ async function pedirLogica(text, profile, context, device, signal) {
     throw new Error(d?.detail || `El backend respondió HTTP ${res.status} en /generar-logica.`);
   }
   return res.json();
+}
+
+/**
+ * Qué hacer con una instrucción, según la lógica activa de la sesión
+ * (window.LavoSesion). Lo usan el copiloto y el chat del editor:
+ *   generar             → /generar-logica; con lógica activa va como contexto
+ *                         y el resultado la EDITA (tipo 'modificacion')
+ *   mostrar / explicar  → sobre la lógica activa, sin regenerarla
+ *   confirmar_reemplazo → pide empezar otra lógica (o el otro equipo): se
+ *                         confirma antes de reemplazar la activa
+ */
+export function planearInstruccion(text, sesion = globalThis.LavoSesion) {
+  const program = sesion?.programa?.() || null;
+  if (!program) return { accion: 'generar', context: null, tipo: 'nueva' };
+  const intencion = sesion.clasificar(text);
+  if (intencion === 'mostrar') return { accion: 'mostrar', program };
+  if (intencion === 'explicar') return { accion: 'explicar', program };
+  if (intencion === 'nueva' || cambiaDeEquipo(text, program)) {
+    return { accion: 'confirmar_reemplazo', program, motivo: intencion === 'nueva' ? 'nueva' : 'equipo' };
+  }
+  return { accion: 'generar', context: sesion.contexto(), tipo: 'modificacion' };
+}
+
+/** Equipo del programa que se está editando (por su engine_config), o null. */
+export function equipoDeLaLogica(program) {
+  const cfg = program?.metadata?.engine_config;
+  if (!cfg || typeof cfg !== 'object') return null;
+  return normalizeDevice(cfg.device) || (cfg.band && typeof cfg.band === 'object' ? 'banda' : 'maletin');
+}
+
+/**
+ * ¿La instrucción pide programar el OTRO equipo? Eso no es editar la lógica
+ * activa sino empezar otra: el llamador lo confirma antes de reemplazarla.
+ */
+export function cambiaDeEquipo(text, program) {
+  const activo = equipoDeLaLogica(program);
+  const nombrado = equipoNombrado(text);
+  return !!(activo && nombrado && nombrado !== activo);
+}
+
+/**
+ * Explica la lógica activa SIN regenerarla ("explícame por qué no funciona").
+ * Usa /chat con el JSON vigente como contexto; no cambia el programa.
+ */
+export async function explicarLogica(pregunta, program, { signal } = {}) {
+  const cfg = program?.metadata?.engine_config;
+  if (!cfg) throw new Error('No hay una lógica activa con JSON que explicar.');
+  const json = JSON.stringify(cfg.respuesta_llm || cfg);
+  const resumen = cfg.band ? describeBand(cfg.band).join('\n') : '';
+  const message = [
+    `Pregunta del usuario: ${pregunta}`,
+    resumen ? `Resumen de lo que ejecuta el PLC:\n${resumen}` : '',
+    `JSON de la lógica activa${json.length > 2600 ? ' (recortado)' : ''}:\n${json.slice(0, 2600)}`,
+  ].filter(Boolean).join('\n\n').slice(0, 3900);
+  const res = await fetch(`${BACKEND_BASE_URL}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message,
+      system_prompt: 'Eres LAVO, asistente de PLCs Horner XL4 (maletín y banda transportadora). '
+        + 'Explica en español, breve y claro, la lógica activa que te dan: qué hace, en qué orden y, si '
+        + 'preguntan por una falla, la causa más probable dentro de esa lógica. NO generes un JSON '
+        + 'nuevo ni cambies la lógica; si hace falta un cambio, sugiere la instrucción que lo haría.',
+      temperature: 0.3,
+      num_predict: 500,
+    }),
+    signal,
+  });
+  const d = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(d?.detail || `El backend respondió HTTP ${res.status} en /chat.`);
+  return String(d?.reply || '').trim();
 }
 
 /** Reduce lo que llegue ('Banda transportadora', 'Maletín'…) al id canónico. */

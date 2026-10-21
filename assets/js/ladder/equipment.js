@@ -84,6 +84,14 @@ const NOMBRE_MALETIN = /\bmaletin(?:es)?\b/;
 
 const hits = (t, list) => list.filter(re => re.test(t)).length;
 
+/** Equipo que la instrucción NOMBRA explícitamente ('banda' | 'maletin'), o null. */
+export function equipoNombrado(text) {
+  const t = norm(text);
+  const nb = NOMBRE_BANDA.test(t), nm = NOMBRE_MALETIN.test(t);
+  if (nb === nm) return null;
+  return nb ? 'banda' : 'maletin';
+}
+
 /**
  * ¿A qué equipo pertenece la instrucción?
  * @returns {{equipment:'maletin'|'banda'|null, reason:string}}

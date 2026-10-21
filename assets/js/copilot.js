@@ -118,12 +118,11 @@ let currentProfile = localStorage.getItem('lv_copilot_profile') || 'media';
 let currentMode = localStorage.getItem('lv_copilot_mode') || 'aprendizaje';
 let isBusy = false;
 
-// Contexto conversacional del modo Diseñador: el backend no guarda estado,
-// así que el frontend recuerda el último programa generado y los prompts
-// previos (se pasan como `contexto` a window.LadderGen.generate) para que
-// instrucciones como "cámbialo" o "agrégale un paro" tengan referencia.
-let lastLadderProgram = null; // JSON del último programa generado
-let ladderPrompts = [];       // prompts previos del modo Diseñador
+// Contexto conversacional del modo Diseñador: el backend no guarda estado.
+// La lógica activa (último programa válido + instrucciones que lo formaron)
+// vive en window.LavoSesion (lavo-sesion.js), compartida con el editor: cada
+// instrucción la edita, sobrevive a navegar entre pantallas y F5 la reinicia.
+const sesionLogica = () => window.LavoSesion;
 
 // ---------- Referencias DOM ----------
 const $ = id => document.getElementById(id);
@@ -538,20 +537,17 @@ function addLadderMessage(out) {
   openBtn.className = 'cp-action-btn';
   openBtn.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i> Abrir en Editor Ladder';
   openBtn.addEventListener('click', () => {
-    // Pestaña nueva: si navegáramos aquí mismo se perdería el historial
-    // del chat (el estado de la conversación vive solo en memoria).
+    // Pestaña nueva: aquí se queda el historial del chat. El editor abre la
+    // lógica ACTIVA de la sesión (la más reciente, aunque este mensaje sea de
+    // una versión anterior) y queda sincronizado con esta pestaña.
     // `from=chat` hace que el editor muestre su botón "Volver al chat",
     // y conservar window.opener le permite re-enfocar esta pestaña.
-    // Respaldo robusto: además de la URL (que puede truncarse en programas
-    // grandes y perder el engine_config), dejamos el programa COMPLETO en
-    // localStorage para que el editor lo recupere si la URL falla.
-    try { localStorage.setItem('lv_handoff_program', JSON.stringify(program)); } catch { /* cuota llena */ }
-    // Programas grandes (p. ej. la banda) superan el largo de URL que acepta
-    // el servidor (414 URI Too Long): viajan solo por localStorage.
-    const url = window.LadderGen.programFitsURL(program)
-      ? `ladder.html?l=${window.LadderGen.encodeProgramToURL(program)}&from=chat`
-      : 'ladder.html?handoff=1&from=chat';
-    window.open(url, '_blank');
+    const S = sesionLogica();
+    const activo = S?.programa() || program;
+    S?.prepararHandoff();
+    // Respaldo: el programa COMPLETO en localStorage por si la sesión no llega.
+    try { localStorage.setItem('lv_handoff_program', JSON.stringify(activo)); } catch { /* cuota llena */ }
+    window.open('ladder.html?handoff=1&from=chat', '_blank');
   });
   actions.appendChild(openBtn);
 
@@ -635,22 +631,102 @@ function addClarificationMessage(out, originalMessage) {
   scrollToBottom();
 }
 
+// Aviso corto del generador (lógica activa, reemplazos, alternativas).
+function addLadderInfo(text, extra) {
+  const row = document.createElement('div');
+  row.className = 'cp-msg-row ai';
+  const role = document.createElement('div');
+  role.className = 'cp-msg-role';
+  role.innerHTML = '<i class="fa-solid fa-diagram-project"></i>';
+  role.appendChild(document.createTextNode('Generador Ladder'));
+  const msg = document.createElement('div');
+  msg.className = 'cp-msg';
+  msg.textContent = text;
+  if (extra) msg.appendChild(extra);
+  row.append(role, msg);
+  threadEl.appendChild(row);
+  setEmptyState();
+  scrollToBottom();
+  return msg;
+}
+
+function botones(opciones) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cp-msg-actions';
+  opciones.forEach(([texto, fn, ghost]) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cp-action-btn' + (ghost ? ' ghost' : '');
+    b.textContent = texto;
+    b.addEventListener('click', async () => {
+      if (isBusy) return;
+      wrap.querySelectorAll('button').forEach(x => { x.disabled = true; });
+      isBusy = true;
+      updateSendState();
+      try { await fn(); } finally { isBusy = false; updateSendState(); }
+    });
+    wrap.appendChild(b);
+  });
+  return wrap;
+}
+
+function listaInstrucciones(lista) {
+  const ol = document.createElement('ol');
+  ol.style.margin = '6px 0 0 18px';
+  lista.forEach(t => { const li = document.createElement('li'); li.textContent = t; ol.appendChild(li); });
+  return ol;
+}
+
+// Con lógica activa, la instrucción la edita, la explica o la muestra; solo
+// una petición explícita de "lógica nueva" la reemplaza, y con confirmación.
 async function sendLadderRequest(message) {
-  const isFollowUp = lastLadderProgram != null;
+  const S = sesionLogica();
+  const plan = window.LadderGen.planearInstruccion(message, S);
+  if (plan.accion === 'mostrar') {
+    const pre = document.createElement('pre');
+    pre.className = 'cp-json';
+    pre.dataset.lang = 'json';
+    pre.textContent = JSON.stringify(plan.program?.metadata?.engine_config || plan.program, null, 2);
+    addLadderInfo(`Lógica activa: ${S.nombre()} (no se regeneró).`, pre);
+    return;
+  }
+  if (plan.accion === 'explicar') {
+    addTypingIndicator('Generador Ladder · revisando la lógica activa…');
+    try {
+      const texto = await window.LadderGen.explicarLogica(message, plan.program,
+        { signal: AbortSignal.timeout(CHAT_TIMEOUT_MS) });
+      removeTypingIndicator();
+      addAssistantMessage(texto || 'El asistente no devolvió una explicación.');
+    } catch (err) {
+      removeTypingIndicator();
+      addErrorMessage(`No se pudo explicar la lógica: ${err.message} La lógica activa no cambió.`);
+    }
+    return;
+  }
+  if (plan.accion === 'confirmar_reemplazo') {
+    const equipo = plan.motivo === 'equipo';
+    addLadderInfo(equipo
+      ? `Esa instrucción es para el otro equipo: programarlo reemplaza la lógica activa «${S.nombre()}». ¿Continuar?`
+      : `Pides una lógica nueva: reemplazaría la lógica activa «${S.nombre()}». ¿La reemplazo?`,
+      botones(equipo
+        ? [['Sí, programar el otro equipo', () => generarLadder(message, null, 'nueva')],
+           ['Cancelar', () => addLadderInfo('Cancelado: la lógica activa no cambió.'), true]]
+        : [['Sí, empezar una lógica nueva', () => generarLadder(message, null, 'nueva')],
+           ['No, aplicarlo como cambio', () => generarLadder(message, S.contexto(), 'modificacion'), true]]));
+    return;
+  }
+  await generarLadder(message, plan.context, plan.tipo);
+}
+
+/** tipo 'nueva' (sin contexto) o 'modificacion' (edita la lógica activa). */
+async function generarLadder(message, context, tipo) {
+  const S = sesionLogica();
+  const isFollowUp = tipo === 'modificacion';
+  const conserva = S?.tieneLogica() ? ' La lógica activa no cambió.' : '';
   addTypingIndicator(isFollowUp
     ? 'Generador Ladder · aplicando cambios…'
     : 'Generador Ladder · creando programa…');
   setBackendStatus('busy', 'Generando programa Ladder…');
-
-  // Si ya hay un programa generado, se manda como contexto para que la IA
-  // entienda instrucciones de modificación ("cámbialo", "agrégale un paro").
-  let context = null;
-  if (isFollowUp) {
-    context = {
-      programa_anterior: lastLadderProgram,
-      historial: ladderPrompts.slice(-4),
-    };
-  }
 
   try {
     const out = await window.LadderGen.generate(message, {
@@ -660,7 +736,7 @@ async function sendLadderRequest(message) {
     removeTypingIndicator();
 
     // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
-    // las preguntas y NO se aplica programa (aún no hay lógica generada).
+    // las preguntas y NO se aplica programa.
     if (out.needsClarification) {
       addClarificationMessage(out, message);
       setBackendStatus('ok', 'Backend conectado');
@@ -671,20 +747,29 @@ async function sendLadderRequest(message) {
     if (out.notSupported) {
       const c = out.analysis?.compatibilidad || {};
       addErrorMessage('No es posible hacerlo de forma segura con este hardware: '
-        + [...(c.no_soportado || []), ...(out.warnings || [])].join(' · '));
+        + [...(c.no_soportado || []), ...(out.warnings || [])].join(' · ') + conserva);
       setBackendStatus('ok', 'Backend conectado');
       return;
     }
-    // Motor v7: alternativa -> se muestra, pero el PLC no la acepta hasta
-    // confirmarla en el editor (Asistente IA > "Usar la alternativa").
+    // Motor v7: alternativa -> NO pasa a ser la lógica activa hasta que el
+    // usuario la acepte (y el PLC no la acepta sin esa confirmación).
     if (out.needsConfirmation) {
       const c = out.confirmation?.compatibilidad || {};
-      addErrorMessage('Propuesta ALTERNATIVA (requiere confirmación en el editor antes de cargarla): '
-        + [...(c.modificado || []), ...(c.simplificado || []), ...(c.no_soportado || [])].join(' · '));
+      addLadderInfo('Propuesta ALTERNATIVA (revísala antes de usarla): '
+        + [...(c.modificado || []), ...(c.simplificado || []), ...(c.no_soportado || [])].join(' · ') + conserva,
+        botones([
+          ['Usar la alternativa', () => {
+            const program = window.LadderGen.confirmarAlternativa(out.program);
+            S?.aplicar(program, { instruccion: message, tipo, device: out.device });
+            addLadderMessage({ ...out, program });
+          }],
+          ['Descartar', () => addLadderInfo('Alternativa descartada: la lógica activa no cambió.'), true],
+        ]));
+      setBackendStatus('ok', 'Backend conectado');
+      return;
     }
+    S?.aplicar(out.program, { instruccion: message, tipo, device: out.device });
     addLadderMessage(out);
-    lastLadderProgram = out.program;
-    ladderPrompts.push(message);
     setBackendStatus('ok', 'Backend conectado');
   } catch (err) {
     removeTypingIndicator();
@@ -699,8 +784,17 @@ async function sendLadderRequest(message) {
     if (Array.isArray(err.logicErrors) && err.logicErrors.length) {
       hint += '\n• ' + err.logicErrors.join('\n• ');
     }
-    addErrorMessage('Error al generar Ladder: ' + hint);
+    addErrorMessage('Error al generar Ladder: ' + hint + conserva);
   }
+}
+
+// Al volver a esta pantalla (o desde el editor) se sigue sobre la lógica activa.
+function mostrarLogicaActiva(texto) {
+  const S = sesionLogica();
+  if (!S?.tieneLogica()) return;
+  const lista = S.instrucciones();
+  addLadderInfo(texto, lista.length ? listaInstrucciones(lista) : null);
+  addLadderMessage({ program: S.programa(), warnings: [] });
 }
 
 // ============================================================
@@ -927,8 +1021,8 @@ $('cpViewSystem').addEventListener('click', () => { closeMenus(); addSystemInfoM
 $('cpClearChat').addEventListener('click', () => {
   closeMenus();
   threadEl.innerHTML = '';
-  lastLadderProgram = null; // limpiar chat también olvida el contexto Ladder
-  ladderPrompts = [];
+  // Limpiar chat también olvida la lógica activa (no la memoria validada).
+  sesionLogica()?.reiniciar();
   setEmptyState();
   inputEl.focus();
 });
@@ -1128,6 +1222,16 @@ let isListening = () => false;
 
   loadProfiles();
   checkHealth();
+
+  const S = sesionLogica();
+  mostrarLogicaActiva(`Sigues trabajando sobre la lógica activa «${S?.nombre()}». En modo Diseñador, `
+    + 'las próximas instrucciones la modifican; recarga la página (F5) para empezar desde cero.');
+  S?.suscribir((st, origen) => {
+    if (origen !== 'otra_pestana' && origen !== 'restaurada') return;
+    const ult = st?.instrucciones?.at(-1)?.texto;
+    mostrarLogicaActiva(`La lógica activa cambió en el editor: «${st?.program?.metadata?.name || 'programa'}»`
+      + (ult ? ` (${ult})` : '') + '. Las próximas instrucciones parten de esa versión.');
+  });
   inputEl.focus();
 })();
 

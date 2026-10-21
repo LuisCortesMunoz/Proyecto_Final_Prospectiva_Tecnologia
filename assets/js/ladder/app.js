@@ -65,22 +65,52 @@ function plcObjetivo(_prog) {
 }
 
 // ── Carga inicial del programa ────────────────────────────────────
-// Prioridad: URL (?l=) → respaldo del copiloto en localStorage → default.
-// La URL puede truncarse en programas grandes (y perder el engine_config);
-// en ese caso el copiloto dejó el programa COMPLETO en localStorage.
+// Prioridad: Refresh (F5) → programa por defecto (sesión nueva) · URL (?l=)
+// → lógica activa de la sesión (lavo-sesion.js) → respaldo del copiloto en
+// localStorage → default. La URL puede truncarse en programas grandes (y
+// perder el engine_config); en ese caso el copiloto dejó el programa
+// COMPLETO en localStorage.
+const Sesion = window.LavoSesion;
+
 function loadInitialProgram() {
-  const fromUrl = importFromURL();
-  if (fromUrl) return fromUrl;
+  const params = new URLSearchParams(window.location.search);
+  const traePrograma = params.has('l') || params.get('handoff') === '1';
+  const fromUrl = traePrograma ? importFromURL() : null;
+  // Después de leerlos se quitan de la URL: un F5 no debe volver a cargarlos.
+  if (traePrograma) {
+    params.delete('l');
+    params.delete('handoff');
+    const q = params.toString();
+    history.replaceState(null, '', window.location.pathname + (q ? '?' + q : ''));
+  }
+  // F5 = sesión nueva: no se restaura nada (ni de la URL ni del respaldo).
+  if (Sesion?.esRecarga) return defaultProgram();
+
+  // Con "Atrás" la URL trae la copia que el editor fue dejando en ?l=: puede
+  // ser más vieja que la lógica activa (editada en otra pantalla).
+  if (fromUrl && !(Sesion?.navegacion === 'back_forward' && Sesion.tieneLogica())) {
+    return adoptarEnSesion(fromUrl);
+  }
+  if (Sesion?.tieneLogica()) return Sesion.programa();
   // Si venía un ?l= que no se pudo decodificar, o un programa demasiado
   // grande para la URL (?handoff=1, ver codec.js), recuperar el respaldo.
-  const params = new URLSearchParams(window.location.search);
-  if (params.has('l') || params.get('handoff') === '1') {
+  if (traePrograma) {
     try {
       const raw = localStorage.getItem('lv_handoff_program');
-      if (raw) return JSON.parse(raw);
+      if (raw) return adoptarEnSesion(JSON.parse(raw));
     } catch { /* JSON inválido o sin acceso a localStorage */ }
   }
   return defaultProgram();
+}
+
+/** Un programa abierto explícitamente (link ?l=, respaldo) pasa a ser la lógica activa. */
+function adoptarEnSesion(program) {
+  if (!Sesion || !program || !Array.isArray(program.rungs)) return program;
+  const cfg = (p) => JSON.stringify(p?.metadata?.engine_config ?? null);
+  if (!Sesion.tieneLogica() || cfg(Sesion.programa()) !== cfg(program)) {
+    try { Sesion.aplicar(program, { tipo: 'archivo', origen: 'editor' }); } catch { /* programa inválido */ }
+  }
+  return program;
 }
 
 // ── Store ────────────────────────────────────────────────────────
@@ -452,6 +482,49 @@ window.LadderEditor = {
   undo: () => store.undo(),
   redo: () => store.redo(),
 };
+
+// ── Lógica activa de la sesión (lavo-sesion.js) ────────────────
+// El editor no guarda una copia propia: lo que muestra es la lógica activa.
+//  - Cambios hechos aquí (a mano, deshacer...) se vuelven la lógica activa.
+//  - Cambios hechos en otra pestaña (copiloto) se cargan aquí.
+// La simulación no cuenta como cambio de lógica.
+const _sinEstado = (p) => { const { execution_state, ...resto } = p || {}; return JSON.stringify(resto); };
+let _tSesion = null;
+let _pendienteSesion = null;   // llegó otra versión durante la simulación
+store.subscribe(() => {
+  if (!Sesion || store.isSimMode()) return;
+  if (_pendienteSesion) {
+    const p = _pendienteSesion;
+    _pendienteSesion = null;
+    store.setProgram(p);
+    return;
+  }
+  clearTimeout(_tSesion);
+  _tSesion = setTimeout(() => {
+    const prog = store.getProgram();
+    const tieneCfg = !!prog?.metadata?.engine_config;
+    if (!Sesion.tieneLogica() && !tieneCfg) return;        // dibujo suelto, sin lógica activa
+    if (_sinEstado(prog) === _sinEstado(Sesion.programa())) return;
+    try { Sesion.aplicar(prog, { tipo: 'editor', origen: 'editor' }); } catch { /* inválido: se conserva la activa */ }
+  }, 400);
+});
+Sesion?.suscribir((st, origen) => {
+  if ((origen !== 'otra_pestana' && origen !== 'restaurada') || !st?.program) return;
+  if (_sinEstado(st.program) === _sinEstado(store.getProgram())) return;
+  if (store.isSimMode()) {
+    _pendienteSesion = st.program;
+    store.log('info', 'La lógica activa cambió en otra pantalla: se cargará al detener la simulación.');
+    return;
+  }
+  store.setProgram(st.program);
+  store.log('info', `Lógica activa actualizada desde otra pantalla: ${st.program.metadata?.name || 'programa'}`);
+});
+
+/** Programa abierto o creado a propósito: reemplaza la lógica activa (cadena nueva). */
+function abrirPrograma(p) {
+  store.setProgram(p);
+  try { Sesion?.aplicar(p, { tipo: 'archivo', origen: 'editor' }); } catch { /* inválido */ }
+}
 
 // ── Toast ──────────────────────────────────────────────────────
 function showToast(msg, type = 'info') {
@@ -1675,6 +1748,7 @@ function onNavDropMenuClick(e) {
   switch (action) {
     case 'new':
       if (confirm('¿Crear nuevo programa? Se perderán los cambios no guardados.')) {
+        Sesion?.reiniciar();          // lógica temporal; la memoria validada no se toca
         store.setProgram(defaultProgram());
         history.replaceState(null, '', window.location.pathname);
         showToast('Nuevo programa creado', 'success');
@@ -1684,7 +1758,7 @@ function onNavDropMenuClick(e) {
       const url = prompt('Pega la URL del programa:');
       if (url) {
         const p = importFromURL();
-        if (p) { store.setProgram(p); showToast('Programa cargado', 'success'); }
+        if (p) { abrirPrograma(p); showToast('Programa cargado', 'success'); }
         else showToast('URL inválida', 'error');
       }
       break;
@@ -1702,7 +1776,7 @@ function onNavDropMenuClick(e) {
       inp.type = 'file'; inp.accept = '.json';
       inp.onchange = () => {
         const fr = new FileReader();
-        fr.onload = () => { try { store.setProgram(JSON.parse(fr.result)); showToast('JSON importado', 'success'); } catch { showToast('JSON inválido', 'error'); } };
+        fr.onload = () => { try { abrirPrograma(JSON.parse(fr.result)); showToast('JSON importado', 'success'); } catch { showToast('JSON inválido', 'error'); } };
         fr.readAsText(inp.files[0]);
       };
       inp.click();
@@ -1945,7 +2019,7 @@ function initImportIA() {
         }
 
         // Cargar en el store — esto dispara render() automaticamente
-        store.setProgram(programa);
+        abrirPrograma(programa);
         store.clearSelection();
 
         // Log en terminal
