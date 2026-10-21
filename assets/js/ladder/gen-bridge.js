@@ -6,7 +6,10 @@
  * para que ambos usen el MISMO flujo único (texto → JSON lógico → programa),
  * con el perfil del dispositivo ya cargado.
  */
-import { generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica } from './generate.js';
+import {
+  generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica,
+  claveAclaracion, preguntasPendientes, decidirRespuesta,
+} from './generate.js';
 import { encode, fitsInURL } from './codec.js';
 
 const PROFILE_URL = 'assets/devices/maletin_basico.json';
@@ -22,6 +25,10 @@ window.LadderGen = {
   planearInstruccion,
   explicarLogica,
   confirmarAlternativa,
+  // Aclaraciones: la respuesta a una pregunta va aparte del texto.
+  claveAclaracion,
+  preguntasPendientes,
+  decidirRespuesta,
   // Codificación URL-safe centralizada en codec.js (antes duplicada en
   // main.js y copilot.js). Para construir ladder.html?l=…
   encodeProgramToURL: encode,

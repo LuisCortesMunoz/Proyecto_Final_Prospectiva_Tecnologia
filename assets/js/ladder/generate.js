@@ -24,13 +24,15 @@ import { detectEquipment, equipmentQuestion, canonicalBand, describeBand, equipo
 /**
  * @param {string} text   Instrucción en lenguaje natural (o un JSON lógico pegado).
  * @param {object|null} profile  Perfil del dispositivo (maletin_basico.json).
- * @param {{signal?:AbortSignal, context?:object, onProgress?:Function, device?:string}} [opts]
- *   `device` fuerza el equipo ('maletin' | 'banda'), p. ej. tras responder la
- *   pregunta de desambiguación. Si no viene, se deduce del texto.
+ * @param {{signal?:AbortSignal, context?:object, onProgress?:Function, device?:string, aclaraciones?:object}} [opts]
+ *   `device` fuerza el equipo ('maletin' | 'banda'). Si no viene, se deduce del texto.
+ *   `aclaraciones` = respuestas a las preguntas de aclaración, APARTE del texto
+ *   ({parametro: {pregunta, respuesta}}): el texto viaja tal cual lo escribió el
+ *   usuario y el backend las combina (ver aclaraciones.py).
  * @returns {Promise<{program, logic, warnings:string[], telemetry}>}
  * Lanza Error en fallo; si el JSON lógico no valida, el Error trae `.logicErrors`.
  */
-export async function generateProgram(text, profile, { signal, context, onProgress, device } = {}) {
+export async function generateProgram(text, profile, { signal, context, onProgress, device, aclaraciones } = {}) {
   const t0 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
   const ahora = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
   let logic = null;
@@ -38,7 +40,9 @@ export async function generateProgram(text, profile, { signal, context, onProgre
   let ejemplo_id = '';
   let confirmacion = null;
   let analysis = {};
-  let equipo = normalizeDevice(device);
+  const acl = aclaraciones && Object.keys(aclaraciones).length ? aclaraciones : null;
+  // "¿Maletín o banda?" respondida con un botón: el equipo, sin tocar el texto.
+  let equipo = normalizeDevice(device) || normalizeDevice(acl?.equipo?.respuesta ?? acl?.equipo);
 
   // Fallback dev: el usuario puede pegar directamente un JSON lógico simple.
   const pasted = tryParseLogicJson(text);
@@ -73,7 +77,7 @@ export async function generateProgram(text, profile, { signal, context, onProgre
     // En la banda el LLM entiende la instrucción completa y el backend la
     // normaliza, comprueba su cobertura y la valida: aquí no se lee el texto.
     onProgress?.('fetching');
-    const data = await pedirLogica(text, profile, context, equipo, signal);
+    const data = await pedirLogica(text, profile, context, equipo, signal, acl);
 
     if (data) {
       // El backend puede pedir aclaración en vez de generar (prompt ambiguo, o
@@ -182,7 +186,7 @@ export function confirmarAlternativa(program) {
  * front llama a la IA: el backend elige el prompt y el mapeo del Ladder
  * maestro que corresponde a `device`.
  */
-async function pedirLogica(text, profile, context, device, signal) {
+async function pedirLogica(text, profile, context, device, signal, aclaraciones) {
   let res;
   try {
     res = await fetch(`${BACKEND_BASE_URL}/generar-logica`, {
@@ -193,6 +197,7 @@ async function pedirLogica(text, profile, context, device, signal) {
         device,                                   // 'maletin' | 'banda'
         device_profile: profile?.id || null,
         contexto: context || null,
+        aclaraciones: aclaraciones || null,
       }),
       signal,
     });
@@ -226,6 +231,64 @@ export function planearInstruccion(text, sesion = globalThis.LavoSesion) {
     return { accion: 'confirmar_reemplazo', program, motivo: intencion === 'nueva' ? 'nueva' : 'equipo' };
   }
   return { accion: 'generar', context: sesion.contexto(), tipo: 'modificacion' };
+}
+
+// ── Aclaraciones (respuestas a needs_clarification) ─────────────
+// Mismos nombres que aclaraciones.py del backend: una pregunta del modelo con
+// campo "frecuencia_hz" y la determinista "freq_hz" son el mismo parámetro.
+const ALIAS_ACLARACION = {
+  freq_hz: 'freq_hz', frecuencia: 'freq_hz', frecuencia_hz: 'freq_hz', velocidad: 'freq_hz', hz: 'freq_hz',
+  direccion: 'direccion', sentido: 'direccion', direction: 'direccion',
+  equipo: 'equipo', device: 'equipo', dispositivo: 'equipo',
+  output: 'output', salida: 'output', input: 'input', entrada: 'input', proceso: 'proceso',
+};
+
+/** Parámetro al que responde una pregunta (campo, slot o id), normalizado. */
+export function claveAclaracion(q) {
+  const k = String(q?.campo || q?.slot || q?.id || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  return ALIAS_ACLARACION[k] || k;
+}
+
+/** Preguntas cuyo parámetro todavía no se respondió. */
+export function preguntasPendientes(questions, aclaraciones) {
+  return (questions || []).filter(q => !(claveAclaracion(q) in (aclaraciones || {})));
+}
+
+/** Opción que pide escribir más ("Describir la secuencia paso a paso"): no es un valor. */
+export function esOpcionAbierta(opcion) {
+  return /^(describir|describe|escribir|escribe|especificar|especifica|otra|otro)\b/i.test(String(opcion || '').trim());
+}
+
+/**
+ * El usuario eligió una opción de una pregunta de aclaración. Registra la
+ * respuesta en la solicitud (window.LavoSesion), sin tocar el texto, y dice
+ * qué hacer:
+ *   esperar  → faltan otras preguntas de la misma solicitud
+ *   enviar   → ya están todas: reenviar la instrucción original + respuestas
+ *   rehacer  → cambió una respuesta de una solicitud ya aplicada: se rehace
+ *              desde la misma base y reemplaza esa versión
+ *   abierta  → la opción pide escribir ("Describir la secuencia..."): el
+ *              siguiente mensaje del usuario es la respuesta
+ *   sin_cambio → eligió la misma opción que ya tenía
+ *   obsoleta → la pregunta es de una instrucción anterior (o la lógica cambió
+ *              después): no se mezcla con la actual
+ */
+export function decidirRespuesta(sesion, solId, clave, pregunta, respuesta) {
+  const actual = sesion?.solicitud?.();
+  if (!actual || actual.id !== solId) return { accion: 'obsoleta' };
+  if (actual.estado === 'aplicada' && sesion.rev() !== actual.revAplicada) return { accion: 'obsoleta' };
+  if (esOpcionAbierta(respuesta)) return { accion: 'abierta', sol: actual };
+  if (actual.aclaraciones?.[clave]?.respuesta === String(respuesta)) return { accion: 'sin_cambio', sol: actual };
+  const sol = sesion.responder(solId, clave, pregunta, respuesta);
+  if (sol.estado === 'aplicada') return { accion: 'rehacer', sol };
+  return { accion: preguntasPendientes(sol.preguntas, sol.aclaraciones).length ? 'esperar' : 'enviar', sol };
+}
+
+/** Frases que formaron la lógica tras aplicar `sol` (para la memoria validada). */
+export function frasesDeSolicitud(sesion, sol) {
+  const previas = sol.tipo === 'modificacion' ? (sol.base?.historial || []) : [];
+  return [...previas, sesion.conAclaraciones(sol.texto, sol.aclaraciones)];
 }
 
 /** Equipo del programa que se está editando (por su engine_config), o null. */

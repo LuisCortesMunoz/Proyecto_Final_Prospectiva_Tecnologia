@@ -579,10 +579,10 @@ function addLadderMessage(out) {
 }
 
 // Fase 1 (agente): el backend pidió precisar datos (prompt ambiguo). Se muestran
-// las preguntas con opciones; al pulsar una, su valor se agrega al input para
-// reenviar una instrucción completa. Se prellenar el input con el mensaje
-// original para conservar la intención del usuario.
-function addClarificationMessage(out, originalMessage) {
+// las preguntas con opciones; al pulsar una, la respuesta se guarda en la
+// solicitud (window.LavoSesion), APARTE de la instrucción, que no se toca. Con
+// todas respondidas se reenvía la instrucción original con sus aclaraciones.
+function addClarificationMessage(questions, sol, aviso) {
   const row = document.createElement('div');
   row.className = 'cp-msg-row ai';
 
@@ -594,10 +594,10 @@ function addClarificationMessage(out, originalMessage) {
 
   const msg = document.createElement('div');
   msg.className = 'cp-msg';
-  msg.appendChild(document.createTextNode(
-    'Necesito precisar un dato para no inventar. Elige una opción o escríbela:'));
+  msg.appendChild(document.createTextNode(aviso || 'Necesito precisar un dato para no inventar. Elige una opción:'));
 
-  (out.questions || []).forEach(q => {
+  (questions || []).forEach(q => {
+    const clave = window.LadderGen.claveAclaracion(q);
     const qd = document.createElement('div');
     qd.style.marginTop = '8px';
     const qt = document.createElement('div');
@@ -605,21 +605,16 @@ function addClarificationMessage(out, originalMessage) {
     qt.style.fontSize = '13px';
     qt.style.marginBottom = '4px';
     qd.appendChild(qt);
+    const marcar = (elegido) => qd.querySelectorAll('button').forEach(x => {
+      x.className = 'cp-action-btn' + (x === elegido ? '' : ' ghost');
+    });
     (q.opciones || []).forEach(o => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cp-action-btn ghost';
+      b.className = 'cp-action-btn' + (sol?.aclaraciones?.[clave]?.respuesta === String(o) ? '' : ' ghost');
       b.textContent = o;
       b.style.margin = '2px';
-      b.addEventListener('click', () => {
-        const val = String(o).split(' (')[0].trim();
-        if (inputEl) {
-          if (!inputEl.value.trim() && originalMessage) inputEl.value = originalMessage + ' ';
-          inputEl.value = (inputEl.value.trim() ? inputEl.value.trimEnd() + ' ' : '') + val;
-          inputEl.focus();
-        }
-        b.style.opacity = '0.55';
-      });
+      b.addEventListener('click', () => onOpcionLadder(sol?.id, clave, q.pregunta || '', String(o), () => marcar(b)));
       qd.appendChild(b);
     });
     msg.appendChild(qd);
@@ -629,6 +624,34 @@ function addClarificationMessage(out, originalMessage) {
   threadEl.appendChild(row);
   setEmptyState();
   scrollToBottom();
+}
+
+// Opción "Describir la secuencia paso a paso": el siguiente mensaje escrito
+// es la respuesta a ese parámetro, no una instrucción nueva.
+let respuestaAbierta = null;   // { solId, clave, pregunta }
+
+async function onOpcionLadder(solId, clave, pregunta, respuesta, marcar) {
+  if (isBusy) return;
+  const S = sesionLogica();
+  const r = window.LadderGen.decidirRespuesta(S, solId, clave, pregunta, respuesta);
+  if (r.accion === 'obsoleta') {
+    addLadderInfo('Esa pregunta es de una instrucción anterior o la lógica ya cambió: no se mezcla con la '
+      + 'actual. Escribe la instrucción de nuevo si quieres cambiarla.');
+    return;
+  }
+  if (r.accion === 'abierta') {
+    respuestaAbierta = { solId, clave, pregunta };
+    addLadderInfo(`Escribe tu respuesta en el cuadro de texto: se usará para "${r.sol.texto}".`);
+    inputEl.focus();
+    return;
+  }
+  respuestaAbierta = null;
+  marcar();
+  if (r.accion !== 'enviar' && r.accion !== 'rehacer') return;
+  isBusy = true;
+  updateSendState();
+  try { await ejecutarLadder(r.sol, { reemplazaUltima: r.accion === 'rehacer' }); }
+  finally { isBusy = false; updateSendState(); }
 }
 
 // Aviso corto del generador (lógica activa, reemplazos, alternativas).
@@ -681,6 +704,17 @@ function listaInstrucciones(lista) {
 // una petición explícita de "lógica nueva" la reemplaza, y con confirmación.
 async function sendLadderRequest(message) {
   const S = sesionLogica();
+  // Respuesta escrita a una opción abierta: completa ese parámetro de la
+  // solicitud; la instrucción original no cambia.
+  if (respuestaAbierta) {
+    const { solId, clave, pregunta } = respuestaAbierta;
+    respuestaAbierta = null;
+    const sol = S?.responder(solId, clave, pregunta, message);
+    if (sol) {
+      await ejecutarLadder(sol, { reemplazaUltima: sol.estado === 'aplicada' });
+      return;
+    }
+  }
   const plan = window.LadderGen.planearInstruccion(message, S);
   if (plan.accion === 'mostrar') {
     const pre = document.createElement('pre');
@@ -720,25 +754,50 @@ async function sendLadderRequest(message) {
 
 /** tipo 'nueva' (sin contexto) o 'modificacion' (edita la lógica activa). */
 async function generarLadder(message, context, tipo) {
+  const sol = sesionLogica()?.iniciarSolicitud({ texto: message, tipo, base: context })
+    || { id: '', texto: message, tipo, base: context, aclaraciones: {}, preguntas: [] };
+  await ejecutarLadder(sol);
+}
+
+/** La solicitud quedó aplicada: es la lógica activa y sus botones permiten cambiar una respuesta. */
+function aplicarSolicitudLadder(sol, program, device, reemplazaUltima) {
   const S = sesionLogica();
-  const isFollowUp = tipo === 'modificacion';
+  S?.aplicar(program, { instruccion: sol.texto, tipo: sol.tipo, device, aclaraciones: sol.aclaraciones, reemplazaUltima });
+  S?.actualizarSolicitud(sol.id, { estado: 'aplicada', revAplicada: S.rev() });
+}
+
+/**
+ * Envía la solicitud: texto ORIGINAL + aclaraciones, desde su base (la lógica
+ * que había al escribirla). `reemplazaUltima` = se cambió una respuesta de una
+ * solicitud ya aplicada: la nueva versión sustituye a la anterior.
+ */
+async function ejecutarLadder(sol, { reemplazaUltima = false } = {}) {
+  const S = sesionLogica();
+  const tipo = sol.tipo;
   const conserva = S?.tieneLogica() ? ' La lógica activa no cambió.' : '';
-  addTypingIndicator(isFollowUp
-    ? 'Generador Ladder · aplicando cambios…'
-    : 'Generador Ladder · creando programa…');
+  addTypingIndicator(reemplazaUltima ? 'Generador Ladder · rehaciendo con la respuesta nueva…'
+    : tipo === 'modificacion' ? 'Generador Ladder · aplicando cambios…' : 'Generador Ladder · creando programa…');
   setBackendStatus('busy', 'Generando programa Ladder…');
 
   try {
-    const out = await window.LadderGen.generate(message, {
-      context,
+    const out = await window.LadderGen.generate(sol.texto, {
+      context: sol.base,
+      aclaraciones: sol.aclaraciones,
       signal: AbortSignal.timeout(LADDER_TIMEOUT_MS),
     });
     removeTypingIndicator();
 
-    // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
-    // las preguntas y NO se aplica programa.
+    // Fase 1 (agente): falta un dato. Se muestran las preguntas y NO se aplica
+    // programa; la respuesta se elige con los botones (el texto no se toca).
     if (out.needsClarification) {
-      addClarificationMessage(out, message);
+      const pendientes = window.LadderGen.preguntasPendientes(out.questions, sol.aclaraciones);
+      if (!pendientes.length) {
+        addErrorMessage('El asistente volvió a preguntar algo que ya respondiste; no se reenvía en bucle. '
+          + 'Cambia la respuesta o reformula la instrucción.' + conserva);
+      } else {
+        const act = S?.actualizarSolicitud(sol.id, { preguntas: pendientes, estado: 'pendiente' }) || sol;
+        addClarificationMessage(pendientes, act);
+      }
       setBackendStatus('ok', 'Backend conectado');
       return;
     }
@@ -760,7 +819,7 @@ async function generarLadder(message, context, tipo) {
         botones([
           ['Usar la alternativa', () => {
             const program = window.LadderGen.confirmarAlternativa(out.program);
-            S?.aplicar(program, { instruccion: message, tipo, device: out.device });
+            aplicarSolicitudLadder(sol, program, out.device, reemplazaUltima);
             addLadderMessage({ ...out, program });
           }],
           ['Descartar', () => addLadderInfo('Alternativa descartada: la lógica activa no cambió.'), true],
@@ -768,7 +827,7 @@ async function generarLadder(message, context, tipo) {
       setBackendStatus('ok', 'Backend conectado');
       return;
     }
-    S?.aplicar(out.program, { instruccion: message, tipo, device: out.device });
+    aplicarSolicitudLadder(sol, out.program, out.device, reemplazaUltima);
     addLadderMessage(out);
     setBackendStatus('ok', 'Backend conectado');
   } catch (err) {
@@ -1226,6 +1285,12 @@ let isListening = () => false;
   const S = sesionLogica();
   mostrarLogicaActiva(`Sigues trabajando sobre la lógica activa «${S?.nombre()}». En modo Diseñador, `
     + 'las próximas instrucciones la modifican; recarga la página (F5) para empezar desde cero.');
+  // Instrucción que esperaba respuestas cuando se cambió de pantalla.
+  const pend = S?.solicitud();
+  if (pend?.estado === 'pendiente' && pend.preguntas?.length) {
+    addUserMessage(pend.texto);
+    addClarificationMessage(pend.preguntas, pend, 'Esta instrucción sigue esperando tu respuesta:');
+  }
   S?.suscribir((st, origen) => {
     if (origen !== 'otra_pestana' && origen !== 'restaurada') return;
     const ult = st?.instrucciones?.at(-1)?.texto;

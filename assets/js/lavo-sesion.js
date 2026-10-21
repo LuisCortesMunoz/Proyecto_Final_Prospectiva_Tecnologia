@@ -20,6 +20,7 @@
 
   var CLAVE = 'lavo_sesion_logica';
   var CLAVE_HANDOFF = 'lv_handoff_sesion';
+  var CLAVE_SOLICITUD = 'lavo_sesion_solicitud';
   var HANDOFF_VIGENCIA_MS = 2 * 60 * 1000;
   var MAX_INSTRUCCIONES = 30;
   var MAX_HISTORIAL_BACKEND = 12;
@@ -61,7 +62,24 @@
     try { global.localStorage.removeItem(CLAVE_HANDOFF); } catch (e) { /* sin storage */ }
   }
 
-  if (esRecarga) escribir(null);           // F5 = sesión nueva
+  // ── Solicitud en curso (instrucción original + respuestas de aclaración) ──
+  // Vive aparte de la lógica: una instrucción que espera respuestas todavía no
+  // cambió la lógica activa. Se guarda en la pestaña para que navegar no la
+  // pierda; F5 la borra con lo demás.
+  var _solMem = null;
+  function leerSol() {
+    try { var raw = global.sessionStorage.getItem(CLAVE_SOLICITUD); return raw ? JSON.parse(raw) : null; }
+    catch (e) { return _solMem; }
+  }
+  function escribirSol(sol) {
+    _solMem = sol;
+    try {
+      if (sol) global.sessionStorage.setItem(CLAVE_SOLICITUD, JSON.stringify(sol));
+      else global.sessionStorage.removeItem(CLAVE_SOLICITUD);
+    } catch (e) { /* queda en memoria */ }
+  }
+
+  if (esRecarga) { escribir(null); escribirSol(null); }   // F5 = sesión nueva
   var _estado = leer();
 
   // Editor abierto desde el copiloto en otra pestaña: adopta la sesión que le
@@ -137,6 +155,15 @@
     return p;
   }
 
+  /** "texto [freq_hz: 20 Hz; input: I1]" — solo para el modelo y la memoria. */
+  function conAclaraciones(texto, acl) {
+    var pares = Object.keys(acl || {}).map(function (k) {
+      var v = acl[k];
+      return k + ': ' + (v && typeof v === 'object' ? v.respuesta : v);
+    });
+    return pares.length ? texto + ' [' + pares.join('; ') + ']' : texto;
+  }
+
   // ── Intención del mensaje ───────────────────────────────────
   function normTexto(t) {
     return String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
@@ -172,10 +199,15 @@
       var p = _estado && _estado.program;
       return (p && p.metadata && p.metadata.name) || (cfgDe(p) || {}).name || 'programa';
     },
-    /** Instrucciones (texto) que formaron la lógica activa, en orden. */
+    /** Instrucciones (texto original del usuario) que formaron la lógica activa. */
     instrucciones: function () {
       return _estado ? _estado.instrucciones.filter(function (i) { return i.texto; })
         .map(function (i) { return i.texto; }) : [];
+    },
+    /** Las mismas, con sus aclaraciones como datos aparte: "texto [freq_hz: 20 Hz]". */
+    instruccionesCompletas: function () {
+      return _estado ? _estado.instrucciones.filter(function (i) { return i.texto; })
+        .map(function (i) { return conAclaraciones(i.texto, i.aclaraciones); }) : [];
     },
 
     /**
@@ -187,7 +219,7 @@
       var meta = _estado.program.metadata || {};
       return {
         programa_anterior: { metadata: { name: meta.name || '', engine_config: copia(meta.engine_config) || null } },
-        historial: this.instrucciones().slice(-MAX_HISTORIAL_BACKEND),
+        historial: this.instruccionesCompletas().slice(-MAX_HISTORIAL_BACKEND),
       };
     },
 
@@ -215,8 +247,13 @@
       st.device = deviceDe(program, opts.device) || (st.device || null);
       st.rev = (st.rev || 0) + 1;
       st.actualizada = Date.now();
+      // Cambiar una respuesta de aclaración rehace la MISMA instrucción: la
+      // reemplaza en la cadena en vez de sumarla otra vez.
+      if (opts.reemplazaUltima && !reinicia && st.instrucciones.length) st.instrucciones.pop();
       if (opts.instruccion || tipo === 'archivo') {
-        st.instrucciones.push({ texto: opts.instruccion || '', tipo: tipo, ts: Date.now() });
+        var entrada = { texto: opts.instruccion || '', tipo: tipo, ts: Date.now() };
+        if (opts.aclaraciones && Object.keys(opts.aclaraciones).length) entrada.aclaraciones = copia(opts.aclaraciones);
+        st.instrucciones.push(entrada);
         if (st.instrucciones.length > MAX_INSTRUCCIONES) st.instrucciones.shift();
       }
       _estado = st;
@@ -230,7 +267,37 @@
     reiniciar: function () {
       _estado = null;
       escribir(null);
+      escribirSol(null);
       avisar('reinicio');
+    },
+
+    // ── Solicitud en curso ────────────────────────────────────
+    // { id, texto, tipo, base, aclaraciones: {clave: {pregunta, respuesta}},
+    //   preguntas, estado: 'pendiente' | 'aplicada', revAplicada }
+    // `base` es el contexto con el que se pidió (la lógica ANTES de esta
+    // instrucción): rehacerla con otra respuesta parte del mismo punto.
+    solicitud: function () { return copia(leerSol()); },
+    /** Instrucción nueva escrita por el usuario: reemplaza la anterior (no se mezclan respuestas). */
+    iniciarSolicitud: function (datos) {
+      var sol = { id: 'q' + nuevoId(), texto: datos.texto, tipo: datos.tipo || 'nueva',
+                  base: copia(datos.base || null), aclaraciones: {}, preguntas: [], estado: 'pendiente' };
+      escribirSol(sol);
+      return copia(sol);
+    },
+    /** Registra (o cambia) la respuesta a un parámetro. null si la solicitud ya no es la actual. */
+    responder: function (id, clave, pregunta, respuesta) {
+      var sol = leerSol();
+      if (!sol || sol.id !== id || !clave) return null;
+      sol.aclaraciones[clave] = { pregunta: String(pregunta || ''), respuesta: String(respuesta) };
+      escribirSol(sol);
+      return copia(sol);
+    },
+    actualizarSolicitud: function (id, cambios) {
+      var sol = leerSol();
+      if (!sol || sol.id !== id) return null;
+      Object.keys(cambios || {}).forEach(function (k) { sol[k] = copia(cambios[k]); });
+      escribirSol(sol);
+      return copia(sol);
     },
 
     /** fn(estado|null, origen) en cada cambio: 'local', 'otra_pestana', 'restaurada', 'reinicio'. */
@@ -246,6 +313,7 @@
 
     clasificar: clasificar,
     deviceDe: deviceDe,
+    conAclaraciones: conAclaraciones,
   };
 
   global.LavoSesion = LavoSesion;

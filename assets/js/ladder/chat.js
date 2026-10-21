@@ -5,7 +5,10 @@
  * la IA devuelve el JSON lógico simple (ver CONTRACT.md), el front lo valida,
  * compila a geometría y lo aplica al editor vía window.LadderEditor.
  */
-import { generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica } from './generate.js';
+import {
+  generateProgram, confirmarAlternativa, planearInstruccion, explicarLogica,
+  claveAclaracion, preguntasPendientes, decidirRespuesta, frasesDeSolicitud,
+} from './generate.js';
 import { BACKEND_BASE_URL } from './config.js';
 import { describeBand } from './equipment.js';
 
@@ -47,7 +50,7 @@ function body(text, opts) {
     return html;
   }
   let html = `<div class="cmsg-text">${esc(text)}</div>`;
-  if (opts.clarify)  html += clarifyHtml(opts.clarify);
+  if (opts.clarify)  html += clarifyHtml(opts.clarify, opts.sol);
   if (opts.compat)   html += compatHtml(opts.compat);
   if (opts.altId)    html += altButtonsHtml(opts.altId);
   if (opts.logic)    html += logicSummaryHtml(opts.logic);
@@ -150,23 +153,34 @@ const _alternativas = new Map();
 
 // ── Aclaración de prompts ambiguos (Fase 1 del agente) ────────
 // El backend devolvió status:needs_clarification con preguntas. Se pintan
-// como chips; al pulsar uno, su valor se agrega al input (ver el handler en
-// DOMContentLoaded) para que el usuario reenvíe una instrucción completa.
-function chipVal(opcion) {
-  // "Q10 (verde)" -> "Q10"
-  return String(opcion).split(' (')[0].trim();
-}
+// como chips; al pulsar uno, la respuesta se guarda en la solicitud (aparte
+// del texto, que NO se toca) y, con todas respondidas, se reenvía la
+// instrucción original con sus aclaraciones (ver el handler en DOMContentLoaded).
+const CHIP = 'margin:3px;padding:4px 10px;border:1px solid var(--border,#3a3a4a);border-radius:12px;cursor:pointer;font-size:12px;';
+const CHIP_OFF = 'background:var(--panel,#26263a);color:inherit;';
+const CHIP_ON = 'background:var(--accent,#2E7DE1);color:#fff;';
 
-function clarifyHtml(questions) {
+function clarifyHtml(questions, sol) {
   if (!Array.isArray(questions) || !questions.length) return '';
-  return questions.map(q => `
-    <div class="cmsg-clarify">
+  return questions.map(q => {
+    const clave = claveAclaracion(q);
+    const elegida = sol?.aclaraciones?.[clave]?.respuesta;
+    return `
+    <div class="cmsg-clarify" data-clave="${esc(clave)}">
       <div class="cq-pregunta">${esc(q.pregunta || '')}</div>
       <div class="cq-opciones">${(q.opciones || []).map(o =>
-        `<button type="button" class="clarify-chip" data-val="${esc(chipVal(o))}"
-           style="margin:3px;padding:4px 10px;border:1px solid var(--border,#3a3a4a);border-radius:12px;background:var(--panel,#26263a);color:inherit;cursor:pointer;font-size:12px;">${esc(o)}</button>`
+        `<button type="button" class="clarify-chip" data-sol-id="${esc(sol?.id || '')}" data-clave="${esc(clave)}"
+           data-pregunta="${esc(q.pregunta || '')}" data-respuesta="${esc(o)}"
+           style="${CHIP}${String(o) === elegida ? CHIP_ON : CHIP_OFF}">${esc(o)}</button>`
       ).join('')}</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
+}
+
+function marcarChip(chip) {
+  chip.closest('.cmsg-clarify')?.querySelectorAll('.clarify-chip').forEach(c => {
+    c.style.cssText = CHIP + (c === chip ? CHIP_ON : CHIP_OFF);
+  });
 }
 
 // ── Feedback (👍/👎) ──────────────────────────────────────────
@@ -189,11 +203,8 @@ let _ultimoGuardable = null;
 // Frases que formaron la lógica activa: "haz un llenado" + "cambia el
 // tiempo a 6 s" + "no está esperando los 5 s". Cada instrucción edita la
 // lógica activa, así que la memoria se guarda con TODAS, no solo con la
-// última. La cadena la lleva la sesión (también las del copiloto).
-function frasesPara(prompt, tipo) {
-  const previas = tipo === 'modificacion' ? (sesion()?.instrucciones() || []) : [];
-  return [...previas, prompt];
-}
+// última (con sus aclaraciones como datos: "mueve la banda [freq_hz: 20 Hz]").
+// La cadena la lleva la sesión (también las del copiloto): frasesDeSolicitud.
 
 function unirFrases(frases) {
   if (frases.length === 1) return frases[0];
@@ -375,6 +386,18 @@ async function onSend() {
   addMsg('user', prompt);
   input.value = '';
 
+  // Respuesta escrita a una opción abierta ("Describir la secuencia..."):
+  // completa el parámetro de la solicitud; la instrucción original no cambia.
+  if (_respuestaAbierta) {
+    const { solId, clave, pregunta } = _respuestaAbierta;
+    _respuestaAbierta = null;
+    const sol = sesion()?.responder(solId, clave, pregunta, prompt);
+    if (sol) {
+      await ejecutar(sol, { reemplazaUltima: sol.estado === 'aplicada' });
+      return;
+    }
+  }
+
   // Con lógica activa, la instrucción la edita, la explica o la muestra.
   const plan = planearInstruccion(prompt, sesion());
   if (plan.accion === 'mostrar') {
@@ -409,32 +432,57 @@ async function explicar(prompt, program) {
 }
 
 /** Versión nueva y válida: va al editor y pasa a ser la lógica activa. */
-function aplicarResultado(program, { instruccion, tipo, device }) {
+function aplicarResultado(program, { instruccion, tipo, device, aclaraciones, reemplazaUltima }) {
   bridge()?.setProgram(program);
-  try { sesion()?.aplicar(program, { instruccion, tipo, device }); } catch (e) { bridge()?.log('err', e.message); }
+  try {
+    sesion()?.aplicar(program, { instruccion, tipo, device, aclaraciones, reemplazaUltima });
+  } catch (e) { bridge()?.log('err', e.message); }
 }
 
 /** tipo 'nueva' (sin contexto) o 'modificacion' (edita la lógica activa). */
 async function generar(prompt, context, tipo) {
-  const input = $('chatInput');
-  const thinking = addMsg('ai', tipo === 'modificacion'
-    ? 'Aplicando el cambio sobre la lógica activa...' : 'Consultando al asistente IA...');
-  const frases = frasesPara(prompt, tipo);
+  const sol = sesion()?.iniciarSolicitud({ texto: prompt, tipo, base: context })
+    || { id: '', texto: prompt, tipo, base: context, aclaraciones: {}, preguntas: [] };
+  await ejecutar(sol);
+}
+
+// Mientras se espera al backend no se aceptan más respuestas de chips.
+let _ejecutando = false;
+// Opción "Describir la secuencia paso a paso": el siguiente mensaje escrito
+// por el usuario es la respuesta a ese parámetro, no una instrucción nueva.
+let _respuestaAbierta = null;   // { solId, clave, pregunta }
+
+/**
+ * Envía la solicitud: texto ORIGINAL + aclaraciones, desde su base (la lógica
+ * que había al escribirla). `reemplazaUltima` = se cambió una respuesta de una
+ * solicitud ya aplicada: la nueva versión sustituye a la anterior.
+ */
+async function ejecutar(sol, { reemplazaUltima = false } = {}) {
+  const tipo = sol.tipo;
+  const thinking = addMsg('ai', reemplazaUltima ? 'Rehaciendo la instrucción con la respuesta nueva...'
+    : tipo === 'modificacion' ? 'Aplicando el cambio sobre la lógica activa...' : 'Consultando al asistente IA...');
   const conserva = sesion()?.tieneLogica() ? ' La lógica activa no cambió.' : '';
+  _ejecutando = true;
   try {
-    const out = await generateProgram(prompt, profile, {
-      context,
+    const out = await generateProgram(sol.texto, profile, {
+      context: sol.base,
+      aclaraciones: sol.aclaraciones,
       onProgress: (stage) => thinking.update(STAGE_LABELS[stage] || stage),
     });
-    // Fase 1 (agente): el backend pidió aclaración (prompt ambiguo). Se muestran
-    // las preguntas y NO se aplica programa. Se repone el prompt para que las
-    // respuestas del usuario se agreguen a su instrucción.
+    const frases = sesion() ? frasesDeSolicitud(sesion(), sol) : [sol.texto];
+    // Fase 1 (agente): falta un dato. Se muestran las preguntas y NO se aplica
+    // programa. La respuesta se elige con los chips; el texto no se toca.
     if (out.needsClarification) {
+      const pendientes = preguntasPendientes(out.questions, sol.aclaraciones);
+      if (!pendientes.length) {
+        thinking.update('El asistente volvió a preguntar algo que ya respondiste; no se reenvía en bucle.'
+          + ' Cambia la respuesta o reformula la instrucción.' + conserva, { error: true });
+        return;
+      }
+      const act = sesion()?.actualizarSolicitud(sol.id, { preguntas: pendientes, estado: 'pendiente' }) || sol;
       thinking.update('Necesito precisar un dato para no inventar:', {
-        clarify: out.questions, assumptions: out.assumptions,
+        clarify: pendientes, sol: act, assumptions: out.assumptions,
       });
-      input.value = prompt + ' ';
-      input.focus();
       return;
     }
     // Motor v7: sin alternativa segura -> solo se explica la limitacion.
@@ -448,26 +496,58 @@ async function generar(prompt, context, tipo) {
     // usuario la acepte (y el PLC tampoco la acepta sin esa confirmacion).
     if (out.needsConfirmation) {
       const altId = 'alt' + Date.now().toString(36);
-      _alternativas.set(altId, { ...out, instruccion: prompt, frases, tipo });
+      _alternativas.set(altId, { ...out, instruccion: sol.texto, frases, tipo, sol, reemplazaUltima });
       thinking.update('Propuesta alternativa (revísala antes de usarla):' + conserva, {
         compat: out.confirmation?.compatibilidad, logic: out.logic, warnings: out.warnings, altId,
       });
       return;
     }
-    aplicarResultado(out.program, { instruccion: prompt, tipo, device: out.device });
+    aplicarSolicitud(sol, out.program, out.device, reemplazaUltima);
     bridge()?.log('ok', `Programa aplicado (${out.program.rungs.length} rungs · ${out.warnings.length} avisos)`);
     const guardarId = out.telemetry?.source === 'json-pegado' ? null : registrarGuardable({
-      instruccion: prompt, frases, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
+      instruccion: sol.texto, frases, dispositivo: out.device, program: out.program, ejemplo_id: out.ejemplo_id,
     });
     thinking.update(
-      `${tipo === 'modificacion' ? 'Cambio aplicado' : 'Listo'}: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
+      `${tipo === 'modificacion' || reemplazaUltima ? 'Cambio aplicado' : 'Listo'}: ${out.program.metadata?.name || 'programa'} — ${out.program.rungs.length} rung(s).`
         + (out.analysis?.fuente === 'memoria' ? ' (reutilizada de la memoria validada, sin llamar al modelo)' : ''),
       { telemetry: out.telemetry, warnings: out.warnings, logic: out.logic, ejemploId: out.ejemplo_id, guardarId },
     );
   } catch (err) {
     thinking.update('No se pudo generar el programa: ' + err.message + conserva, { error: true, errors: err.logicErrors });
     bridge()?.log('err', err.message);
+  } finally {
+    _ejecutando = false;
   }
+}
+
+/** La solicitud quedó aplicada: sus chips permiten cambiar una respuesta. */
+function aplicarSolicitud(sol, program, device, reemplazaUltima) {
+  aplicarResultado(program, {
+    instruccion: sol.texto, tipo: sol.tipo, device, aclaraciones: sol.aclaraciones, reemplazaUltima,
+  });
+  sesion()?.actualizarSolicitud(sol.id, { estado: 'aplicada', revAplicada: sesion().rev() });
+}
+
+/** Chip de aclaración pulsado: guarda la respuesta y decide si reenviar. */
+async function onChip(chip) {
+  if (_ejecutando) return;
+  const { solId, clave, pregunta, respuesta } = chip.dataset;
+  const r = decidirRespuesta(sesion(), solId, clave, pregunta, respuesta);
+  if (r.accion === 'obsoleta') {
+    addMsg('ai', 'Esa pregunta es de una instrucción anterior o la lógica ya cambió: no se mezcla con la actual. '
+      + 'Escribe la instrucción de nuevo si quieres cambiarla.');
+    return;
+  }
+  if (r.accion === 'abierta') {
+    _respuestaAbierta = { solId, clave, pregunta };
+    addMsg('ai', `Escribe tu respuesta en el cuadro de texto: se usará para "${r.sol.texto}".`);
+    $('chatInput')?.focus();
+    return;
+  }
+  _respuestaAbierta = null;
+  marcarChip(chip);
+  if (r.accion === 'enviar') await ejecutar(r.sol);
+  else if (r.accion === 'rehacer') await ejecutar(r.sol, { reemplazaUltima: true });
 }
 
 function onCollapse() {
@@ -541,7 +621,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wrap.querySelectorAll('.alt-btn').forEach(b => { b.disabled = true; b.style.opacity = '0.55'; });
     if (btn.dataset.accion === 'usar') {
       const program = confirmarAlternativa(out.program);
-      aplicarResultado(program, { instruccion: out.instruccion, tipo: out.tipo, device: out.device });
+      aplicarSolicitud(out.sol, program, out.device, out.reemplazaUltima);
       bridge()?.log('ok', `Alternativa aceptada y aplicada al editor (${out.program.rungs.length} rungs). Revísala antes de cargarla al PLC.`);
       const guardarId = registrarGuardable({
         instruccion: out.instruccion, frases: out.frases, dispositivo: out.device, program, ejemplo_id: out.ejemplo_id,
@@ -552,17 +632,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // Chips de aclaración (Fase 1): al pulsar, agrega el valor al input para
-  // que el usuario complete su instrucción y la reenvíe.
+  // Chips de aclaración (Fase 1): la respuesta va a la solicitud, no al texto.
   document.addEventListener('click', (e) => {
     const chip = e.target.closest('.clarify-chip');
-    if (!chip) return;
-    const input = $('chatInput');
-    if (!input) return;
-    const val = chip.dataset.val || '';
-    input.value = (input.value.trim() ? input.value.trimEnd() + ' ' : '') + val;
-    input.focus();
-    chip.style.opacity = '0.55';
+    if (chip) onChip(chip);
   });
 
   // Instrucción que pedía reemplazar la lógica activa: el usuario decide.
@@ -585,12 +658,18 @@ document.addEventListener('DOMContentLoaded', () => {
   if (s?.tieneLogica()) {
     const prog = s.programa();
     const guardarId = prog?.metadata?.engine_config && s.instrucciones().length ? registrarGuardable({
-      instruccion: '', frases: s.instrucciones(), dispositivo: s.device(), program: prog, ejemplo_id: '',
+      instruccion: '', frases: s.instruccionesCompletas(), dispositivo: s.device(), program: prog, ejemplo_id: '',
     }) : null;
     addMsg('ai', `Sigues trabajando sobre la lógica activa «${s.nombre()}». Las próximas instrucciones la modifican; `
       + 'recarga la página (F5) para empezar desde cero.', { lista: s.instrucciones(), guardarId });
   } else {
     addMsg('ai', 'Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector, y se apaga con el paro de emergencia").');
+  }
+  // Instrucción que esperaba respuestas cuando se cambió de pantalla.
+  const pend = s?.solicitud();
+  if (pend?.estado === 'pendiente' && pend.preguntas?.length) {
+    addMsg('user', pend.texto);
+    addMsg('ai', 'Esta instrucción sigue esperando tu respuesta:', { clarify: pend.preguntas, sol: pend });
   }
   s?.suscribir((st, origen) => {
     if (origen === 'otra_pestana' && st?.program) {
