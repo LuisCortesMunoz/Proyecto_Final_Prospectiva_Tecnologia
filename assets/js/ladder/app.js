@@ -12,6 +12,12 @@ import { renderAllRungs, renderIOTable, renderWatchTable, renderXRefTable, rende
 import { scanCycle, advanceSequence, freshSeqState }                                          from './simulator.js';
 // Control en vivo de la BANDA (solo esa estacion). El maletin no lo usa.
 import { initBandControl, startBandPolling, stopBandPolling, cargarBandDesdePrograma, mostrarAvisoStart } from './band-control.js';
+// "Simular en lentes": la PC espera la configuracion de los lentes y la carga sola.
+import { crearEnlace, nombreEquipo }                                                        from './enlace-lentes.js';
+import { BACKEND_BASE_URL }                                                                    from './config.js';
+import { compileLogicToSchema }                                                                from './compiler/logicToSchema.js';
+import { validateLogicJson, normalizeAndValidate }                                             from './validate.js';
+import { canonicalBand }                                                                       from './equipment.js';
 
 function ts() { return new Date().toLocaleTimeString('es-MX', { hour12: false }); }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -1340,9 +1346,22 @@ function onToolbarClick(e) {
 }
 
 // ── Nav top menu: Compilar / Cargar / Stop ────────────────────
+function detenerSimulacion() {
+  store.stopSim();
+  document.body.classList.remove('sim-mode');
+  const compileBtn = document.querySelector('.tnav-btn.compile');
+  if (compileBtn) {
+    compileBtn.classList.remove('running');
+    compileBtn.innerHTML = '<i class="ti ti-player-play"></i> Compilar';
+  }
+  store.log('info', 'Simulación detenida.');
+}
+
 function onNavBtnClick(e) {
   // Pastilla del PLC (IP:puerto): abre el detector/selector con prueba TCP.
   if (e.target.closest('.tnav-plc')) { abrirSelectorPLC(); return; }
+  // Simular en lentes (o cambiar el PLC si ya se está esperando).
+  if (e.target.closest('#lentesBtn')) { iniciarLentes(); return; }
   const btn = e.target.closest('.tnav-btn, .tnav-menu-btn');
   if (!btn) return;
   const txt = btn.textContent.trim();
@@ -1361,14 +1380,7 @@ function onNavBtnClick(e) {
   if (txt.includes('Compilar') || txt.includes('Detener')) {
     const compileBtn = document.querySelector('.tnav-btn.compile');
     if (store.isSimMode()) {
-      // Detener simulación
-      store.stopSim();
-      document.body.classList.remove('sim-mode');
-      if (compileBtn) {
-        compileBtn.classList.remove('running');
-        compileBtn.innerHTML = '<i class="ti ti-player-play"></i> Compilar';
-      }
-      store.log('info', 'Simulación detenida.');
+      detenerSimulacion();
       showToast('Simulación detenida', 'info');
     } else {
       // Iniciar simulación (valida primero)
@@ -1401,7 +1413,9 @@ function onNavBtnClick(e) {
 }
 
 // ── Cargar al PLC (envia el engine_config por Modbus TCP via servidor local) ──
-async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 502 } = {}) {
+// Devuelve {ok, mensaje}. auto=true (envio de los lentes): sin ventanas que
+// esperen al usuario; el resultado se informa a los lentes.
+async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 502, auto = false } = {}) {
   const t = document.getElementById('tab-btn-terminal');
   if (t) showTab('terminal', t);
 
@@ -1416,7 +1430,7 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
   if (!cfg || (!tieneOutputs && !tieneSequence && !tieneBanda)) {
     store.log('err', 'Este programa no tiene "engine_config". Genera el programa con el asistente IA (modo Diseñador) para poder cargarlo al PLC.');
     showToast('Sin engine_config para el PLC', 'error');
-    return;
+    return { ok: false, mensaje: 'El programa no tiene engine_config.' };
   }
 
   const url = plcBridgeUrl();
@@ -1426,7 +1440,7 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
   // un PLC por cuenta propia: sin confirmacion, se abre la ventana.
   if (!confirmado) {
     abrirSelectorPLC();
-    return;
+    return { ok: false, mensaje: 'Falta elegir el PLC.' };
   }
   ip = String(ip || '').trim();
   port = Number(port) || 502;
@@ -1434,14 +1448,14 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
   const tipo = tipoPrograma(prog);
   if (!ip || (equipo !== 'banda' && equipo !== 'maletin')) {
     store.log('err', 'Elige el programa y la IP del PLC antes de cargar.');
-    abrirSelectorPLC();
-    return;
+    if (!auto) abrirSelectorPLC();
+    return { ok: false, mensaje: 'Falta la IP del PLC.' };
   }
   if (equipo !== tipo) {
     store.log('err', `El programa abierto es de ${tipo === 'banda' ? 'la banda' : 'el maletín'}: `
       + `no se puede cargar como ${equipo === 'banda' ? 'banda' : 'maletín'}.`);
     showToast('El programa no es de ese equipo', 'error');
-    return;
+    return { ok: false, mensaje: `El programa es de ${nombreEquipo(tipo)}, no de ${nombreEquipo(equipo)}.` };
   }
 
   const resumen = tieneOutputs
@@ -1469,11 +1483,11 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
       store.log('err', 'PLC: ' + (d?.detail || `HTTP ${res.status}`));
       showToast('Error al cargar al PLC', 'error');
       // 503 (no conecta) o 400 (no se pudo autodetectar): ofrecer elegir la IP.
-      if ((res.status === 503 || res.status === 400)
+      if (!auto && (res.status === 503 || res.status === 400)
           && confirm('No se pudo alcanzar el PLC del ' + equipo + '. ¿Buscar PLCs en la red y elegir la IP?')) {
         abrirSelectorPLC();   // el botón "Cargar ahora (TCP)" del selector reintenta
       }
-      return;
+      return { ok: false, mensaje: d?.detail || `HTTP ${res.status}` };
     }
 
     store.log('ok', `Programa cargado al PLC del ${d.device || equipo} ${d.plc || ''}`
@@ -1502,12 +1516,21 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
       }
     }
     showToast('Programa cargado al PLC', 'success');
+    let mensaje = `Cargado en el PLC ${equipo === 'banda' ? 'de la banda' : 'del maletín'} ${d.plc || `${ip}:${port}`}.`;
+    if (equipo === 'banda' && d.requiere_start) {
+      mensaje += d.cfg_ready ? ' ' + (d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para arrancar.`)
+                             : ' El PLC aún no confirma que la configuración esté lista (CfgReady).';
+    }
+    return { ok: true, mensaje };
   } catch (e) {
     const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
     store.log('err', offline
       ? `No se pudo contactar el servidor PLC en ${url}. ¿Está corriendo el backend local (uvicorn app:app) en la red del PLC?`
       : ('PLC: ' + e.message));
     showToast('Sin conexión al servidor PLC', 'error');
+    return { ok: false, mensaje: offline
+      ? 'La PC no pudo contactar su puente al PLC (localhost:8000). ¿Está abierto iniciar_puente_PLC?'
+      : 'PLC: ' + e.message };
   }
 }
 
@@ -1553,13 +1576,15 @@ async function probarPLC(ip, port) {
 // Selector completo: escanea la red, lista los PLC detectados, prueba la
 // comunicación y, si está OK, deja "Usar" o "Cargar ahora". Devuelve la IP
 // elegida (ya guardada en metadata.plc_target) o null si se cancela.
-function abrirSelectorPLC() {
+// paraLentes=true ("Simular en lentes"): el equipo se elige libremente (aún
+// no hay programa: lo mandarán los lentes) y devuelve {device, ip, port}.
+function abrirSelectorPLC({ paraLentes = false } = {}) {
   const url  = plcBridgeUrl();
   // IP: la ultima elegida (para cualquier programa). Programa: el tipo del
   // programa abierto, preseleccionado; el usuario lo confirma o lo cambia.
   const tgt  = plcRecordado();
   const tipo = tipoPrograma(store.getProgram());
-  let selEquipo = tipo || 'maletin';
+  let selEquipo = paraLentes ? (enlace.destino()?.device || tipo || 'banda') : (tipo || 'maletin');
   let selIp   = (tgt.ip || '').trim();
   let selPort = Number(tgt.port) || 502;
   let okTest  = false;
@@ -1570,10 +1595,10 @@ function abrirSelectorPLC() {
     const box = document.createElement('div');
     box.style.cssText = 'background:#1e1e2a;color:#e6e6f0;border:1px solid #3a3a4a;border-radius:10px;width:380px;max-width:92vw;padding:18px;font-family:inherit;box-shadow:0 10px 40px rgba(0,0,0,.5);';
     box.innerHTML = `
-      <div style="font-weight:600;margin-bottom:4px;">Cargar al PLC (Modbus TCP)</div>
+      <div style="font-weight:600;margin-bottom:4px;">${paraLentes ? 'Simular en lentes: elige el PLC destino' : 'Cargar al PLC (Modbus TCP)'}</div>
       <div style="font-size:11px;opacity:.6;margin-bottom:12px;">Backend puente: <code>${url}</code></div>
 
-      <label for="lv-dev" style="display:block;font-size:12px;opacity:.8;margin-bottom:4px;">Programa</label>
+      <label for="lv-dev" style="display:block;font-size:12px;opacity:.8;margin-bottom:4px;">${paraLentes ? 'Equipo' : 'Programa'}</label>
       <select id="lv-dev" style="width:100%;padding:8px 10px;border:1px solid #3a3a4a;border-radius:6px;background:#15151f;color:#e6e6f0;margin-bottom:4px;">
         <option value="maletin"${selEquipo === 'maletin' ? ' selected' : ''}>Maletín</option>
         <option value="banda"${selEquipo === 'banda' ? ' selected' : ''}>Banda</option>
@@ -1602,8 +1627,9 @@ function abrirSelectorPLC() {
       <div style="display:flex;justify-content:space-between;gap:8px;">
         <button id="lv-cancel" style="padding:8px 12px;border:0;border-radius:6px;background:transparent;color:#9aa;cursor:pointer;">Cancelar</button>
         <div style="display:flex;gap:6px;">
-          <button id="lv-use" disabled style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Usar este PLC</button>
-          <button id="lv-load" disabled style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Cargar ahora (TCP)</button>
+          <button id="lv-lentes" disabled ${paraLentes ? '' : 'hidden'} style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Esperar a los lentes</button>
+          <button id="lv-use" disabled ${paraLentes ? 'hidden' : ''} style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Usar este PLC</button>
+          <button id="lv-load" disabled ${paraLentes ? 'hidden' : ''} style="padding:8px 12px;border:0;border-radius:6px;background:#3a3a4a;color:#888;cursor:not-allowed;">Cargar ahora (TCP)</button>
         </div>
       </div>`;
     overlay.appendChild(box);
@@ -1616,12 +1642,12 @@ function abrirSelectorPLC() {
     // esta abierto (no se convierte un programa de un equipo en el del otro).
     const programaOk = () => !!tipo && selEquipo === tipo;
     const setConfirmEnabled = (on) => {
-      for (const id of ['#lv-use', '#lv-load']) {
+      for (const id of ['#lv-use', '#lv-load', '#lv-lentes']) {
         const b = $(id);
-        const activo = on && (id === '#lv-use' || programaOk());
+        const activo = on && (id === '#lv-use' || id === '#lv-lentes' || programaOk());
         b.disabled = !activo;
         b.style.cursor = activo ? 'pointer' : 'not-allowed';
-        b.style.background = activo ? (id === '#lv-load' ? 'var(--success)' : '#3b82f6') : '#3a3a4a';
+        b.style.background = activo ? (id === '#lv-use' ? '#3b82f6' : 'var(--success)') : '#3a3a4a';
         b.style.color = activo ? '#fff' : '#888';
       }
     };
@@ -1709,7 +1735,11 @@ function abrirSelectorPLC() {
     const pintarPrograma = () => {
       const st = $('#lv-dev-st');
       const nombre = (e) => e === 'banda' ? 'la banda' : 'el maletín';
-      if (!tipo) {
+      if (paraLentes) {
+        st.textContent = `Lo que se envíe desde los lentes para ${nombre(selEquipo)} se cargará `
+          + 'automáticamente en este PLC, sin preguntar.';
+        st.style.color = 'var(--warning)';
+      } else if (!tipo) {
         st.textContent = 'El programa abierto no tiene engine_config: no se puede cargar.';
         st.style.color = 'var(--danger)';
       } else if (selEquipo !== tipo) {
@@ -1732,12 +1762,125 @@ function abrirSelectorPLC() {
     $('#lv-port').addEventListener('input', () => marcarTest('', '—'));
     $('#lv-use').addEventListener('click',  () => { if (okTest) confirmar(false); });
     $('#lv-load').addEventListener('click', () => { if (okTest) confirmar(true);  });
+    $('#lv-lentes').addEventListener('click', () => {
+      if (!okTest) return;
+      recordarPLC(selIp, selPort);
+      cerrar({ device: selEquipo, ip: selIp, port: selPort });
+    });
     $('#lv-cancel').addEventListener('click', () => cerrar(null));
     overlay.addEventListener('click', (ev) => { if (ev.target === overlay) cerrar(null); });
 
     escanear();   // arranca escaneando al abrir
   });
 }
+
+// ── Simular en lentes ─────────────────────────────────────────
+// La PC elige el PLC y espera; lo que se simule y envíe desde los lentes se
+// abre en el editor y se carga SOLO en ese PLC (decisión del usuario: sin
+// confirmar). El backend ya lo validó con las reglas de /aplicar-plc.
+let _perfilLentes = null;
+function perfilDispositivo() {
+  if (!_perfilLentes) {
+    _perfilLentes = fetch('assets/devices/maletin_basico.json')
+      .then(r => (r.ok ? r.json() : null)).catch(() => null);
+  }
+  return _perfilLentes;
+}
+
+/** Programa del editor a partir del engine_config de los lentes (mismo camino que generate.js). */
+async function programaDesdeLentes(envio) {
+  const profile = await perfilDispositivo();
+  let logic = envio.logic;
+  if (envio.device === 'banda') logic = { ...logic, device: 'banda', outputs: [], band: canonicalBand(logic.band) };
+  const lv = validateLogicJson(logic, profile);
+  if (!lv.ok) throw new Error('La configuración de los lentes no pasó la validación del editor: ' + lv.errors[0]);
+  const { program } = compileLogicToSchema(logic, profile);
+  return normalizeAndValidate(program).program;
+}
+
+async function cargarEnvioLentes(envio, destino) {
+  const nombre = envio.nombre || envio.logic?.name || 'Programa';
+  store.log('info', `Llegó «${nombre}» desde los lentes para ${nombreEquipo(envio.device)}.`);
+  if (envio.device !== destino.device) {
+    return { ok: false, mensaje: `La PC espera un programa para ${nombreEquipo(destino.device)}.` };
+  }
+  let program;
+  try {
+    program = await programaDesdeLentes(envio);
+  } catch (e) {
+    store.log('err', e.message);
+    return { ok: false, mensaje: e.message };
+  }
+  if (store.isSimMode()) detenerSimulacion();
+  store.setProgram(program);
+  // Pasa a ser la lógica activa, con las frases que la formaron en los lentes.
+  try {
+    Sesion?.aplicar(program, { tipo: 'nueva', origen: 'editor', device: envio.device,
+                               instruccion: (envio.frases || []).join(' ') });
+  } catch { /* inválido: se conserva la activa */ }
+  return cargarAlPLC({ confirmado: true, device: destino.device, ip: destino.ip, port: destino.port, auto: true });
+}
+
+const enlace = crearEnlace({ base: BACKEND_BASE_URL, onEnvio: cargarEnvioLentes, onEstado: pintarEnlace });
+
+async function iniciarLentes() {
+  const destino = await abrirSelectorPLC({ paraLentes: true });
+  if (!destino) return;
+  store.log('info', `Esperando a los lentes: ${nombreEquipo(destino.device)} → ${destino.ip}:${destino.port}. `
+    + 'Lo que envíen se cargará automáticamente en ese PLC.');
+  enlace.iniciar(destino);
+}
+
+const FASE_LENTES = {
+  conectando:   { txt: 'Conectando con el servidor…',                                     clase: 'is-wait' },
+  esperando:    { txt: 'Esperando a los lentes. Lo que envíen se cargará solo en el PLC.', clase: 'is-ok' },
+  cargando:     { txt: 'Cargando en el PLC lo que llegó de los lentes…',                  clase: 'is-wait' },
+  reconectando: { txt: 'Sin conexión con el servidor. Reintentando…',                     clase: 'is-err' },
+};
+
+function pintarEnlace(st) {
+  const card = document.getElementById('lentesEspera');
+  const btn  = document.getElementById('lentesBtn');
+  const activo = st.fase !== 'detenido';
+  if (btn) {
+    btn.classList.toggle('is-on', activo);
+    const lbl = btn.querySelector('span');
+    if (lbl) lbl.textContent = activo ? 'Esperando lentes' : 'Simular en lentes';
+  }
+  if (!activo) {
+    if (card) card.hidden = true;
+    if (st.error) { store.log('err', 'Lentes: ' + st.error); showToast('Se dejó de esperar a los lentes', 'error'); }
+    else if (st.aviso) { store.log('warn', st.aviso); showToast('Se dejó de esperar a los lentes', 'info'); }
+    else store.log('info', 'Se dejó de esperar a los lentes.');
+    return;
+  }
+  if (!card) return;
+  card.hidden = false;
+  const f = FASE_LENTES[st.fase] || FASE_LENTES.conectando;
+  card.querySelector('#lentesDot').className = 'lentes-espera-dot ' + f.clase;
+  card.querySelector('#lentesDest').textContent = st.destino
+    ? `${st.destino.device === 'banda' ? 'Banda' : 'Maletín'} → PLC ${st.destino.ip}:${st.destino.port}` : '';
+  let msg = f.txt;
+  if (st.fase === 'cargando' && st.envio) msg = `Cargando «${st.envio.nombre || 'programa'}» en el PLC…`;
+  if (st.fase === 'reconectando' && st.error) msg += ` (${st.error})`;
+  card.querySelector('#lentesMsg').textContent = msg;
+  const ult = card.querySelector('#lentesUlt');
+  if (st.ultimo) {
+    ult.hidden = false;
+    ult.className = 'lentes-espera-ult ' + (st.ultimo.ok ? 'is-ok' : 'is-err');
+    ult.textContent = `${st.ultimo.ok ? '✓' : '✕'} «${st.ultimo.nombre}» `
+      + `(${st.ultimo.hora.toLocaleTimeString('es-MX', { hour12: false })}): ${st.ultimo.mensaje}`;
+  } else {
+    ult.hidden = true;
+  }
+}
+
+function instalarLentes() {
+  document.getElementById('lentesCambiar')?.addEventListener('click', iniciarLentes);
+  document.getElementById('lentesParar')?.addEventListener('click', () => enlace.detener());
+  window.addEventListener('pagehide', () => enlace.detener({ silencioso: true }));
+}
+instalarLentes();
 
 // ── Acciones del menú desplegable de la nav ───────────────────
 function onNavDropMenuClick(e) {

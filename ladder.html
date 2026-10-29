@@ -64,6 +64,12 @@
     <div class="tnav-group">
       <button class="tnav-btn compile"><i class="ti ti-player-play"></i> Compilar</button>
       <button class="tnav-btn upload"><i class="ti ti-upload"></i> Cargar</button>
+      <!-- Simular en lentes: elige el PLC y espera; lo que envien los lentes
+           se carga solo en ese PLC (enlace-lentes.js). -->
+      <button class="tnav-btn lentes" id="lentesBtn" type="button"
+              title="Elegir el PLC y esperar la configuración que se simule en los lentes">
+        <i class="ti ti-cardboards"></i> <span>Simular en lentes</span>
+      </button>
       <button class="tnav-btn copy-link" onclick="copyLink()">
         <i class="ti ti-share"></i> Compartir
       </button>
@@ -1010,6 +1016,24 @@
       <div class="band-start-title" id="bandStartTitle">Configuración lista</div>
       <p class="band-start-text">Para iniciar el proceso, presiona <b id="bandStartBtn">I1</b>.</p>
       <button type="button" class="bc-btn bc-btn-primary" id="bandStartOk">Entendido</button>
+    </div>
+  </div>
+
+  <!-- ══ ESPERANDO A LOS LENTES ══════════════════════════════════
+       Visible mientras la PC espera la configuracion de los lentes. Lo que
+       llega se abre en el editor y se carga solo en el PLC elegido. -->
+  <div class="lentes-espera" id="lentesEspera" role="status" aria-live="polite" hidden>
+    <div class="lentes-espera-head">
+      <i class="ti ti-cardboards"></i>
+      <strong>Simular en lentes</strong>
+      <span class="lentes-espera-dot" id="lentesDot"></span>
+    </div>
+    <div class="lentes-espera-dest" id="lentesDest"></div>
+    <p class="lentes-espera-msg" id="lentesMsg"></p>
+    <p class="lentes-espera-ult" id="lentesUlt" hidden></p>
+    <div class="lentes-espera-acc">
+      <button type="button" class="bc-btn" id="lentesCambiar">Cambiar PLC</button>
+      <button type="button" class="bc-btn" id="lentesParar">Dejar de esperar</button>
     </div>
   </div>
 

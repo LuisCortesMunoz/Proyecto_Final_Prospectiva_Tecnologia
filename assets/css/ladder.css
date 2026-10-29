@@ -257,6 +257,9 @@ body {
 body.sim-mode .ladder-el { cursor: crosshair; }
 body.sim-mode .rung-svg  { cursor: default; }
 .tnav-btn.upload  { color: var(--success); font-weight: 500; }
+.tnav-btn.lentes i { color: var(--accent); }
+.tnav-btn.lentes.is-on { color: var(--success); background: var(--success-dim); font-weight: 600; }
+.tnav-btn.lentes.is-on i { color: var(--success); }
 .tnav-btn.upload:hover  { background: var(--success-dim); }
 .tnav-btn.danger  { color: var(--danger); }
 .tnav-btn.danger:hover  { background: var(--danger-dim); }
@@ -1238,6 +1241,33 @@ body.sim-mode .rung-svg  { cursor: default; }
 .band-start-title { font-family: var(--font-ui); font-size: 14px; font-weight: 700; color: var(--text-primary); }
 .band-start-text { margin: 0; font-family: var(--font-ui); font-size: 12.5px; color: var(--text-secondary); }
 .band-start-text b { font-family: var(--font-mono); color: var(--accent); }
+
+/* Esperando a los lentes: tarjeta flotante abajo a la izquierda (el aviso de
+   arranque de la banda usa la esquina derecha) */
+.lentes-espera {
+  position: fixed; left: 20px; bottom: 20px; z-index: 2000;
+  width: min(340px, calc(100vw - 32px));
+  display: grid; gap: 6px; padding: 14px 16px 12px;
+  border: 1px solid var(--accent); border-radius: 10px;
+  background: var(--bg-surface); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.35);
+  font-family: var(--font-ui);
+}
+.lentes-espera[hidden] { display: none !important; }
+.lentes-espera-head { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-primary); }
+.lentes-espera-head i { font-size: 18px; color: var(--accent); }
+.lentes-espera-dot { width: 9px; height: 9px; margin-left: auto; border-radius: 50%; background: var(--text-tertiary); }
+.lentes-espera-dot.is-ok   { background: var(--success); animation: lentes-pulso 1.6s ease-in-out infinite; }
+.lentes-espera-dot.is-wait { background: var(--warning); }
+.lentes-espera-dot.is-err  { background: var(--danger); }
+@keyframes lentes-pulso { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .lentes-espera-dot.is-ok { animation: none; } }
+.lentes-espera-dest { font-family: var(--font-mono); font-size: 12px; color: var(--accent); }
+.lentes-espera-msg, .lentes-espera-ult { margin: 0; font-size: 12.5px; color: var(--text-secondary); }
+.lentes-espera-ult { padding: 6px 8px; border-radius: 6px; }
+.lentes-espera-ult.is-ok  { background: var(--success-dim); color: var(--success); }
+.lentes-espera-ult.is-err { background: var(--danger-dim);  color: var(--danger); }
+.lentes-espera-acc { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
+.lentes-espera-acc .bc-btn { padding: 4px 10px; font-size: 11.5px; }
 
 /* ST v6 — motor configurable: estado y botones virtuales APP1/APP2 */
 .bc-motor { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0 0 8px; }

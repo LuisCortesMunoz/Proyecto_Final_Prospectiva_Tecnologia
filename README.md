@@ -51,6 +51,22 @@ Este repositorio documenta los pasos para el Proyecto Final, el cual trata de ge
 
 ---
 
+## 🥽 Simular en lentes
+
+En el editor (`ladder.html`, servido en local como para "Cargar"), el botón
+**Simular en lentes** pide el equipo (maletín o banda) y el PLC destino, y deja
+la PC esperando sin límite de tiempo. Lo que se simule y envíe desde los
+lentes se abre en el editor y **se carga automáticamente** en ese PLC, sin
+preguntar. La tarjeta de abajo a la izquierda muestra el estado y el último
+resultado, que también ven los lentes.
+
+- Lógica de la espera: `assets/js/ladder/enlace-lentes.js` (long-poll a
+  `/enlace/*` del backend en Render; se reabre si Render se reinicia).
+- La carga usa el mismo `/aplicar-plc` del puente local que el botón Cargar.
+- Pruebas: `node tests/test_enlace_lentes.mjs`.
+
+---
+
 ## 🛠️ Tecnologías Utilizadas
 
 - Python 3.x

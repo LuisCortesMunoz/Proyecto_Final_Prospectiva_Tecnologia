@@ -664,6 +664,7 @@ body {
 
 .tnav-btn.compile { color: var(--lv-blue-3) !important; }
 .tnav-btn.upload  { color: #16a34a !important; }
+.tnav-btn.lentes.is-on { color: #16a34a !important; background: rgba(22,163,74,0.10) !important; }
 
 .tnav-btn:hover,
 .tnav-logo-btn:hover,
