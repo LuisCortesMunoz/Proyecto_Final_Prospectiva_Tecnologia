@@ -174,10 +174,17 @@
   var RX_MOSTRAR = /^(?:puedes |podrias )?(?:muestra(?:me|lo|la)?|mostrar|ensena(?:me|lo|la)?|ver|quiero ver|dame|pasame|imprime|despliega)\b.*\b(?:json|configuracion|config|(?:logica|programa) (?:actual|activa|activo|vigente|completa|completo)|(?:la logica|el programa)$)/;
   var RX_EXPLICAR = /^(?:puedes |podrias )?(?:explica(?:me|lo|la|mela|melo)?|por que|porque|que hace|como funciona|describe(?:me|lo|la)?|resume(?:me|lo|la)?|que entendiste|en que consiste|dime (?:que|por que|como))\b|\bpor que no (?:funciona|sirve|jala|arranca|se detiene|para|avanza)\b/;
 
+  // "¿Por qué no funciona?", "no se detiene", "revisa": reporta una FALLA. Se
+  // corrige (el backend diagnostica y rehace la parte que falla); solo se
+  // explica sin cambiar nada si lo pide explícitamente ("explícame por qué...").
+  var RX_FALLA = /\b(?:revis\w*|chec\w*|cheque\w*|no (?:esta |estan )?(?:funciona\w*|sirve\w*|jala\w*|hace|hizo|cumple|arranca|se (?:detiene|detuvo|para|paro|mueve|enciende|prende|apaga|sube|baja))|esta mal|sigue igual|sigue sin)\b/;
+  var RX_EXPLICITO = /^(?:puedes |podrias )?(?:explica(?:me|lo|la|mela|melo)?|describe(?:me|lo|la)?|resume(?:me|lo|la)?)\b/;
+
   /** 'nueva' | 'mostrar' | 'explicar' | 'modificar' */
   function clasificar(texto) {
     var t = normTexto(texto);
     if (RX_NUEVA.test(t)) return 'nueva';
+    if (RX_FALLA.test(t) && !RX_EXPLICITO.test(t)) return 'modificar';
     var modifica = RX_MODIFICA.test(t);
     if (!modifica && RX_MOSTRAR.test(t)) return 'mostrar';
     if (!modifica && RX_EXPLICAR.test(t)) return 'explicar';

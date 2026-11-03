@@ -111,6 +111,8 @@ for (const t of ['Elimina la pausa del sensor 2', 'Corrige el temporizador, debe
 check(planearInstruccion('Explícame por qué no funciona', S).accion === 'explicar', '"Explícame por qué no funciona" no regenera');
 check(planearInstruccion('Muéstrame el JSON', S).accion === 'mostrar', '"Muéstrame el JSON" no regenera');
 check(planearInstruccion('¿Por qué no se detiene? corrígelo', S).accion === 'generar', 'explicar + corregir = edición');
+for (const t of ['¿Por qué no funciona?', 'revisa', 'checa la lógica', 'no está funcionando', 'la banda no se detiene sola'])
+  check(planearInstruccion(t, S).accion === 'generar', `"${t}" reporta una falla: se corrige, no solo se explica`);
 check(planearInstruccion('Crea una lógica nueva desde cero: semáforo', S).accion === 'confirmar_reemplazo',
   'lógica nueva explícita pide confirmación');
 check(planearInstruccion('En el maletín prende la verde con I1', S).motivo === 'equipo',
