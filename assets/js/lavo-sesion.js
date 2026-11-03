@@ -277,10 +277,23 @@
     // `base` es el contexto con el que se pidió (la lógica ANTES de esta
     // instrucción): rehacerla con otra respuesta parte del mismo punto.
     solicitud: function () { return copia(leerSol()); },
+    /**
+     * La solicitud que todavía espera respuestas, o null. Si la lógica activa
+     * cambió después de pedirla (otra instrucción, el editor, los lentes), sus
+     * preguntas ya no aplican: no se vuelven a mostrar al cambiar de pantalla.
+     */
+    solicitudPendiente: function () {
+      var sol = leerSol();
+      if (!sol || sol.estado !== 'pendiente' || !(sol.preguntas || []).length) return null;
+      var rev = _estado ? (_estado.rev || 0) : 0;
+      if (typeof sol.revBase === 'number' && sol.revBase !== rev) return null;
+      return copia(sol);
+    },
     /** Instrucción nueva escrita por el usuario: reemplaza la anterior (no se mezclan respuestas). */
     iniciarSolicitud: function (datos) {
       var sol = { id: 'q' + nuevoId(), texto: datos.texto, tipo: datos.tipo || 'nueva',
-                  base: copia(datos.base || null), aclaraciones: {}, preguntas: [], estado: 'pendiente' };
+                  base: copia(datos.base || null), aclaraciones: {}, preguntas: [], estado: 'pendiente',
+                  revBase: _estado ? (_estado.rev || 0) : 0 };
       escribirSol(sol);
       return copia(sol);
     },

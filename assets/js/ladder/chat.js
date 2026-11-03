@@ -667,8 +667,8 @@ document.addEventListener('DOMContentLoaded', () => {
     addMsg('ai', 'Asistente listo. Describe el programa en lenguaje natural (p. ej. "la lámpara verde prende con el botón verde o el selector, y se apaga con el paro de emergencia").');
   }
   // Instrucción que esperaba respuestas cuando se cambió de pantalla.
-  const pend = s?.solicitud();
-  if (pend?.estado === 'pendiente' && pend.preguntas?.length) {
+  const pend = s?.solicitudPendiente();
+  if (pend) {
     addMsg('user', pend.texto);
     addMsg('ai', 'Esta instrucción sigue esperando tu respuesta:', { clarify: pend.preguntas, sol: pend });
   }

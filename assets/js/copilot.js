@@ -849,12 +849,30 @@ async function ejecutarLadder(sol, { reemplazaUltima = false } = {}) {
 }
 
 // Al volver a esta pantalla (o desde el editor) se sigue sobre la lógica activa.
+// Es UNA sola nota de estado: la nueva reemplaza a la anterior. Antes cada cambio en
+// el editor agregaba otra tarjeta "Programa generado" al chat, como si el
+// modelo hubiera respondido con una opción nueva que nadie pidió.
+let _notaLogica = null;
 function mostrarLogicaActiva(texto) {
   const S = sesionLogica();
   if (!S?.tieneLogica()) return;
   const lista = S.instrucciones();
-  addLadderInfo(texto, lista.length ? listaInstrucciones(lista) : null);
-  addLadderMessage({ program: S.programa(), warnings: [] });
+  if (_notaLogica?.isConnected) _notaLogica.closest('.cp-msg-row')?.remove();
+  _notaLogica = addLadderInfo(texto, lista.length ? listaInstrucciones(lista) : null);
+  const acciones = document.createElement('div');
+  acciones.className = 'cp-msg-actions';
+  const abrir = document.createElement('button');
+  abrir.type = 'button';
+  abrir.className = 'cp-action-btn ghost';
+  abrir.innerHTML = '<i class="fa-solid fa-up-right-from-square"></i> Abrir en Editor Ladder';
+  abrir.addEventListener('click', () => {
+    const SS = sesionLogica();
+    SS?.prepararHandoff();
+    try { localStorage.setItem('lv_handoff_program', JSON.stringify(SS?.programa())); } catch { /* cuota llena */ }
+    window.open('ladder.html?handoff=1&from=chat', '_blank');
+  });
+  acciones.appendChild(abrir);
+  _notaLogica.appendChild(acciones);
 }
 
 // ============================================================
@@ -1287,8 +1305,8 @@ let isListening = () => false;
   mostrarLogicaActiva(`Sigues trabajando sobre la lógica activa «${S?.nombre()}». En modo Diseñador, `
     + 'las próximas instrucciones la modifican; recarga la página (F5) para empezar desde cero.');
   // Instrucción que esperaba respuestas cuando se cambió de pantalla.
-  const pend = S?.solicitud();
-  if (pend?.estado === 'pendiente' && pend.preguntas?.length) {
+  const pend = S?.solicitudPendiente();
+  if (pend) {
     addUserMessage(pend.texto);
     addClarificationMessage(pend.preguntas, pend, 'Esta instrucción sigue esperando tu respuesta:');
   }

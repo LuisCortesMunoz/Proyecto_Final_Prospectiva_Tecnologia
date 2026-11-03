@@ -181,4 +181,17 @@ const otraSesionNueva = pagina(tabCopiloto, 'reload');
 otraSesionNueva.reiniciar();
 check(llamadasRed === 0, 'reiniciar la sesión solo limpia el estado temporal del navegador');
 
+// ─────────────────────────────────────────────────────────────────
+titulo('12. Volver al Main no revive preguntas de una lógica que ya cambió');
+const tabQ = new Storage();
+let SQ = pagina(tabQ);
+SQ.aplicar(prog('Base', { eventos: [] }), { instruccion: 'Haz una base', tipo: 'nueva' });
+const solQ = SQ.iniciarSolicitud({ texto: 'Haz una secuencia', tipo: 'modificacion', base: SQ.contexto() });
+SQ.actualizarSolicitud(solQ.id, { preguntas: [{ campo: 'etapa_1_fin', pregunta: '¿Cuándo termina?' }] });
+SQ = pagina(tabQ, 'navigate');                      // Ladder -> Main sin cambiar nada
+check(SQ.solicitudPendiente()?.id === solQ.id, 'la pregunta sigue esperando si la lógica no cambió');
+SQ.aplicar(prog('Cambiada en el editor', { eventos: ['S1'] }), { tipo: 'editor' });
+SQ = pagina(tabQ, 'navigate');
+check(SQ.solicitudPendiente() === null, 'si la lógica cambió después, sus opciones ya no reaparecen solas');
+
 console.log(`\nTODAS LAS PRUEBAS DE LA SESIÓN PASARON (${ok} comprobaciones).`);
