@@ -156,9 +156,8 @@ const _alternativas = new Map();
 // como chips; al pulsar uno, la respuesta se guarda en la solicitud (aparte
 // del texto, que NO se toca) y, con todas respondidas, se reenvía la
 // instrucción original con sus aclaraciones (ver el handler en DOMContentLoaded).
-const CHIP = 'margin:3px;padding:4px 10px;border:1px solid var(--border,#3a3a4a);border-radius:12px;cursor:pointer;font-size:12px;';
-const CHIP_OFF = 'background:var(--panel,#26263a);color:inherit;';
-const CHIP_ON = 'background:var(--accent,#2E7DE1);color:#fff;';
+// Aspecto en ladder.css (.clarify-chip / .is-on): el texto largo hace salto
+// de línea dentro del chip en vez de salirse.
 
 function clarifyHtml(questions, sol) {
   if (!Array.isArray(questions) || !questions.length) return '';
@@ -169,9 +168,9 @@ function clarifyHtml(questions, sol) {
     <div class="cmsg-clarify" data-clave="${esc(clave)}">
       <div class="cq-pregunta">${esc(q.pregunta || '')}</div>
       <div class="cq-opciones">${(q.opciones || []).map(o =>
-        `<button type="button" class="clarify-chip" data-sol-id="${esc(sol?.id || '')}" data-clave="${esc(clave)}"
+        `<button type="button" data-sol-id="${esc(sol?.id || '')}" data-clave="${esc(clave)}"
            data-pregunta="${esc(q.pregunta || '')}" data-respuesta="${esc(o)}"
-           style="${CHIP}${String(o) === elegida ? CHIP_ON : CHIP_OFF}">${esc(o)}</button>`
+           class="clarify-chip${String(o) === elegida ? ' is-on' : ''}">${esc(o)}</button>`
       ).join('')}</div>
     </div>`;
   }).join('');
@@ -179,7 +178,7 @@ function clarifyHtml(questions, sol) {
 
 function marcarChip(chip) {
   chip.closest('.cmsg-clarify')?.querySelectorAll('.clarify-chip').forEach(c => {
-    c.style.cssText = CHIP + (c === chip ? CHIP_ON : CHIP_OFF);
+    c.classList.toggle('is-on', c === chip);
   });
 }
 
@@ -225,18 +224,22 @@ function registrarGuardable(datos) {
   return id;
 }
 
-function desactivarGuardar(wrap, motivo) {
+// Una lógica que ya no es la activa no se puede guardar. Su control se
+// esconde para que no se acumulen bloques en el chat; si se guardó, queda
+// solo la etiqueta "Guardada en memoria". ('motivo' ya no se muestra.)
+function desactivarGuardar(wrap, motivo) {   // eslint-disable-line no-unused-vars
   wrap.querySelectorAll('button, input').forEach(b => { b.disabled = true; });
-  wrap.style.opacity = '0.6';
-  const m = wrap.querySelector('.guardar-msg');
-  if (m && motivo && !m.textContent) m.textContent = motivo;
+  if (!wrap.classList.contains('is-guardada')) wrap.hidden = true;
 }
 
 function guardarHtml(id) {
-  return `<div class="cmsg-guardar" data-guardar-id="${esc(id)}" style="margin-top:6px;padding:6px 8px;border:1px dashed var(--border,#3a3a4a);border-radius:6px;font-size:12px;">
-    <button type="button" class="guardar-btn" style="padding:4px 10px;border-radius:12px;border:1px solid var(--success,#0E9F6E);background:transparent;color:inherit;cursor:pointer;">💾 Guardar lógica validada</button>
-    <label style="margin-left:8px;cursor:pointer;"><input type="checkbox" class="guardar-fisica"> Ya la probé en el equipo físico y funcionó</label>
-    <div class="guardar-msg" style="margin-top:4px;opacity:.85;"></div>
+  // Una sola línea: botón pequeño + casilla corta (aspecto en ladder.css).
+  return `<div class="cmsg-guardar" data-guardar-id="${esc(id)}">
+    <button type="button" class="guardar-btn" title="Guardar esta lógica en la memoria validada">
+      <i class="ti ti-device-floppy"></i> Guardar en memoria</button>
+    <label class="guardar-fisica-label" title="Márcalo solo si ya la probaste en el equipo físico y funcionó">
+      <input type="checkbox" class="guardar-fisica"> Probada en físico</label>
+    <div class="guardar-msg"></div>
   </div>`;
 }
 
@@ -265,7 +268,13 @@ async function guardarValidada(wrap) {
     wrap.querySelectorAll('button, input').forEach(b => { b.disabled = false; });
     return;
   }
-  wrap.querySelector('.guardar-btn').textContent = '✔ Lógica guardada';
+  // Guardada: queda una etiqueta de una línea; el detalle (id, prueba física)
+  // va en el título y en la terminal. El aviso de almacén no persistente sí
+  // se ve, porque cambia lo que el usuario debe hacer.
+  wrap.classList.add('is-guardada');
+  const aviso = r.texto.includes('⚠') ? r.texto.slice(r.texto.indexOf('⚠')) : '';
+  wrap.innerHTML = `<span class="guardar-tag" title="${esc(r.texto)}"><i class="ti ti-check"></i> Guardada en memoria</span>`
+    + (aviso ? `<div class="guardar-msg">${esc(aviso)}</div>` : '');
   _guardables.delete(id);
 }
 

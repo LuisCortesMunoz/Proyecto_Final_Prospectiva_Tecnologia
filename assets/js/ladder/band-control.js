@@ -704,10 +704,10 @@ async function enviarConfig() {
       // "Listo" solo cuando el PLC reporta CfgReady (%R7), nunca por la escritura.
       const listo = !!d.estado?.cfg_ready;
       d.mensaje = !listo
-        ? 'Configuración enviada. El PLC aún no confirma que esté lista (CfgReady).'
+        ? 'Escrita en el PLC físico, sin confirmar: el PLC aún no reporta que esté lista (CfgReady).'
         : d.requiere_start
-          ? `Configuración lista. ${d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para iniciar.`}`
-          : 'Configuración lista. Sensores, torreta y plumas activos.';
+          ? `Lista en el PLC físico. ${d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para iniciar.`}`
+          : 'Lista en el PLC físico. Sensores, torreta y plumas activos.';
       if (listo && d.requiere_start) mostrarAvisoStart(d.boton_start, d.arranque_texto);
       return d;
     });

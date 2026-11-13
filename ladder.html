@@ -62,20 +62,20 @@
 
     <!-- Acciones primarias -->
     <div class="tnav-group">
-      <button class="tnav-btn compile"><i class="ti ti-player-play"></i> Compilar</button>
-      <button class="tnav-btn upload"><i class="ti ti-upload"></i> Cargar</button>
+      <button class="tnav-btn compile" title="Compilar"><i class="ti ti-player-play"></i> Compilar</button>
+      <button class="tnav-btn upload" title="Cargar al PLC"><i class="ti ti-upload"></i> Cargar</button>
       <!-- Simular en lentes: elige el PLC y espera; lo que envien los lentes
            se carga solo en ese PLC (enlace-lentes.js). -->
       <button class="tnav-btn lentes" id="lentesBtn" type="button"
               title="Elegir el PLC y esperar la configuración que se simule en los lentes">
         <i class="ti ti-cardboards"></i> <span>Simular en lentes</span>
       </button>
-      <button class="tnav-btn copy-link" onclick="copyLink()">
+      <button class="tnav-btn copy-link" onclick="copyLink()" title="Compartir">
         <i class="ti ti-share"></i> Compartir
       </button>
       <!-- Solo aparece si el programa trae metadata._band_view (bloque "band");
            app.js lo muestra/oculta en cada render. -->
-      <button class="tnav-btn band" id="bandOpenBtn" type="button" hidden>
+      <button class="tnav-btn band" id="bandOpenBtn" type="button" title="Ver banda transportadora" hidden>
         <i class="ti ti-topology-bus"></i> Ver banda transportadora
       </button>
     </div>
@@ -1006,14 +1006,17 @@
 
   <!-- ══ AVISO DE ARRANQUE DE LA BANDA ═════════════════════════
        Aparece solo cuando el PLC confirmo CfgReady y la configuracion mueve
-       la banda. No bloquea la aplicacion: se cierra con Entendido, X o Esc. -->
+       la banda. No bloquea la aplicacion: se cierra con Entendido, X o Esc.
+       Dice "PLC físico" a propósito: la lógica generada y la banda virtual
+       de los lentes son otros estados y no abren este aviso. -->
   <div class="band-start" id="bandStart" role="alertdialog" aria-labelledby="bandStartTitle" hidden>
     <div class="band-start-box">
       <button class="band-modal-close" id="bandStartClose" type="button" title="Cerrar">
         <i class="ti ti-x"></i>
       </button>
       <div class="band-start-icon"><i class="ti ti-player-play"></i></div>
-      <div class="band-start-title" id="bandStartTitle">Configuración lista</div>
+      <div class="band-start-title" id="bandStartTitle">Lista en el PLC físico</div>
+      <p class="band-start-sub">El PLC de la banda confirmó la configuración.</p>
       <p class="band-start-text">Para iniciar el proceso, presiona <b id="bandStartBtn">I1</b>.</p>
       <button type="button" class="bc-btn bc-btn-primary" id="bandStartOk">Entendido</button>
     </div>

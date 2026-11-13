@@ -606,12 +606,13 @@ function addClarificationMessage(questions, sol, aviso) {
     qt.style.marginBottom = '4px';
     qd.appendChild(qt);
     const marcar = (elegido) => qd.querySelectorAll('button').forEach(x => {
-      x.className = 'cp-action-btn' + (x === elegido ? '' : ' ghost');
+      x.className = 'cp-action-btn cp-opcion' + (x === elegido ? '' : ' ghost');
     });
     (q.opciones || []).forEach(o => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cp-action-btn' + (sol?.aclaraciones?.[clave]?.respuesta === String(o) ? '' : ' ghost');
+      // cp-opcion: el texto largo hace salto de línea dentro del botón (copilot.css).
+      b.className = 'cp-action-btn cp-opcion' + (sol?.aclaraciones?.[clave]?.respuesta === String(o) ? '' : ' ghost');
       b.textContent = o;
       b.style.margin = '2px';
       b.addEventListener('click', () => onOpcionLadder(sol?.id, clave, q.pregunta || '', String(o), () => marcar(b)));

@@ -726,7 +726,8 @@ body.sim-mode .rung-svg  { cursor: default; }
 
 /* ══ CHAT PANEL — isla derecha ════════════════════════════════ */
 .chat-panel {
-  width: 300px; flex-shrink: 0;
+  /* Crece un poco en pantallas grandes; en pequeñas ver @media al final */
+  width: clamp(280px, 24vw, 380px); flex-shrink: 0;
   background: var(--bg-surface);
   border: none;
   border-radius: 10px;
@@ -834,6 +835,39 @@ body.sim-mode .rung-svg  { cursor: default; }
 .fb-btn[data-status="accepted"].active { background: var(--success-dim); border-color: var(--success); }
 .fb-btn[data-status="rejected"].active { background: var(--danger-dim);  border-color: var(--danger); }
 
+/* Preguntas con opciones (aclaraciones). El texto largo hace salto de línea
+   dentro del chip; nada queda oculto. */
+.cmsg-clarify { margin-top: 8px; }
+.cq-pregunta { margin-bottom: 5px; font-weight: 600; color: var(--text-primary); }
+.cq-opciones { display: flex; flex-wrap: wrap; gap: 6px; }
+.clarify-chip {
+  max-width: 100%; padding: 5px 10px;
+  border: 1px solid var(--border); border-radius: 10px;
+  background: var(--bg-surface); color: inherit;
+  font-family: inherit; font-size: 11.5px; line-height: 1.35;
+  text-align: left; white-space: normal; overflow-wrap: anywhere; cursor: pointer;
+  transition: border-color var(--transition), background var(--transition);
+}
+.clarify-chip:hover { border-color: var(--accent); }
+.clarify-chip.is-on { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+
+/* Guardar en memoria: una línea compacta bajo el programa. Las lógicas
+   anteriores la esconden (o dejan solo "Guardada en memoria"). */
+.cmsg-guardar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; margin-top: 6px; font-size: 11px; }
+.cmsg-guardar[hidden] { display: none; }
+.guardar-btn {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px;
+  border: 1px solid var(--success); border-radius: 999px;
+  background: transparent; color: var(--success);
+  font-family: inherit; font-size: 11px; font-weight: 600; cursor: pointer;
+}
+.guardar-btn:hover:not(:disabled) { background: var(--success-dim); }
+.guardar-btn:disabled { opacity: 0.55; cursor: default; }
+.guardar-fisica-label { display: inline-flex; align-items: center; gap: 4px; color: var(--text-tertiary); cursor: pointer; }
+.guardar-msg { flex-basis: 100%; color: var(--text-secondary); }
+.guardar-msg:empty { display: none; }
+.guardar-tag { display: inline-flex; align-items: center; gap: 4px; color: var(--success); font-weight: 600; }
+
 .chat-input {
   border-top: 1px solid var(--border);
   padding: 8px 10px;
@@ -916,6 +950,7 @@ body.sim-mode .rung-svg  { cursor: default; }
 .toast.success { border-color: var(--success); color: var(--success); }
 .toast.error   { border-color: var(--danger);  color: var(--danger);  }
 .toast.info    { border-color: var(--accent);  color: var(--accent-bright); }
+.toast.warning { border-color: var(--warning); color: var(--warning); }   /* escrito, sin confirmar */
 @keyframes toastIn { from { opacity:0; transform:translateX(10px); } to { opacity:1; transform:translateX(0); } }
 
 /* ══ ANIMACIONES ══════════════════════════════════════════════ */
@@ -1239,6 +1274,7 @@ body.sim-mode .rung-svg  { cursor: default; }
 .band-start .band-modal-close { position: absolute; top: 8px; right: 8px; }
 .band-start-icon { font-size: 22px; color: var(--accent); }
 .band-start-title { font-family: var(--font-ui); font-size: 14px; font-weight: 700; color: var(--text-primary); }
+.band-start-sub { margin: -4px 0 0; font-family: var(--font-ui); font-size: 11.5px; color: var(--success); }
 .band-start-text { margin: 0; font-family: var(--font-ui); font-size: 12.5px; color: var(--text-secondary); }
 .band-start-text b { font-family: var(--font-mono); color: var(--accent); }
 
@@ -1266,6 +1302,7 @@ body.sim-mode .rung-svg  { cursor: default; }
 .lentes-espera-ult { padding: 6px 8px; border-radius: 6px; }
 .lentes-espera-ult.is-ok  { background: var(--success-dim); color: var(--success); }
 .lentes-espera-ult.is-err { background: var(--danger-dim);  color: var(--danger); }
+.lentes-espera-ult.is-warn { background: var(--warning-dim); color: var(--warning); }   /* escrita, sin CfgReady */
 .lentes-espera-acc { display: flex; justify-content: flex-end; gap: 6px; margin-top: 2px; }
 .lentes-espera-acc .bc-btn { padding: 4px 10px; font-size: 11.5px; }
 
@@ -1275,3 +1312,30 @@ body.sim-mode .rung-svg  { cursor: default; }
 .bc-motor-blocks { display: flex; flex-wrap: wrap; gap: 6px; flex-basis: 100%; }
 .bc-motor-blocks:empty { display: none; }
 .bc-motor .bc-btn.is-held { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+
+/* ══ PANTALLAS PEQUEÑAS ═══════════════════════════════════════
+   El chat deja de quitarle ancho al editor: pasa a ser un panel que se
+   abre encima (a la derecha) y se cierra con su botón de colapsar. */
+@media (max-width: 1000px) {
+  /* Barra superior: las acciones quedan solo con su icono (el texto sigue
+     ahí para lectores de pantalla y como 'title'), así caben los menús. */
+  .tnav-group .tnav-btn { font-size: 0; gap: 0; padding: 5px 8px; }
+  .tnav-group .tnav-btn i { font-size: 16px; }
+  .tnav-zoom-val { display: none; }
+  .lv-tour-btn { font-size: 0; gap: 0; }
+  .lv-tour-btn i { font-size: 14px; }
+}
+@media (max-width: 900px) {
+  .sidebar { width: 150px; }
+  .chat-panel {
+    position: fixed; top: 52px; right: 8px; bottom: 8px; z-index: 600;
+    width: min(360px, calc(100vw - 16px));
+    box-shadow: 0 12px 36px rgba(22, 38, 58, 0.22);
+  }
+  .chat-panel.collapsed { width: 0; box-shadow: none; }
+}
+@media (max-width: 640px) {
+  .main { padding: 6px; gap: 6px; }
+  .sidebar { width: 128px; }
+  .band-start, .lentes-espera { left: 16px; right: 16px; width: auto; bottom: 16px; }
+}

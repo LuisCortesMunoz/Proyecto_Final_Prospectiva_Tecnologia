@@ -514,6 +514,12 @@
   box-shadow: var(--cp-shadow-sm);
 }
 .cp-action-btn.ghost:hover { background: var(--accent-dim); filter: none; }
+/* Opciones de una aclaración: el texto largo hace salto de línea dentro del
+   botón (nada queda oculto) y la forma deja de ser una píldora. */
+.cp-action-btn.cp-opcion {
+  max-width: 100%; white-space: normal; overflow-wrap: anywhere;
+  text-align: left; line-height: 1.4; border-radius: 14px;
+}
 
 /* indicador "pensando" */
 .cp-typing {

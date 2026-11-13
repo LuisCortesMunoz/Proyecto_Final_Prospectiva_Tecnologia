@@ -95,8 +95,11 @@ export function crearEnlace({ base, onEnvio, onEstado = () => {}, fetchFn, dormi
     } catch (e) {
       r = { ok: false, mensaje: e?.message || String(e) };
     }
-    r = { ok: !!r?.ok, mensaje: String(r?.mensaje || (r?.ok ? 'Cargado.' : 'No se pudo cargar.')) };
-    ultimo = { nombre: envio.nombre || 'Programa', ok: r.ok, mensaje: r.mensaje, hora: new Date() };
+    // plcConfirmo: false = escrita en la banda pero sin CfgReady (solo para
+    // pintarlo en ámbar en la PC; al backend van ok y mensaje como siempre).
+    r = { ok: !!r?.ok, plcConfirmo: r?.plcConfirmo !== false,
+          mensaje: String(r?.mensaje || (r?.ok ? 'Cargado.' : 'No se pudo cargar.')) };
+    ultimo = { nombre: envio.nombre || 'Programa', ok: r.ok, plcConfirmo: r.plcConfirmo, mensaje: r.mensaje, hora: new Date() };
     try {
       await pedir('/enlace/resultado', {
         metodo: 'POST',

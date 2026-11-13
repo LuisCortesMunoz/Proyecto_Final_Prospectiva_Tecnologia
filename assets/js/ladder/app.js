@@ -1490,7 +1490,15 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
       return { ok: false, mensaje: d?.detail || `HTTP ${res.status}` };
     }
 
-    store.log('ok', `Programa cargado al PLC del ${d.device || equipo} ${d.plc || ''}`
+    // Tres estados distintos, sin adelantarse: la banda solo esta "lista"
+    // cuando el PLC reporta CfgReady; antes solo esta ESCRITA. (El maletín no
+    // tiene CfgReady: escribir bien es su confirmación.) Los lentes reconocen
+    // "sin confirmar" porque ese mensaje, y solo ese, menciona CfgReady.
+    const plcConfirmo = equipo !== 'banda' || !!d.cfg_ready;
+    const enPLC = `el PLC ${equipo === 'banda' ? 'de la banda' : 'del maletín'} ${d.plc || `${ip}:${port}`}`;
+    store.log(plcConfirmo ? 'ok' : 'warn', (plcConfirmo
+        ? `Programa cargado en ${enPLC}`
+        : `Programa escrito en ${enPLC}, sin confirmar`)
       + (d.salidas ? ` — ${d.salidas} salida(s) escritas.` : '.'));
     (d.notas || []).forEach(t => store.log('info', '· ' + t));
     (d.avisos || []).forEach(t => store.log('warn', '· ' + t));
@@ -1515,13 +1523,20 @@ async function cargarAlPLC({ confirmado = false, device = null, ip = '', port = 
         if (d.cfg_ready) mostrarAvisoStart(boton, d.arranque_texto);
       }
     }
-    showToast('Programa cargado al PLC', 'success');
-    let mensaje = `Cargado en el PLC ${equipo === 'banda' ? 'de la banda' : 'del maletín'} ${d.plc || `${ip}:${port}`}.`;
-    if (equipo === 'banda' && d.requiere_start) {
-      mensaje += d.cfg_ready ? ' ' + (d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para arrancar.`)
-                             : ' El PLC aún no confirma que la configuración esté lista (CfgReady).';
+    showToast(plcConfirmo ? 'Lista en el PLC físico' : 'Escrita en el PLC, sin confirmar',
+              plcConfirmo ? 'success' : 'warning');
+    let mensaje;
+    if (equipo !== 'banda') {
+      mensaje = `Cargada en ${enPLC}.`;
+    } else if (!plcConfirmo) {
+      mensaje = `Escrita en ${enPLC}, pero el PLC aún no confirma que esté lista (CfgReady). `
+        + 'Revisa que no haya un paro activo.';
+    } else {
+      mensaje = `Lista en ${enPLC}. ` + (d.requiere_start
+        ? (d.arranque_texto || `Pulsa ${d.boton_start || 'I1'} para arrancar.`)
+        : 'Sensores, torreta y plumas activos.');
     }
-    return { ok: true, mensaje };
+    return { ok: true, plcConfirmo, mensaje };
   } catch (e) {
     const offline = /Failed to fetch|NetworkError|timeout|aborted/i.test(e.message || '');
     store.log('err', offline
@@ -1867,8 +1882,10 @@ function pintarEnlace(st) {
   const ult = card.querySelector('#lentesUlt');
   if (st.ultimo) {
     ult.hidden = false;
-    ult.className = 'lentes-espera-ult ' + (st.ultimo.ok ? 'is-ok' : 'is-err');
-    ult.textContent = `${st.ultimo.ok ? '✓' : '✕'} «${st.ultimo.nombre}» `
+    // Escrita pero sin confirmar (banda sin CfgReady): ámbar, no verde.
+    const sinConfirmar = st.ultimo.ok && st.ultimo.plcConfirmo === false;
+    ult.className = 'lentes-espera-ult ' + (sinConfirmar ? 'is-warn' : st.ultimo.ok ? 'is-ok' : 'is-err');
+    ult.textContent = `${sinConfirmar ? '!' : st.ultimo.ok ? '✓' : '✕'} «${st.ultimo.nombre}» `
       + `(${st.ultimo.hora.toLocaleTimeString('es-MX', { hour12: false })}): ${st.ultimo.mensaje}`;
   } else {
     ult.hidden = true;
